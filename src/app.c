@@ -16,6 +16,7 @@
 #include "cpu.h"
 #include "fmt.h"
 #include "std.h"
+#include "dbg.h"
 #include "ren.h"
 #include "sys.h"
 #include "res.h"
@@ -860,7 +861,7 @@ app_file_lst_view_add_path(struct app_file_list_view *lst, struct sys *sys,
   bit_clr(lst->fltr, dyn_cnt(lst->elms) - 1);
 }
 static void
-app_file_list_view_filter(struct app_file_list_view *lst, struct str fltr) {
+app_file_list_view_fltr(struct app_file_list_view *lst, struct str fltr) {
   assert(lst);
 
   int tbl[UCHAR_MAX + 1];
@@ -1057,7 +1058,7 @@ ui_file_lst_view_fnd(struct app *app, struct app_file_list_view *lst,
     /* filter files by name */
     bit_fill(lst->fltr, 0x00, dyn_cnt(lst->elms));
     if (dyn_has(lst->fnd_buf)) {
-      app_file_list_view_filter(lst, dyn_str(lst->fnd_buf));
+      app_file_list_view_fltr(lst, dyn_str(lst->fnd_buf));
     }
   }
 }
@@ -1610,9 +1611,14 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
 extern void
 dlRegister(struct sys *sys) {
   assert(sys);
-
   sys->plugin.add(&res, 0, strv("res"));
+  if (res.version != RES_VERSION) {
+
+  }
   sys->plugin.add(&gui, &res, strv("gui"));
+  if (gui.version != GUI_VERSION) {
+
+  }
 }
 extern void
 dlEntry(struct sys *sys) {
@@ -1654,10 +1660,14 @@ dlEntry(struct sys *sys) {
     break;
   }
   /* gui */
+  DBG_BLK_BEGIN(sys, "app:gui");
   while (gui.begin(&app->gui)) {
+    DBG_BLK_BEGIN(sys, "app:gui:pass");
     struct gui_panel pan = {.box = app->gui.box};
     app_ui_main(app, &app->gui, &pan, &app->gui.root);
     gui.end(&app->gui);
+    DBG_BLK_END(sys);
   }
+  DBG_BLK_END(sys);
 }
 

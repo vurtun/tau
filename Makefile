@@ -1,4 +1,4 @@
-BIN = lepton
+BIN = muon
 CC = clang
 DCC = clang
 CFLAGS = -std=c99 -pedantic -DUSE_SIMD_128
@@ -11,6 +11,9 @@ INCL = #-I /usr/X11/include -I /usr/local/include
 
 SYSSRC = src/sys_mac.m
 SYSOBJ = $(SYSSRC:.m=.o)
+
+DBGSRC = src/dbg.c
+DBGOBJ = $(DBGSRC:.c=.o)
 
 APPSRC = src/app.c
 APPOBJ = $(APPSRC:.c=.o)
@@ -47,10 +50,12 @@ release: OBJCFLAGS = -g -Wall -Wextra -O2
 release: CC = clang
 release: $(BIN)
 
-$(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ)
+$(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
 	@mkdir -p bin
-	rm -f bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ)
+	rm -f bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
+	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
 	$(CC) $(OBJCFLAGS) $(INCL) -o bin/$(BIN) $(SYSSRC) $(CFRAMEWORKS) $(SYSLIBS)
+	$(CC) $(CFLAGS) -shared $(INCL) -o bin/dbg.so $(DBGSRC) $(DBGLIBS)
 	$(CC) $(CFLAGS) -shared $(INCL) -o bin/ren.so $(RENSRC) $(RENLIBS)
 	$(CC) $(CFLAGS) -shared $(INCL) -o bin/app.so $(APPSRC) $(APPLIBS)
 	$(CC) $(CFLAGS) -shared $(INCL) -o bin/res.so $(RESSRC) $(RESLIBS)

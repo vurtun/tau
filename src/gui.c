@@ -16,6 +16,7 @@
 #include "fmt.h"
 #include "fmt.c"
 #include "std.h"
+#include "dbg.h"
 #include "ren.h"
 #include "sys.h"
 #include "std.c"
@@ -5520,6 +5521,8 @@ dlExport(void *export, void *import) {
   gui->lay.hitem = gui_hlay_item;
   gui->lay.vitem = gui_vlay_item;
   gui->lay.item = gui_lay_item;
+  gui->lay.vlay = gui__vlay;
+  gui->lay.hlay = gui__hlay;
   /* panel */
   gui->pan.hot = gui_panel_hot;
   gui->pan.focus = gui_focus;

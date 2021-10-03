@@ -170,6 +170,9 @@ struct sys_clip_api {
   void (*set)(struct str s, struct arena *a);
   struct str (*get)(struct arena *a);
 };
+struct sys_time_api {
+  unsigned long long (*timestamp)(void);
+};
 struct sys_mod_api {
   int (*add)(void *exp, void *imp, struct str name);
 };
@@ -197,14 +200,17 @@ struct sys {
   /* modules */
   void *platform;
   void *renderer;
+  void *debug;
   void *app;
 
   /* api */
   struct sys_mem_api mem;
   struct sys_dir_api dir;
   struct sys_clip_api clipboard;
-  struct ren_api ren;
   struct sys_mod_api plugin;
+  struct sys_time_api time;
+  struct ren_api ren;
+  struct dbg_api dbg;
 
   /* input */
   unsigned key_mod:1;

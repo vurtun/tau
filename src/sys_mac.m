@@ -23,9 +23,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <dlfcn.h>
-#include <pthread.h>
-#define _XOPEN_SOURCE 1
-#include <ucontext.h>
 #import <Cocoa/Cocoa.h>
 
 /* usr */
@@ -33,6 +30,7 @@
 #include "fmt.h"
 #include "fmt.c"
 #include "std.h"
+#include "dbg.h"
 #include "ren.h"
 #include "sys.h"
 #include "std.c"
@@ -59,6 +57,11 @@ struct sys_mem_blk {
 struct sys_app_sym_table {
   void (*dlEntry)(struct sys *s);
   void (*dlRegister)(struct sys *s);
+};
+struct sys_dbg_sym_table {
+  void (*dlInit)(struct sys *s);
+  void (*dlBegin)(struct sys *s);
+  void (*dlEnd)(struct sys *s);
 };
 struct sys_ren_sym_table {
   void (*dlInit)(struct sys *s);
@@ -88,13 +91,17 @@ struct sys_mac {
   enum sys_cur_style cursor;
   struct str exe_path;
 
-  struct str app_path;
-  struct sys_app_sym_table app;
-  struct sys_mac_module app_lib;
+  struct str dbg_path;
+  struct sys_dbg_sym_table dbg;
+  struct sys_mac_module dbg_lib;
 
   struct str ren_path;
   struct sys_ren_sym_table ren;
   struct sys_mac_module ren_lib;
+
+  struct str app_path;
+  struct sys_app_sym_table app;
+  struct sys_mac_module app_lib;
 
   int mod_cnt;
   #define SYS_MAC_MAX_MODS 32
@@ -494,6 +501,9 @@ sys__mac_free(void) {
 }
 static void
 sys__mac_on_frame(void) {
+  if (_mac.dbg.dlBegin) {
+    _mac.dbg.dlBegin(&_sys);
+  }
   _sys.txt_mod = !!_sys.txt_len;
   _sys.win.w = _mac.win_w;
   _sys.win.h = _mac.win_h;
@@ -534,6 +544,9 @@ sys__mac_on_frame(void) {
     _sys.mouse.btns[i].pressed = 0;
     _sys.mouse.btns[i].released = 0;
     _sys.mouse.btns[i].doubled = 0;
+  }
+  if (_mac.dbg.dlEnd) {
+    _mac.dbg.dlEnd(&_sys);
   }
 }
 static void
@@ -982,6 +995,13 @@ sys_mac__mouse_pos(NSEvent *e) {
 }
 @end
 
+static unsigned long long
+sys_mac_timestamp(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  unsigned long long ret = ts.tv_sec * 1000000llu + ts.tv_nsec;
+  return ret;
+}
 static int
 sys_mac_plugin_add(void *exp, void *imp, struct str name) {
   assert(_mac.mod_cnt < SYS_MAC_MAX_MODS);
@@ -1022,19 +1042,31 @@ main(int argc, char* argv[]) {
   _sys.dir.lst = sys_dir_lst;
   _sys.dir.nxt = sys_dir_nxt;
   _sys.dir.exists = sys_dir_exists;
-
   /* clipboard */
   _sys.clipboard.set = sys_mac_clipboard_set;
   _sys.clipboard.get = sys_mac_clipboard_get;
-
+  /* plugin */
   _sys.plugin.add = sys_mac_plugin_add;
+  /* time */
+  _sys.time.timestamp = sys_mac_timestamp;
 
   /* constants */
   _sys.dpi_scale = 1.0f;
   _mac.exe_path = sys_mac_get_exe_path(&_mac.mem);
   _mac.ren_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("ren"), strv(".so"), &_mac.mem);
   _mac.app_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("app"), strv(".so"), &_mac.mem);
+  _mac.dbg_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("dbg"), strv(".so"), &_mac.mem);
 
+  /* open dbg dynamic library */
+  static char *sys_dbg_module_fn_sym[] = {"dlInit","dlBegin","dlEnd"};
+  _mac.dbg_lib.path = _mac.dbg_path;
+  _mac.dbg_lib.sym_cnt = cntof(sys_dbg_module_fn_sym);
+  _mac.dbg_lib.sym_names = sys_dbg_module_fn_sym;
+  _mac.dbg_lib.syms = (void**)&_mac.dbg;
+  sys_mac_mod_open(&_mac.dbg_lib, &_mac.tmp);
+  if (_mac.dbg.dlInit) {
+    _mac.dbg.dlInit(&_sys);
+  }
   /* open ren dynamic library */
   static char *sys_ren_module_fn_sym[] = {"dlInit","dlBegin","dlEnd","dlShutdown"};
   _mac.ren_lib.path = _mac.ren_path;
@@ -1053,7 +1085,6 @@ main(int argc, char* argv[]) {
   if (_mac.app.dlRegister)  {
     _mac.app.dlRegister(&_sys);
   }
-
   /* start application */
   [NSApplication sharedApplication];
   _mac.app_dlg = [[sys__mac_app_delegate alloc] init];

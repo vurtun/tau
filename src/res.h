@@ -1,3 +1,5 @@
+#define RES_VERSION 1
+
 #define RES_MAX_GLYPHSET 256
 #define RES_IMG_SLOT_CNT 64
 
@@ -21,6 +23,7 @@ struct res {
   struct res_fnt *ico;
 };
 struct res_api {
+  int version;
   void (*init)(struct res *res);
   void (*ico_siz)(int *siz, struct res *res, const char *ico);
   void (*ico)(struct ren_cmd_buf *buf, struct res *res, int x, int y, const char *ico);

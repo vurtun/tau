@@ -261,15 +261,15 @@ struct gui_lay {
 };
 #define gui_row(lay, row, def, gap, con, sol) \
   for (int lay[cntof((int[])def)],            \
-    uniqid(_i_) = (gui_solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
+    uniqid__i_) = (gui.lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 #define gui_hlay(ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
   for (int items[cntof(def)],            \
-    uniqid(_i_) = (gui__hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) = (gui.lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 #define gui_vlay(ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
   for (int items[cntof(def)],            \
-    uniqid(_i_) = (gui__vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) = (gui.lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 
 /* Widget: Edit */
@@ -952,6 +952,8 @@ struct gui_lay_api {
   struct gui_box (*hitem)(struct gui_lay *lay, const int *items);
   struct gui_box (*vitem)(struct gui_lay *lay, const int *items);
   struct gui_box (*item)(struct gui_lay *lay, const int *items);
+  void (*hlay)(struct gui_ctx *ctx, struct gui_lay *lay, int *items, const int *def, int cnt, int row_h, int row_gap, int col_gap, const int *con, struct gui_lay_sol *sol);
+  void (*vlay)(struct gui_ctx *ctx, struct gui_lay *lay, int *items, const int *def, int cnt, int col_w, int row_gap, int col_gap, const int *con, struct gui_lay_sol *sol);
 };
 struct gui_panel_api {
   void (*hot)(struct gui_ctx *ctx, struct gui_panel *p, struct gui_panel *parent);

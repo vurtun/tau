@@ -16,6 +16,7 @@
 #include "fmt.h"
 #include "fmt.c"
 #include "std.h"
+#include "dbg.h"
 #include "ren.h"
 #include "sys.h"
 #include "std.c"
@@ -1771,6 +1772,7 @@ extern void
 dlExport(void *export, void *import) {
   unused(import);
   struct res_api *res = (struct res_api*)export;
+  res->version = RES_VERSION;
   res->init = res_init;
   res->ico_siz = ren_ico_siz;
   res->ico = ren_ico;
