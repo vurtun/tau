@@ -85,7 +85,7 @@ enum app_file_tbl_hdr_col {
   APP_FILE_TBL_SIZE,
   APP_FILE_TBL_PERM,
   APP_FILE_TBL_DATE,
-  APP_FILE_TBL_MAX
+  APP_FILE_TBL_MAX,
 };
 struct app_file_tbl {
   int cnt;
@@ -96,13 +96,18 @@ enum app_file_view_state {
   APP_FILE_VIEW_LIST,
   APP_FILE_VIEW_MENU,
 };
+enum app_file_con_menu {
+  APP_FILE_CON_MENU_MAIN,
+  APP_FILE_CON_MENU_VIEW,
+  APP_FILE_CON_MENU_EDIT,
+};
 #define APP_MAX_FILTER 64
 struct app_file_list_view {
   unsigned rev;
   struct arena mem;
 
-  int state;
-  int con_menu;
+  enum app_file_view_state state;
+  enum app_file_con_menu con;
 
   dyn(struct app_file_elm) elms;
   dyn(unsigned long) fltr;
@@ -392,49 +397,6 @@ static const struct app_file_tbl_col_def app_file_tbl_def[APP_FILE_TBL_MAX] = {
 static const struct gui_split_lay_slot app_file_split_def[APP_FILE_SPLIT_MAX] = {
   {.type = GUI_LAY_SLOT_FIX, .size = 200, .con = {100, 800}},
   {.type = GUI_LAY_SLOT_DYN, .size =   1, .con = { 50, 800}},
-};
-struct ui_con_item {
-  int id;
-  struct str lbl;
-  const char *ico;
-  int menu;
-  int state;
-};
-struct ui_con_lst {
-  int rows, cols;
-  int begin, end;
-};
-enum app_file_con_menu_id {
-  APP_FILE_MENU_MAIN, APP_FILE_MENU_VIEW, APP_FILE_MENU_EDIT,
-};
-enum app_file_con_item_id {
-  APP_FILE_CON_NONE,
-  /* main: */ APP_FILE_CON_OPEN, APP_FILE_CON_VIEW, APP_FILE_CON_EDIT,
-  /* view: */ APP_FILE_CON_ICONS, APP_FILE_CON_LIST, APP_FILE_CON_COLUMN, APP_FILE_CON_GALLERY, APP_FILE_CON_PREV,
-  /* edit: */ APP_FILE_CON_COPY, APP_FILE_CON_CUT, APP_FILE_CON_PASTE, APP_FILE_CON_DELETE, APP_FILE_CON_BACK,
-};
-static const struct ui_con_item app_file_con_item_lst[] = {
-  /* main */
-  [APP_FILE_CON_OPEN]    = {.id = APP_FILE_CON_OPEN,    .lbl = strv("Open"),    .ico = ICO_FOLDER_OPEN, .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_VIEW]    = {.id = APP_FILE_CON_VIEW,    .lbl = strv("View"),    .ico = ICO_TABLE,       .menu = APP_FILE_MENU_VIEW, .state = APP_FILE_VIEW_MENU},
-  [APP_FILE_CON_EDIT]    = {.id = APP_FILE_CON_EDIT,    .lbl = strv("Edit"),    .ico = ICO_EDIT,        .menu = APP_FILE_MENU_EDIT, .state = APP_FILE_VIEW_MENU},
-  /* View */
-  [APP_FILE_CON_ICONS]   = {.id = APP_FILE_CON_ICONS,   .lbl = strv("Icons"),   .ico = ICO_TH_LIST,     .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_LIST]    = {.id = APP_FILE_CON_LIST,    .lbl = strv("List"),    .ico = ICO_LIST,        .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_COLUMN]  = {.id = APP_FILE_CON_COLUMN,  .lbl = strv("Columns"), .ico = ICO_COLUMNS,     .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_GALLERY] = {.id = APP_FILE_CON_GALLERY, .lbl = strv("Gallery"), .ico = ICO_TABLE,       .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_PREV]    = {.id = APP_FILE_CON_PREV,    .lbl = strv("Back"),    .ico = ICO_BARS,        .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_MENU},
-  /* Edit */
-  [APP_FILE_CON_COPY]    = {.id = APP_FILE_CON_COPY,    .lbl = strv("Copy"),    .ico = ICO_COPY,        .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_CUT]     = {.id = APP_FILE_CON_CUT,     .lbl = strv("Cut"),     .ico = ICO_CUT,         .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_PASTE]   = {.id = APP_FILE_CON_PASTE,   .lbl = strv("Paste"),   .ico = ICO_PASTE,       .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_DELETE]  = {.id = APP_FILE_CON_DELETE,  .lbl = strv("Delete"),  .ico = ICO_TRASH,       .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_LIST},
-  [APP_FILE_CON_BACK]    = {.id = APP_FILE_CON_PREV,    .lbl = strv("Back"),    .ico = ICO_BARS,        .menu = APP_FILE_MENU_MAIN, .state = APP_FILE_VIEW_MENU},
-};
-static const struct ui_con_lst app_file_con_menu_lst[] = {
-  [APP_FILE_MENU_MAIN] = {.rows = 2, .cols = 2, .begin = APP_FILE_CON_OPEN,   .end = APP_FILE_CON_EDIT},
-  [APP_FILE_MENU_VIEW] = {.rows = 3, .cols = 2, .begin = APP_FILE_CON_ICONS,  .end = APP_FILE_CON_PREV},
-  [APP_FILE_MENU_EDIT] = {.rows = 3, .cols = 2, .begin = APP_FILE_CON_COPY,   .end = APP_FILE_CON_BACK},
 };
 // clang-format on
 
@@ -934,7 +896,7 @@ app_file_view_cd(struct app_file_view *fs, struct sys *sys, struct str path) {
   }
   scope_end(&scp, tmp, sys);
   fs->lst.state = APP_FILE_VIEW_LIST;
-  fs->lst.con_menu = APP_FILE_MENU_MAIN;
+  fs->lst.con = APP_FILE_CON_MENU_MAIN;
 }
 static void
 app_file_list_view_setup(struct app_file_view *fs, struct sys *sys,
@@ -1045,38 +1007,6 @@ ui_btn_menu(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   }
   gui.btn.end(ctx, btn, parent);
   return btn->clk;
-}
-static int
-ui_con_menu(struct gui_ctx *ctx, struct gui_panel *pan, int *state, int *menu,
-            const struct ui_con_lst *lst, const struct ui_con_item *items) {
-  int ret = 0;
-  struct gui_box lay = pan->box;
-  int cnt = (lst->end - lst->begin) + 1;
-  for (int i = lst->begin; i <= lst->end; ++i) {
-    const struct ui_con_item *item = &items[i];
-    int idx = i - lst->begin;
-    int col = idx % lst->cols;
-    int row = idx / lst->cols;
-
-    struct gui_btn btn = {0};
-    btn.box.x = gui.box.div(&lay.x, 0, lst->cols, col);
-    btn.box.y = gui.box.div(&lay.y, 0, lst->rows, row);
-    if ((lst->rows * lst->cols == cnt + lst->cols - 1) && (i == lst->end)) {
-      btn.box.x = gui.bnd.min_ext(btn.box.x.min, btn.box.x.ext * lst->cols);
-    }
-    if (ui_btn_menu(ctx, &btn, pan, item->lbl, item->ico, 0)) {
-      *state = item->state;
-      *menu = item->menu;
-      ret = item->id;
-    }
-  }
-  struct gui_input in = {0};
-  gui.pan.input(&in, ctx, pan, GUI_BTN_RIGHT);
-  if (in.mouse.btn.right.clk) {
-    *state = *menu = 0;
-    gui.in.consume(ctx);
-  }
-  return ret;
 }
 static void
 ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
@@ -1413,6 +1343,107 @@ ui_file_view_tree(struct app *app, struct app_file_view *fs,
   gui.pan.end(ctx, pan, parent);
 }
 static void
+ui_file_con_close(struct app_file_list_view *lst) {
+  lst->state = APP_FILE_VIEW_LIST;
+  lst->con = APP_FILE_CON_MENU_MAIN;
+}
+static void
+ui_file_con_menu(struct app *app, struct app_file_list_view *lst,
+                 struct gui_ctx *ctx, struct gui_panel *pan,
+                 struct gui_panel *parent) {
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+  unused(app);
+
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_box lay = pan->box;
+    switch (lst->con) {
+    case APP_FILE_CON_MENU_MAIN: {
+      struct gui_btn open = {0};
+      open.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 0);
+      if (ui_btn_menu(ctx, &open, pan, strv("Open"), ICO_FOLDER_OPEN, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn view = {0};
+      view.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 1);
+      if (ui_btn_menu(ctx, &view, pan, strv("View"), ICO_TABLE, 0)) {
+        lst->con = APP_FILE_CON_MENU_VIEW;
+      }
+      struct gui_btn edt = {0};
+      edt.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 2);
+      if (ui_btn_menu(ctx, &edt, pan, strv("Edit"), ICO_EDIT, 0)) {
+        lst->con = APP_FILE_CON_MENU_EDIT;
+      }
+    } break;
+    case APP_FILE_CON_MENU_VIEW: {
+      struct gui_btn icos = {0};
+      icos.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
+      icos.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      if (ui_btn_menu(ctx, &icos, pan, strv("Icons"), ICO_TH_LIST, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn list = {0};
+      list.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
+      list.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      if (ui_btn_menu(ctx, &list, pan, strv("List"), ICO_LIST, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn col = {0};
+      col.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
+      col.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      if (ui_btn_menu(ctx, &col, pan, strv("Columns"), ICO_COLUMNS, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn gal = {0};
+      gal.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
+      gal.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      if (ui_btn_menu(ctx, &gal, pan, strv("Gallery"), ICO_TABLE, 0)) {
+        ui_file_con_close(lst);
+      }
+    } break;
+    case APP_FILE_CON_MENU_EDIT: {
+      struct gui_btn cpy = {0};
+      cpy.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
+      cpy.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      if (ui_btn_menu(ctx, &cpy, pan, strv("Copy"), ICO_COPY, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn cut = {0};
+      cut.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
+      cut.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      if (ui_btn_menu(ctx, &cut, pan, strv("Cut"), ICO_CUT, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn paste = {0};
+      paste.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
+      paste.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      if (ui_btn_menu(ctx, &paste, pan, strv("Paste"), ICO_PASTE, 0)) {
+        ui_file_con_close(lst);
+      }
+      struct gui_btn del = {0};
+      del.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
+      del.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      if (ui_btn_menu(ctx, &del, pan, strv("Delete"), ICO_TRASH, 0)) {
+        ui_file_con_close(lst);
+      }
+    } break;}
+  }
+  gui.pan.end(ctx, pan, parent);
+
+  struct gui_input in = {0};
+  gui.pan.input(&in, ctx, pan, GUI_BTN_RIGHT);
+  if (in.mouse.btn.right.clk) {
+    if (lst->con == APP_FILE_CON_MENU_MAIN) {
+      lst->state = APP_FILE_VIEW_LIST;
+    } else {
+      lst->con = APP_FILE_CON_MENU_MAIN;
+    }
+    gui.in.consume(ctx);
+  }
+}
+static void
 ui_file_sel_view(struct app *app, struct app_file_view *view,
                  struct app_file_list_view *lst,
                  struct gui_ctx *ctx, struct gui_panel *pan,
@@ -1438,19 +1469,8 @@ ui_file_sel_view(struct app *app, struct app_file_view *view,
       ui_file_view_tbl(app, view, lst, ctx, &tbl, pan);
     } break;
     case APP_FILE_VIEW_MENU: {
-      int id = ui_con_menu(ctx, pan, &lst->state, &lst->con_menu,
-          &app_file_con_menu_lst[lst->con_menu], app_file_con_item_lst);
-      switch (id) {
-      case APP_FILE_CON_OPEN: printf("Open\n"); break;
-      case APP_FILE_CON_COPY: printf("Copy\n"); break;
-      case APP_FILE_CON_CUT: printf("Cut\n"); break;
-      case APP_FILE_CON_PASTE: printf("Paste\n"); break;
-      case APP_FILE_CON_DELETE: printf("Delete\n"); break;
-      case APP_FILE_CON_ICONS: printf("Icons\n"); break;
-      case APP_FILE_CON_LIST: printf("List\n"); break;
-      case APP_FILE_CON_COLUMN: printf("Column\n"); break;
-      case APP_FILE_CON_GALLERY: printf("Gallery\n"); break;
-      }
+      struct gui_panel menu = {.box = pan->box};
+      ui_file_con_menu(app, lst, ctx, &menu, pan);
     } break;
     }
   }
@@ -1504,7 +1524,7 @@ ui_file_sel(dyn(char) *filepath, struct app *app, struct app_file_view *fs,
     ui_file_lst_view_nav_bar(app, fs, &fs->lst, ctx, &nav, pan);
     ui_file_sel_split(app, fs, ctx, &tbl, pan);
 
-    /* select file */
+    /* file selection */
     int dis = fs->lst.sel_idx < 0 || fs->lst.sel_idx >= dyn_cnt(fs->lst.elms);
     if (!dis) {
       const struct app_file_elm *elm = 0;
@@ -1567,6 +1587,7 @@ static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
+
   app_file_view_free(&app->file, sys);
 }
 static void
@@ -1576,6 +1597,7 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   assert(parent);
+
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel bdy = {.box = pan->box};
@@ -1587,6 +1609,8 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
 }
 extern void
 dlRegister(struct sys *sys) {
+  assert(sys);
+
   sys->plugin.add(&res, 0, strv("res"));
   sys->plugin.add(&gui, &res, strv("gui"));
 }
