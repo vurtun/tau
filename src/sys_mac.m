@@ -999,7 +999,9 @@ static unsigned long long
 sys_mac_timestamp(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-  unsigned long long ret = ts.tv_sec * 1000000llu + ts.tv_nsec;
+  unsigned long long sec = cast(unsigned long long, ts.tv_sec) * 1000000llu;
+  unsigned long long nsec = cast(unsigned long long, ts.tv_nsec);
+  unsigned long long ret = sec + nsec;
   return ret;
 }
 static int

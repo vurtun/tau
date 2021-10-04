@@ -149,7 +149,7 @@ ren__rect_slow(struct sys *sys, struct sys_ren_target *tar,
   if (ren__area(&fill) <= 0) {
     return;
   }
-  DBG_BLK_BEGIN(sys, "ren:rect_slow");
+  dbg_blk_begin(sys, "ren:rect_slow");
   unsigned *d = tar->pixels + fill.min_x + fill.min_y * tar->w;
   const int dr = tar->w - (fill.max_x - fill.min_x);
   if (col_a(col) == 0xFF) {
@@ -169,7 +169,7 @@ ren__rect_slow(struct sys *sys, struct sys_ren_target *tar,
       d += dr;
     }
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 }
 static void
 ren__rect(struct sys *sys, struct sys_ren_target *tar,
@@ -187,7 +187,7 @@ ren__rect(struct sys *sys, struct sys_ren_target *tar,
     return;
   }
   /* setup clipping masks for start and end of row */
-  DBG_BLK_BEGIN(sys, "ren:rect");
+  dbg_blk_begin(sys, "ren:rect");
   static const unsigned char x1[] = {
     0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -282,7 +282,7 @@ ren__rect(struct sys *sys, struct sys_ren_target *tar,
       pix += 4;
     }
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 #else
   ren__rect_slow(tar, rect, clip, col);
 #endif
@@ -302,7 +302,7 @@ ren__rect_fast(struct sys *sys, struct sys_ren_target *tar,
   if (ren__area(&fill) <= 0) {
     return;
   }
-  DBG_BLK_BEGIN(sys, "ren:rect_fast");
+  dbg_blk_begin(sys, "ren:rect_fast");
   static const unsigned char x1[] = {
     0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -463,7 +463,7 @@ ren__rect_fast(struct sys *sys, struct sys_ren_target *tar,
       pix += 8;
     }
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 #else
   ren__rect(sys, tar, rect, clip, col);
 #endif
@@ -511,7 +511,7 @@ ren__blit_img_slow(struct sys *sys, struct sys_ren_target *tar,
   if (sub.w <= 0 || sub.h <= 0) return;
 
   /* draw */
-  DBG_BLK_BEGIN(sys, "ren:blit_img_slow");
+  dbg_blk_begin(sys, "ren:blit_img_slow");
   const unsigned *s = img + sub.x + sub.y * stride;
   unsigned *d = tar->pixels + x + y * tar->w;
   int sr = stride - sub.w;
@@ -523,7 +523,7 @@ ren__blit_img_slow(struct sys *sys, struct sys_ren_target *tar,
     }
     d += dr, s += sr;
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 }
 static void
 ren__blit_img(struct sys *sys, struct sys_ren_target *tar,
@@ -542,7 +542,7 @@ ren__blit_img(struct sys *sys, struct sys_ren_target *tar,
   if (sub.w <= 0 || sub.h <= 0) return;
 
   /* setup clipping masks for start and end of row */
-  DBG_BLK_BEGIN(sys, "ren:blit_img");
+  dbg_blk_begin(sys, "ren:blit_img");
   static const unsigned char y1[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
@@ -630,7 +630,7 @@ ren__blit_img(struct sys *sys, struct sys_ren_target *tar,
       dst_pix += 4;
     }
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 #else
   ren__blit_img_slow(sys, tar, src_img, x, y, sub_img, stride, clip, col);
 #endif
@@ -652,7 +652,7 @@ ren__blit_img_fast(struct sys *sys, struct sys_ren_target *tar,
   if (sub.w <= 0 || sub.h <= 0) return;
 
   /* setup clipping masks */
-  DBG_BLK_BEGIN(sys, "ren:blit_img_fast");
+  dbg_blk_begin(sys, "ren:blit_img_fast");
   static const unsigned char y1[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -772,7 +772,7 @@ ren__blit_img_fast(struct sys *sys, struct sys_ren_target *tar,
       dst_pix += 8;
     }
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 #else
   ren__blit_img(sys, tar, src_img, x, y, sub_img, stride, clip, col);
 #endif
@@ -1092,7 +1092,7 @@ ren__cleanup(struct ren *ren, struct sys *sys) {
 }
 extern void
 dlEnd(struct sys *sys) {
-  DBG_BLK_BEGIN(sys, "render");
+  dbg_blk_begin(sys, "render");
   struct ren *ren = sys->renderer;
   ren->hash = FNV1A64_HASH_INITIAL;
   for (int i = 0; i < ren->que.cnt; ++i) {
@@ -1106,11 +1106,11 @@ dlEnd(struct sys *sys) {
     ren->prev_hash = FNV1A64_HASH_INITIAL;
   }
   if (ren->hash == ren->prev_hash) {
-    DBG_BLK_END(sys);
+    dbg_blk_end(sys);
     ren__cleanup(ren, sys);
     return;
   }
-  DBG_BLK_BEGIN(sys, "ren:hash_grid");
+  dbg_blk_begin(sys, "ren:hash_grid");
   for (int bi = 0; bi < ren->que.cnt; ++bi) {
     struct ren_cmd_buf *buf = ren->que.bufs + bi;
     /* use hash grid for fine grained change detection */
@@ -1131,7 +1131,7 @@ dlEnd(struct sys *sys) {
           break;
       }
     }
-    DBG_BLK_END(sys);
+    dbg_blk_end(sys);
 
     /* push rects for all cells changed from last frame and reset cells */
     int max_x = max(1, ren_tar->w / REN_CEL_SIZ + 1);
@@ -1158,7 +1158,7 @@ dlEnd(struct sys *sys) {
       ren__intersect_rects(r, r, &tar_rect);
     }
     /* paint over all dirty rects in window via render cmds */
-    DBG_BLK_BEGIN(sys, "ren:paint");
+    dbg_blk_begin(sys, "ren:paint");
     for (int i = 0; i < dyn_cnt(ren_tar->dirty_rects); ++i) {
       const struct sys_rect *d = ren_tar->dirty_rects + i;
       const struct ren_clip dclip = ren_clip(d->x, d->y, d->w, d->h);
@@ -1167,11 +1167,11 @@ dlEnd(struct sys *sys) {
         ren__drw_cmd(sys, ren, ren_tar, &state, p, &dclip);
       }
     }
-    DBG_BLK_END(sys);
+    dbg_blk_end(sys);
   }
   ren->cel_act = !ren->cel_act;
   ren__cleanup(ren, sys);
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 }
 extern void
 dlShutdown(struct sys *sys) {

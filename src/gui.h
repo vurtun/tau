@@ -924,11 +924,12 @@ struct gui_bnd_api {
   struct gui_bnd (*mid_max)(int c, int m);
   struct gui_bnd (*mid_ext)(int c, int e);
   struct gui_bnd (*shrink)(const struct gui_bnd *x, int p);
+  struct gui_bnd (*div)(const struct gui_bnd *b, int gap, int cnt, int idx);
 };
 struct gui_box_api {
-  struct gui_bnd (*div)(const struct gui_bnd *b, int gap, int cnt, int idx);
   struct gui_box (*div_x)(const struct gui_box *b, int gap, int cnt, int idx);
   struct gui_box (*div_y)(const struct gui_box *b, int gap, int cnt, int idx);
+  struct gui_box (*div)(const struct gui_box *b, int *gap, int cntx, int cnty, int x, int y);
   struct gui_box (*mid_ext)(const struct gui_box *b, int w, int h);
   struct gui_box (*box)(int x, int y, int w, int h);
   struct gui_box (*pos)(const struct gui_box *b, int x, int y);
@@ -1127,12 +1128,15 @@ struct gui_tbl_hdr_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, int *res, int *s);
   void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl);
 };
-struct gui_tbl_lst_elm_api {
-  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *elm, unsigned long long id, int sel);
-  void (*col)(struct gui_box *box, struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay);
+struct gui_tbl_lst_elm_col_api {
+  void (*slot)(struct gui_box *box, struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay);
   void (*txt)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct str txt, const char *icon, const struct gui_align *align);
   void (*txtf)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const struct gui_align *align, const char *fmt, ...);
   void (*tm)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const char *fmt, struct tm *tm);
+};
+struct gui_tbl_lst_elm_api {
+  struct gui_tbl_lst_elm_col_api col;
+  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *elm, unsigned long long id, int sel);
   void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *elm);
 };
 struct gui_tbl_lst_api {

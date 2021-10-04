@@ -1,23 +1,23 @@
 enum dbg_type {
-  dbg_type_unknown,
-  dbg_type_name,
-  dbg_type_frameMarker,
-  dbg_type_blk_begin,
-  dbg_type_blk_end,
+  DBG_TYPE_UNKNOWN,
+  DBG_TYPE_BLK_BEGIN,
+  DBG_TYPE_BLK_END,
 
-  dbg_type_arena_name,
-  dbg_type_arena_blk_free,
-  dbg_type_arena_blk_alloc,
-  dbg_type_arena_alloc,
+  DBG_TYPE_ARENA_NAME,
+  DBG_TYPE_ARENA_BLK_FREE,
+  DBG_TYPE_ARENA_BLK_ALLOC,
+  DBG_TYPE_ARENA_ALLOC,
 };
-#define DBG_ID__(A, B, C) A "|" #B "|" #C
-#define DBG_ID_(A, B, C) DBG_ID__(A, B, C)
-#define DBG_ID(Name) DBG_ID_(__FILE__, __LINE__, __COUNTER__)
+#define DBG_GUID__(A, B, C) A "|" #B "|" #C
+#define DBG_GUID_(A, B, C) DBG_GUID__(A, B, C)
+#define DBG_GUID DBG_GUID_(__FILE__, __LINE__, __COUNTER__)
 
-#define DBG_BLK_BEGIN_(sys, guid, name) sys->dbg.rec(sys, dbg_type_blk_begin, guid, name)
-#define DBG_BLK_END_(sys, guid, name) sys->dbg.rec(sys, dbg_type_blk_end, guid, name);
-#define DBG_BLK_BEGIN(sys, name) DBG_BLK_BEGIN_(sys, DBG_ID(Name), name)
-#define DBG_BLK_END(sys) DBG_BLK_END_(sys, DBG_ID("END_BLOCK"), "END_BLOCK")
+#define dbg_blk_begin_(sys, guid, name) sys->dbg.rec(sys, DBG_TYPE_BLK_BEGIN, guid, name)
+#define dbg_blk_end_(sys, guid, name) sys->dbg.rec(sys, DBG_TYPE_BLK_END, guid, name);
+#define dbg_blk_begin(sys, name) dbg_blk_begin_(sys, DBG_GUID, name)
+#define dbg_blk_end(sys) dbg_blk_end_(sys, DBG_GUID, "END_BLOCK")
+
+#define dbg_arena_name(sys, a, name) sys->dbg.rec(sys, DBG_TYPE_ARENA_NAME, (const char*)a, name);
 
 struct sys;
 struct dbg_api {

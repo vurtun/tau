@@ -1116,11 +1116,11 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
     {
       /* columns */
       struct tm *mod_time = localtime(&fi->mtime);
-      gui.tbl.lst.elm.txt(ctx, tbl, lay, elm, fi->name, fi->ico, 0);
-      gui.tbl.lst.elm.txt(ctx, tbl, lay, elm, str0(fi->type->name), 0, 0);
-      gui.tbl.lst.elm.txtf(ctx, tbl, lay, elm, &algn, "%zu", fi->size);
-      gui.tbl.lst.elm.txt(ctx, tbl, lay, elm, str0(fi->perms), 0, 0);
-      gui.tbl.lst.elm.tm(ctx, tbl, lay, elm, "%d/%m/%Y %H:%M:%S", mod_time);
+      gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, fi->name, fi->ico, 0);
+      gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, str0(fi->type->name), 0, 0);
+      gui.tbl.lst.elm.col.txtf(ctx, tbl, lay, elm, &algn, "%zu", fi->size);
+      gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, str0(fi->perms), 0, 0);
+      gui.tbl.lst.elm.col.tm(ctx, tbl, lay, elm, "%d/%m/%Y %H:%M:%S", mod_time);
     }
     gui.cfg.pop_on(stk, fi->isdir);
   }
@@ -1306,10 +1306,10 @@ ui_file_view_tree(struct app *app, struct app_file_view *fs,
   {
     /* tree list */
     struct gui_lst_cfg cfg = {0};
-    struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.cfg(&cfg, dyn_cnt(tree->lst), tree->off[1]);
     cfg.sel.src = GUI_LST_SEL_SRC_EXT;
 
+    struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, tree->off);
     for (int i = reg.lst.begin; i < reg.lst.end; ++i) {
       struct gui_panel elm = {0};
@@ -1345,6 +1345,7 @@ ui_file_view_tree(struct app *app, struct app_file_view *fs,
 }
 static void
 ui_file_con_close(struct app_file_list_view *lst) {
+  assert(lst);
   lst->state = APP_FILE_VIEW_LIST;
   lst->con = APP_FILE_CON_MENU_MAIN;
 }
@@ -1352,80 +1353,61 @@ static void
 ui_file_con_menu(struct app *app, struct app_file_list_view *lst,
                  struct gui_ctx *ctx, struct gui_panel *pan,
                  struct gui_panel *parent) {
+  unused(app);
   assert(ctx);
   assert(pan);
   assert(parent);
-  unused(app);
 
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_box lay = pan->box;
     switch (lst->con) {
     case APP_FILE_CON_MENU_MAIN: {
-      struct gui_btn open = {0};
-      open.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 0);
+      struct gui_btn open = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 0)};
       if (ui_btn_menu(ctx, &open, pan, strv("Open"), ICO_FOLDER_OPEN, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn view = {0};
-      view.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 1);
-      if (ui_btn_menu(ctx, &view, pan, strv("View"), ICO_TABLE, 0)) {
-        lst->con = APP_FILE_CON_MENU_VIEW;
-      }
-      struct gui_btn edt = {0};
-      edt.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 2);
+      struct gui_btn edt = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 1)};
       if (ui_btn_menu(ctx, &edt, pan, strv("Edit"), ICO_EDIT, 0)) {
         lst->con = APP_FILE_CON_MENU_EDIT;
       }
+      struct gui_btn view = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 2)};
+      if (ui_btn_menu(ctx, &view, pan, strv("View"), ICO_TABLE, 0)) {
+        lst->con = APP_FILE_CON_MENU_VIEW;
+      }
     } break;
     case APP_FILE_CON_MENU_VIEW: {
-      struct gui_btn icos = {0};
-      icos.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
-      icos.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      struct gui_btn icos = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 0)};
       if (ui_btn_menu(ctx, &icos, pan, strv("Icons"), ICO_TH_LIST, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn list = {0};
-      list.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
-      list.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      struct gui_btn list = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 0)};
       if (ui_btn_menu(ctx, &list, pan, strv("List"), ICO_LIST, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn col = {0};
-      col.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
-      col.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      struct gui_btn col = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 1)};
       if (ui_btn_menu(ctx, &col, pan, strv("Columns"), ICO_COLUMNS, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn gal = {0};
-      gal.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
-      gal.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      struct gui_btn gal = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 1)};
       if (ui_btn_menu(ctx, &gal, pan, strv("Gallery"), ICO_TABLE, 0)) {
         ui_file_con_close(lst);
       }
     } break;
     case APP_FILE_CON_MENU_EDIT: {
-      struct gui_btn cpy = {0};
-      cpy.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
-      cpy.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      struct gui_btn cpy = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 0)};
       if (ui_btn_menu(ctx, &cpy, pan, strv("Copy"), ICO_COPY, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn cut = {0};
-      cut.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
-      cut.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 0);
+      struct gui_btn cut = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 0)};
       if (ui_btn_menu(ctx, &cut, pan, strv("Cut"), ICO_CUT, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn paste = {0};
-      paste.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 0);
-      paste.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
-      if (ui_btn_menu(ctx, &paste, pan, strv("Paste"), ICO_PASTE, 0)) {
+      struct gui_btn put = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0 ,1)};
+      if (ui_btn_menu(ctx, &put, pan, strv("Paste"), ICO_PASTE, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn del = {0};
-      del.box.x = gui.box.div(&lay.x, ctx->cfg.gap[0], 2, 1);
-      del.box.y = gui.box.div(&lay.y, ctx->cfg.gap[1], 2, 1);
+      struct gui_btn del = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 1)};
       if (ui_btn_menu(ctx, &del, pan, strv("Delete"), ICO_TRASH, 0)) {
         ui_file_con_close(lst);
       }
@@ -1588,7 +1570,6 @@ static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
-
   app_file_view_free(&app->file, sys);
 }
 static void
@@ -1660,14 +1641,14 @@ dlEntry(struct sys *sys) {
     break;
   }
   /* gui */
-  DBG_BLK_BEGIN(sys, "app:gui");
+  dbg_blk_begin(sys, "app:gui");
   while (gui.begin(&app->gui)) {
-    DBG_BLK_BEGIN(sys, "app:gui:pass");
+    dbg_blk_begin(sys, "app:gui:pass");
     struct gui_panel pan = {.box = app->gui.box};
     app_ui_main(app, &app->gui, &pan, &app->gui.root);
     gui.end(&app->gui);
-    DBG_BLK_END(sys);
+    dbg_blk_end(sys);
   }
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 }
 

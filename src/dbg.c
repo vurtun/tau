@@ -60,12 +60,12 @@ dlInit(struct sys *sys) {
 extern void
 dlBegin(struct sys *sys) {
   assert(sys);
-  DBG_BLK_BEGIN(sys, "FrameBegin");
+  dbg_blk_begin(sys, "FrameBegin");
 }
 extern void
 dlEnd(struct sys *sys) {
   assert(sys);
-  DBG_BLK_END(sys);
+  dbg_blk_end(sys);
 
   struct dbg *dbg = cast(struct dbg*, sys->debug);
   dbg->tbl.evt_buf_idx = !dbg->tbl.evt_buf_idx;

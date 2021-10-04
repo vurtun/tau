@@ -146,6 +146,13 @@ gui_box_div_y(const struct gui_box *b, int gap, int cnt, int idx) {
   return r;
 }
 static struct gui_box
+gui_box_div(const struct gui_box *b, int *gap, int cntx, int cnty, int x, int y) {
+  struct gui_box ret;
+  ret.x = gui_div(&b->x, gap[0], cntx, x);
+  ret.y = gui_div(&b->y, gap[1], cnty, y);
+  return ret;
+}
+static struct gui_box
 gui_box_mid_ext(const struct gui_box *b, int w, int h) {
   struct gui_box r = {0};
   r.x = gui_mid_ext(b->x.mid, w);
@@ -5307,8 +5314,9 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *b, unsigned flags,
               int off_x, int off_y) {
   assert(b);
   assert(ctx);
-  int s = ctx->cfg.grid;
   struct sys *sys = ctx->sys;
+
+  int s = ctx->cfg.grid;
   sys->ren.drw.line_style(ctx->ren, 1);
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
   if (flags & GUI_GRID_X) {
@@ -5441,6 +5449,7 @@ gui_graph_node_hdr_end(struct gui_ctx *ctx, struct gui_graph_node *n,
   hdr->mov_begin = hdr->in.mouse.btn.left.drag_begin;
   hdr->mov_end = hdr->in.mouse.btn.left.drag_end;
   hdr->moved = hdr->in.mouse.btn.left.dragged;
+
   if (hdr->mov_begin) {
     ctx->drag_state[0] = n->box.x.min;
     ctx->drag_state[1] = n->box.y.min;
@@ -5496,10 +5505,11 @@ dlExport(void *export, void *import) {
   gui->bnd.mid_max = gui_mid_max;
   gui->bnd.mid_ext = gui_mid_ext;
   gui->bnd.shrink = gui_shrink;
+  gui->bnd.div = gui_div;
   /* box */
-  gui->box.div = gui_div;
   gui->box.div_x = gui_box_div_x;
   gui->box.div_y = gui_box_div_y;
+  gui->box.div = gui_box_div;
   gui->box.mid_ext = gui_box_mid_ext;
   gui->box.box = gui_box;
   gui->box.pos = gui_box_pos;
@@ -5659,12 +5669,13 @@ dlExport(void *export, void *import) {
   gui->tbl.hdr.begin = gui_tbl_hdr_begin;
   gui->tbl.hdr.end = gui_tbl_hdr_end;
   /* tbl: lst: elm */
+  gui->tbl.lst.elm.col.slot = gui_tbl_lst_elm_col;
+  gui->tbl.lst.elm.col.txt = gui_tbl_lst_txt;
+  gui->tbl.lst.elm.col.txtf = gui_tbl_lst_txtf;
+  gui->tbl.lst.elm.col.tm = gui_tbl_lst_tm;
+  /* tbl: lst: elm */
   gui->tbl.lst.elm.begin = gui_tbl_lst_elm_begin;
   gui->tbl.lst.elm.end = gui_tbl_lst_elm_end;
-  gui->tbl.lst.elm.col = gui_tbl_lst_elm_col;
-  gui->tbl.lst.elm.txt = gui_tbl_lst_txt;
-  gui->tbl.lst.elm.txtf = gui_tbl_lst_txtf;
-  gui->tbl.lst.elm.tm = gui_tbl_lst_tm;
   /* tbl: lst */
   gui->tbl.lst.cfg = gui_tbl_lst_cfg_init;
   gui->tbl.lst.begin = gui_tbl_lst_begin;
