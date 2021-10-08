@@ -162,6 +162,8 @@ struct sys_mem_api {
   void (*info)(struct sys_mem_stats *stats);
 };
 struct sys_dir_api {
+  #define for_dir_lst(s, i, a, p)\
+    for ((s)->dir.lst((i), (a), (p)); (i)->valid; (s)->dir.nxt((i), (a)))
   void (*lst)(struct sys_dir_iter *it, struct arena *a, struct str path);
   void (*nxt)(struct sys_dir_iter *it, struct arena *a);
   int (*exists)(struct str path, struct arena *tmp);

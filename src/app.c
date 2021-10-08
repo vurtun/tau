@@ -22,7 +22,7 @@
 #include "res.h"
 #include "gui.h"
 
-/* ---------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
  *                              File Picker
  * ---------------------------------------------------------------------------*/
 enum app_file_type { APP_FILE_DEFAULT, APP_FILE_FOLDER };
@@ -162,7 +162,7 @@ struct app_file_view {
   struct app_file_tree_view tree;
 };
 
-/* ---------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
  *                                  App
  * ---------------------------------------------------------------------------*/
 struct app;
@@ -219,11 +219,11 @@ static void app_op_quit(struct app* app, const union app_param *arg);
 static struct res_api res;
 static struct gui_api gui;
 
-/* ============================================================================
+/* =============================================================================
  *
- *                              File Picker
+ *                                File Picker
  *
- * ===========================================================================
+ * =============================================================================
  */
 // clang-format off
 static const struct app_file_def app_file_unkown_defs[] = {{"","Unknown","application/octet-stream",APP_FILE_GRP_OTHER}};
@@ -652,9 +652,10 @@ app_file_view_tree_build(struct app_file_tree_view *tree,
       s = lst_get(elm, struct app_file_tree_node, hook);
       set_put(set, sys, s->id);
     }
+
     /* validate child nodes */
     struct sys_dir_iter it = {0};
-    for (sys->dir.lst(&it, tmp, n->fullpath); it.valid; sys->dir.nxt(&it, tmp)) {
+    for_dir_lst(sys, &it, tmp, n->fullpath) {
       if (it.name.str[0] == '.') {
         continue;
       }
@@ -745,14 +746,13 @@ app_file_view_tree_open(struct app_file_view *fs, struct app_file_tree_view *tre
   assert(fs);
   assert(tree);
   assert(sys);
-
   int off = fs->home.len + 1;
   if (p.len < off) {
     return;
   }
   struct app_file_tree_node *n = &tree->root;
   struct str path = str_rhs(p, off);
-  for_str_tok(it, _, path, str0("/")) {
+  for_str_tok(it, _, path, strv("/")) {
     struct str fullpath = strp(p.str, it.end);
     if (!sys->dir.exists(fullpath, fs->tmp_arena)) {
       break;
@@ -888,7 +888,7 @@ app_file_view_cd(struct app_file_view *fs, struct sys *sys, struct str path) {
 
     /* add all files in directory */
     struct sys_dir_iter it = {0};
-    for (sys->dir.lst(&it, tmp, sys_path); it.valid; sys->dir.nxt(&it, tmp)) {
+    for_dir_lst(sys, &it, tmp, sys_path) {
       app_file_lst_view_add_path(&fs->lst, sys, it.fullpath);
     }
     /* sort list by name */
@@ -982,9 +982,9 @@ app_file_view_free(struct app_file_view *fv, struct sys *sys) {
   app_file_tree_view_clr(&fv->tree, sys);
 }
 
-/* ---------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
  *                                  GUI
- * ---------------------------------------------------------------------------
+ * -----------------------------------------------------------------------------
  */
 static int
 ui_btn_menu(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
@@ -1076,7 +1076,7 @@ ui_file_lst_view_nav_bar(struct app *app, struct app_file_view *view,
 
   gui.pan.begin(ctx, pan, parent);
   {
-    int gap = ctx->cfg.pan_gap[0];
+    int gap = ctx->cfg.gap[0];
     struct gui_box lay = pan->box;
     struct gui_btn home = {.box = gui.cut.rhs(&lay, ctx->cfg.item, gap)};
     if (gui.btn.ico(ctx, &home, pan, ICO_HOME)) {
@@ -1160,9 +1160,9 @@ ui_file_view_tbl(struct app *app, struct app_file_view *fs,
       /* list */
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, dyn_cnt(lst->elms));
+      cfg.sel.src = GUI_LST_SEL_SRC_EXT;
       cfg.fltr.on = GUI_LST_FLTR_ON_ONE;
       cfg.fltr.bitset = lst->fltr;
-      cfg.sel.src = GUI_LST_SEL_SRC_EXT;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for (int i = tbl.lst.begin; i < tbl.lst.end; i = gui.tbl.lst.nxt(&tbl.lst, i)) {
@@ -1403,7 +1403,7 @@ ui_file_con_menu(struct app *app, struct app_file_list_view *lst,
       if (ui_btn_menu(ctx, &cut, pan, strv("Cut"), ICO_CUT, 0)) {
         ui_file_con_close(lst);
       }
-      struct gui_btn put = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0 ,1)};
+      struct gui_btn put = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 1)};
       if (ui_btn_menu(ctx, &put, pan, strv("Paste"), ICO_PASTE, 0)) {
         ui_file_con_close(lst);
       }
@@ -1527,11 +1527,11 @@ ui_file_sel(dyn(char) *filepath, struct app *app, struct app_file_view *fs,
   return ret;
 }
 
-/* ============================================================================
+/* =============================================================================
  *
  *                                  App
  *
- * ===========================================================================
+ * =============================================================================
  */
 extern void dlEntry(struct sys *s);
 extern void dlRegister(struct sys *sys);
