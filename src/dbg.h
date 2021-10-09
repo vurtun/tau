@@ -13,7 +13,7 @@ enum dbg_type {
 #define DBG_GUID DBG_GUID_(__FILE__, __LINE__, __COUNTER__)
 
 #define dbg_blk_begin_(sys, guid, name) sys->dbg.rec(sys, DBG_TYPE_BLK_BEGIN, guid, name)
-#define dbg_blk_end_(sys, guid, name) sys->dbg.rec(sys, DBG_TYPE_BLK_END, guid, name);
+#define dbg_blk_end_(sys, guid, name) sys->dbg.rec(sys, DBG_TYPE_BLK_END, guid, name)
 #define dbg_blk_begin(sys, name) dbg_blk_begin_(sys, DBG_GUID, name)
 #define dbg_blk_end(sys) dbg_blk_end_(sys, DBG_GUID, "END_BLOCK")
 

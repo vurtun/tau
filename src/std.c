@@ -873,7 +873,7 @@ arena_alloc(struct arena *a, struct sys *sys, int size_init) {
 
   assert(siz >= size_init);
   assert(a->blk->used <= a->blk->size);
-  memset(res, 0, size_init);
+  memset(res, 0, cast(size_t, size_init));
   return res;
 }
 static void *

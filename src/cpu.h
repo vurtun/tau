@@ -167,15 +167,15 @@ struct cpu_info {
 #define CPU_SIMD_128
 #endif
 
-define int4 __m128i
+#define int4 __m128i
 #define flt4 __m128
 
-#define int4_ld(p) _mm_loadu_si128((const __m128i*)(void*)p)
+#define int4_ld(p) _mm_loadu_si128((const __m128i*)(const void*)p)
 #define int4_str(p,i) _mm_storeu_si128((__m128i*)(void*)p, i)
-#define int4_char(p,c) _mm_set1_epi8(i)
-#define int4_int(p,i) _mm_set1_epi32(i)
-#define int4_sll(v,i) _mm_slli_si32(v,i)
-#define int4_srl(v,i) _mm_srli_si32(v,i)
+#define int4_char(i) _mm_set1_epi8(i)
+#define int4_int(i) _mm_set1_epi32(i)
+#define int4_sll(v,i) _mm_slli_epi32(v,i)
+#define int4_srl(v,i) _mm_srli_epi32(v,i)
 #define int4_and(a,b) _mm_and_si128(a, b)
 #define int4_andnot(a,b) _mm_andnot_si128(a, b)
 #define int4_or(a,b) _mm_or_si128(a, b)
@@ -191,22 +191,22 @@ define int4 __m128i
 #define int8 __m256i
 #define flt8 __m256
 
-#define int8_load(p) _mm256_loadu_si256((const __m256i*)(void*)p)
+#define int8_ld(p) _mm256_loadu_si256((const __m256i*)(const void*)p)
 #define int8_store(p,i) _mm256_storeu_si256((__m256i*)(void*)p, i)
-#define int8_char(p,c) _mm256_set1_epi8(i)
-#define int8_int(p,i) _mm256_set1_epi32(i)
-#define int8_sll(v,i) _mm256_slli_si32(v,i)
-#define int8_srl(v,i) _mm256_srli_si32(v,i)
+#define int8_char(i) _mm256_set1_epi8(i)
+#define int8_int(i) _mm256_set1_epi32(i)
+#define int8_sll(v,i) _mm256_slli_epi32(v,i)
+#define int8_srl(v,i) _mm256_srli_epi32(v,i)
 #define int8_and(a,b) _mm256_and_si256(a, b)
 #define int8_andnot(a,b) _mm256_andnot_si256(a, b)
-#define int8_or(a,b) _mm256_or_si128(a, b)
+#define int8_or(a,b) _mm256_or_si256(a, b)
 #define int8_add(a,b) _mm256_add_epi32(a, b)
 #define int8_sub(a,b) _mm256_sub_epi32(a, b)
 #define int8_mul(a,b) _mm256_mullo_epi32(a, b)
 
 /* aes */
 #define aes128 __m128i
-#define aes128_load(p) _mm_loadu_si128((const __m128i *)(void*)p)
+#define aes128_load(p) _mm_loadu_si128((const __m128i *)(const void*)p)
 #define aes128_dec(a,key) _mm_aesdec_si128(a, key)
 #define aes128_and(a,b) _mm_and_si128(a, b)
 #define aes128_eq(a, b) (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
@@ -220,7 +220,7 @@ cpu__id(unsigned *eax, unsigned *ebx, unsigned *ecx, unsigned *edx) {
       "=d" (*edx) : "0" (*eax), "2" (*ecx));
 }
 static void
-cpu_info(struct sys_cpu_info *cpu) {
+cpu_info(struct cpu_info *cpu) {
   unsigned eax, ebx, ecx, edx;
 
   /* vendor  */
@@ -231,11 +231,11 @@ cpu_info(struct sys_cpu_info *cpu) {
   memcpy(vendor + 4, &edx, sizeof(edx));
   memcpy(vendor + 8, &ecx, sizeof(ecx));
   if (!strcmp(vendor, "GenuineIntel")) {
-    cpu->vendor = SYS_CPU_INTEL;
+    cpu->vendor = CPU_INTEL;
   } else if(!strcmp(vendor, "AuthenticAMD")) {
-    cpu->vendor = SYS_CPU_AMD;
+    cpu->vendor = CPU_AMD;
   } else {
-    cpu->vendor = SYS_CPU_UNKNOWN;
+    cpu->vendor = CPU_UNKNOWN;
   }
   /* check features */
   eax = 1, ecx = 0;
