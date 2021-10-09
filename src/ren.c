@@ -284,7 +284,7 @@ ren__rect(struct sys *sys, struct sys_ren_target *tar,
   }
   dbg_blk_end(sys);
 #else
-  ren__rect_slow(tar, rect, clip, col);
+  ren__rect_slow(sys, tar, rect, clip, col);
 #endif
 }
 static void
@@ -430,7 +430,7 @@ ren__rect_fast(struct sys *sys, struct sys_ren_target *tar,
     unsigned *pix = tar->pixels + fill.min_x + y * tar->w;
     for (int x = fill.min_x; x < fill.max_x; x += 8) {
       /* load destination color */
-      int8 d = int8_ld((const i256*)(const void*)pix);
+      int8 d = int8_ld(pix);
       int8 dr = int8_and(int8_srl(d, COL_R), msk_ff);
       int8 dg = int8_and(int8_srl(d, COL_G), msk_ff);
       int8 db = int8_and(int8_srl(d, COL_B), msk_ff);
@@ -455,7 +455,7 @@ ren__rect_fast(struct sys *sys, struct sys_ren_target *tar,
       int8 dst_msk = int8_and(clip_msk, rgb);
       int8 src_msk = int8_andnot(clip_msk, d);
       int8 out = int8_or(dst_msk, src_msk);
-      int8_str(pix, out);
+      int8_store(pix, out);
 
       if ((x + 16) < fill.max_x) {
         clip_msk = int8_char(-1);
@@ -755,14 +755,14 @@ ren__blit_img_fast(struct sys *sys, struct sys_ren_target *tar,
       /* repack rgb values */
       int8 pr = int8_sll(r, COL_R);
       int8 pg = int8_sll(g, COL_G);
-      int8 pb = int8_sll(g, COL_B);
+      int8 pb = int8_sll(b, COL_B);
       int8 rgb = int8_or(int8_or(pr, pg), pb);
 
       /* apply clip mask */
       int8 dst_msk = int8_and(clip_msk, rgb);
       int8 src_msk = int8_andnot(clip_msk, d);
       int8 out = int8_or(dst_msk, src_msk);
-      int8_str(dst_pix, out);
+      int8_store(dst_pix, out);
 
       if ((i + 16) < sub.w) {
         clip_msk = int8_char(-1);

@@ -1613,9 +1613,15 @@ dlEntry(struct sys *sys) {
     app_shutdown(app, sys);
     return;
   }
+
+#ifdef SYS_LINUX
+  gui.color_scheme(&app->gui, GUI_COL_SCHEME_DARK);
+#else
   if (sys->col_mod) {
     gui.color_scheme(&app->gui, CFG_COLOR_SCHEME);
   }
+#endif
+
   memset(app->ops, 0, sizeof(app->ops));
   for (int i = 0; i < cntof(app_ops); ++i) {
     /* handle app shortcuts */

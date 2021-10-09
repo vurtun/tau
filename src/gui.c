@@ -608,7 +608,7 @@ gui_panel_close(struct gui_ctx *ctx, struct gui_panel *pan,
     }
   }
 }
-#define gui_panel_end(ctx,pan,p) gui_panel_close(ctx,pan,p);
+#define gui_panel_end(ctx,pan,p) gui_panel_close(ctx,pan,p)
 
 static void
 gui_panel_begin(struct gui_ctx *ctx, struct gui_panel *pan,

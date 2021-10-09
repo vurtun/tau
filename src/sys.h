@@ -6,7 +6,7 @@ struct sys_btn {
   unsigned pressed : 1;
   unsigned released : 1;
   unsigned doubled : 1;
-  long timestamp;
+  unsigned long long timestamp;
 };
 enum sys_keymod {
   SYS_KEYMOD_KEY_CTRL,
@@ -188,7 +188,7 @@ struct sys {
   int argc;
   char **argv;
 
-  float dpi_scale;
+  float dpi_scale[2];
   struct cpu_info cpu;
   enum sys_cur_style cursor;
   struct sys_win win;

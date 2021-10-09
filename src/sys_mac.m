@@ -44,11 +44,6 @@
 @interface sys__mac_view : NSView
 @end
 
-struct sys_sem {
-  pthread_mutex_t guard;
-  pthread_cond_t cond;
-  int cnt;
-};
 struct sys_mem_blk {
   struct mem_blk blk;
   struct lst_elm hook;
@@ -875,8 +870,8 @@ sys__macos_on_key(unsigned long *keys, int scan) {
 static void
 sys_mac__mouse_pos(NSEvent *e) {
   NSPoint pos = e.locationInWindow;
-  float new_x = cast(float, pos.x) * _sys.dpi_scale;
-  float new_y = cast(float, pos.y) * _sys.dpi_scale;
+  float new_x = cast(float, pos.x) * _sys.dpi_scale[0];
+  float new_y = cast(float, pos.y) * _sys.dpi_scale[1];
 
   _sys.mouse.pos[0] = cast(int, new_x);
   _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
@@ -1053,7 +1048,8 @@ main(int argc, char* argv[]) {
   _sys.time.timestamp = sys_mac_timestamp;
 
   /* constants */
-  _sys.dpi_scale = 1.0f;
+  _sys.dpi_scale[0] = 1.0f;
+  _sys.dpi_scale[1] = 1.0f;
   _mac.exe_path = sys_mac_get_exe_path(&_mac.mem);
   _mac.ren_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("ren"), strv(".so"), &_mac.mem);
   _mac.app_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("app"), strv(".so"), &_mac.mem);
