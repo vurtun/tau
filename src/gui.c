@@ -12,14 +12,17 @@
 #include <string.h>
 #include <time.h>
 
-#include "cpu.h"
-#include "fmt.h"
-#include "fmt.c"
-#include "std.h"
-#include "dbg.h"
-#include "ren.h"
-#include "sys.h"
-#include "std.c"
+/* sys */
+#include "sys/cpu.h"
+#include "sys/fmt.h"
+#include "sys/fmt.c"
+#include "sys/std.h"
+#include "sys/dbg.h"
+#include "sys/ren.h"
+#include "sys/sys.h"
+#include "sys/std.c"
+
+/* app */
 #include "res.h"
 #include "gui.h"
 
@@ -551,12 +554,12 @@ gui_panel_drw(struct gui_ctx *ctx, const struct gui_box *b) {
   sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_LIGHT]);
-  sys->ren.drw.hln(ctx->ren, b->y.min + 1, b->x.min + 1, b->x.max - 2);
-  sys->ren.drw.vln(ctx->ren, b->x.min + 1, b->y.min + 1, b->y.max - 2);
+  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min + 1, b->x.max - 1);
+  sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min + 1, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
-  sys->ren.drw.hln(ctx->ren, b->y.max - 2, b->x.min + 1, b->x.max - 2);
-  sys->ren.drw.vln(ctx->ren, b->x.max - 2, b->y.min + 1, b->y.max - 2);
+  sys->ren.drw.hln(ctx->ren, b->y.max - 1, b->x.min, b->x.max - 1);
+  sys->ren.drw.vln(ctx->ren, b->x.max - 1, b->y.min, b->y.max - 1);
 }
 static void
 gui_focus_drw(struct gui_ctx *ctx, const struct gui_box *b, int pad) {
@@ -2949,8 +2952,8 @@ gui_edit_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   sys->ren.drw.vln(ctx->ren, b->x.max - 1, b->y.min + 1, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
-  sys->ren.drw.hln(ctx->ren, b->y.min + 1, b->x.min + 1, b->x.max - 2);
-  sys->ren.drw.vln(ctx->ren, b->x.min + 1, b->y.min + 1, b->y.max - 1);
+  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min, b->x.max - 1);
+  sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_LIGHT]);
   sys->ren.drw.hln(ctx->ren, b->y.max, b->x.min, b->x.max);
@@ -5480,7 +5483,6 @@ extern void dlExport(void *export, void *import);
 
 extern void
 dlExport(void *export, void *import) {
-  unused(import);
   struct gui_api *gui = (struct gui_api*)export;
   struct res_api *im = (struct res_api*)import;
   res = *im;

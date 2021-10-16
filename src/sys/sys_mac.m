@@ -156,30 +156,49 @@ sys_mac_get_exe_file_path(struct str exe_path, struct str file,
   return arena_fmt(a, &_sys, "%.*s%.*s%.*s", strf(path), strf(file), strf(suffix));
 }
 static void
-sys_mac_file_write(int fd, const char *buf, int cnt) {
-  const char *p = buf;
-  ssize_t out = 0;
-  do {
-    out = write(fd, p, cast(size_t, cnt));
-    if (out >= 0) {
-      cnt -= out;
-      p += out;
-    } else if (errno != EINTR) {
-      xpanic("Could not copy shared library while loading");
-    }
-  } while (cnt > 0);
+sys__file_perm(char *mod, mode_t perm) {
+  mod[0] = (perm & S_IRUSR) ? 'r' : '-';
+  mod[1] = (perm & S_IWUSR) ? 'w' : '-';
+  mod[2] = (perm & S_IXUSR) ? 'x' : '-';
+  mod[3] = (perm & S_IRGRP) ? 'r' : '-';
+  mod[4] = (perm & S_IWGRP) ? 'w' : '-';
+  mod[5] = (perm & S_IXGRP) ? 'x' : '-';
+  mod[6] = (perm & S_IROTH) ? 'r' : '-';
+  mod[7] = (perm & S_IWOTH) ? 'w' : '-';
+  mod[8] = (perm & S_IXOTH) ? 'x' : '-';
+  mod[9] = 0;
 }
-static void
-sys_mac_file_cpy(int fd, int old_fd) {
-  char buf[4096];
-  ssize_t cnt = read(old_fd, buf, sizeof(buf));
-  while (cnt > 0) {
-    sys_mac_file_write(fd, buf, cast(int, cnt));
-    cnt = read(fd, buf, sizeof(buf));
+static int
+sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
+  assert(info);
+  assert(tmp);
+
+  struct scope scp;
+  scope_begin(&scp, tmp);
+
+  struct stat stats;
+  char *fullpath = arena_cstr(tmp, &_sys, path);
+  int res = stat(fullpath, &stats);
+  scope_end(&scp, tmp, &_sys);
+  if (res < 0) {
+    return 0;
   }
-  if (cnt != 0) {
-    xpanic("Could not copy whole shared library while loading.");
+  info->siz = cast(size_t, stats.st_size);
+  info->mtime = stats.st_mtime;
+  sys__file_perm(info->perm, stats.st_mode);
+
+  if (S_ISDIR(stats.st_mode)) {
+    info->type = SYS_FILE_DIR;
+  } else if (S_ISLNK(stats.st_mode)) {
+    info->type = SYS_FILE_LNK;
+  } else if (S_ISSOCK(stats.st_mode)) {
+    info->type = SYS_FILE_SOCK;
+  } else if (S_ISFIFO(stats.st_mode)) {
+    info->type = SYS_FILE_FIFO;
+  } else {
+    info->type = SYS_FILE_DEF;
   }
+  return 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1046,6 +1065,8 @@ main(int argc, char* argv[]) {
   _sys.plugin.add = sys_mac_plugin_add;
   /* time */
   _sys.time.timestamp = sys_mac_timestamp;
+  /* file */
+  _sys.file.info = sys_file_info;
 
   /* constants */
   _sys.dpi_scale[0] = 1.0f;

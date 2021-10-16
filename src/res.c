@@ -12,16 +12,17 @@
 #include <string.h>
 #include <time.h>
 
-#include "cpu.h"
-#include "fmt.h"
-#include "fmt.c"
-#include "std.h"
-#include "dbg.h"
-#include "ren.h"
-#include "sys.h"
-#include "std.c"
+#include "sys/cpu.h"
+#include "sys/fmt.h"
+#include "sys/fmt.c"
+#include "sys/std.h"
+#include "sys/dbg.h"
+#include "sys/ren.h"
+#include "sys/sys.h"
+#include "sys/std.c"
+
 #include "res.h"
-#include "fnt.c"
+#include "sys/fnt.c"
 
 /* ---------------------------------------------------------------------------
  *

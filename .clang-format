@@ -1,0 +1,6 @@
+﻿---
+BasedOnStyle: Google
+AlwaysBreakAfterReturnType: All
+SortIncludes: 'false'
+
+...

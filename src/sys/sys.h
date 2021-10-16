@@ -161,6 +161,22 @@ struct sys_mem_api {
   void (*free_tag)(unsigned long long tag);
   void (*info)(struct sys_mem_stats *stats);
 };
+enum sys_file_type {
+  SYS_FILE_DEF,
+  SYS_FILE_DIR,
+  SYS_FILE_SOCK,
+  SYS_FILE_LNK,
+  SYS_FILE_FIFO,
+};
+struct sys_file_info {
+  size_t siz;
+  time_t mtime;
+  char perm[10];
+  enum sys_file_type type;
+};
+struct sys_file_api {
+  int (*info)(struct sys_file_info *info, struct str path, struct arena *tmp);
+};
 struct sys_dir_api {
   #define for_dir_lst(s, i, a, p)\
     for ((s)->dir.lst((i), (a), (p)); (i)->valid; (s)->dir.nxt((i), (a)))
@@ -208,6 +224,7 @@ struct sys {
   /* api */
   struct sys_mem_api mem;
   struct sys_dir_api dir;
+  struct sys_file_api file;
   struct sys_clip_api clipboard;
   struct sys_mod_api plugin;
   struct sys_time_api time;

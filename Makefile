@@ -15,6 +15,7 @@ RENLIBS =
 RESLIBS =
 GUILIBS =
 APPLIBS =
+FILELIBS =
 
 SYSINCL =
 DBGINCL =
@@ -22,17 +23,15 @@ RENINCL =
 RESINCL =
 GUIINCL =
 APPINCL =
+FILEINCL =
 
-SYSSRC = src/sys_mac.m
+SYSSRC = src/sys/sys_mac.m
 SYSOBJ = $(SYSSRC:.m=.o)
 
-DBGSRC = src/dbg.c
+DBGSRC = src/sys/dbg.c
 DBGOBJ = $(DBGSRC:.c=.o)
 
-APPSRC = src/app.c
-APPOBJ = $(APPSRC:.c=.o)
-
-RENSRC = src/ren.c
+RENSRC = src/sys/ren.c
 RENOBJ = $(RENSRC:.c=.o)
 
 RESSRC = src/res.c
@@ -40,6 +39,12 @@ RESOBJ = $(RESSRC:.c=.o)
 
 GUISRC = src/gui.c
 GUIOBJ = $(GUISRC:.c=.o)
+
+APPSRC = src/app.c
+APPOBJ = $(APPSRC:.c=.o)
+
+FILESRC = src/file.c
+FILEOBJ = $(FILESRC:.c=.o)
 
 .PHONY: clang
 clang: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
@@ -67,13 +72,14 @@ release: $(BIN)
 $(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
 	@mkdir -p bin
 	rm -f bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
-	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
+	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(FILEOBJ)
 	$(CC) $(OBJCFLAGS) $(SYSINCL) -o bin/$(BIN) $(SYSSRC) $(SYSLIBS)
 	$(CC) $(CFLAGS) $(DBGINCL) -shared $(INCL) -o bin/dbg.so $(DBGSRC) $(DBGLIBS)
 	$(CC) $(CFLAGS) $(RENINCL) -shared $(INCL) -o bin/ren.so $(RENSRC) $(RENLIBS)
 	$(CC) $(CFLAGS) $(APPINCL) -shared $(INCL) -o bin/app.so $(APPSRC) $(APPLIBS)
 	$(CC) $(CFLAGS) $(RESINCL) -shared $(INCL) -o bin/res.so $(RESSRC) $(RESLIBS)
 	$(CC) $(CFLAGS) $(GUIINCL) -shared $(INCL) -o bin/gui.so $(GUISRC) $(GUILIBS)
+	$(CC) $(CFLAGS) $(FILEINCL) -shared $(INCL) -o bin/file.so $(FILESRC) $(FILELIBS)
 
 else # UNIX
 
@@ -86,6 +92,7 @@ DBGLIBS =
 RESLIBS =
 GUILIBS =
 APPLIBS =
+FILELIBS =
 
 SYSINCL = -I /usr/X11/include -I /usr/local/include
 DBGINCL =
@@ -93,17 +100,15 @@ RENINCL =
 RESINCL =
 GUIINCL =
 APPINCL =
+FILEINCL =
 
-SYSSRC = src/sys_x11.c
+SYSSRC = src/sys/sys_x11.c
 SYSOBJ = $(SYSSRC:.c=.o)
 
-DBGSRC = src/dbg.c
+DBGSRC = src/sys/dbg.c
 DBGOBJ = $(DBGSRC:.c=.o)
 
-APPSRC = src/app.c
-APPOBJ = $(APPSRC:.c=.o)
-
-RENSRC = src/ren.c
+RENSRC = src/sys/ren.c
 RENOBJ = $(RENSRC:.c=.o)
 
 RESSRC = src/res.c
@@ -111,6 +116,12 @@ RESOBJ = $(RESSRC:.c=.o)
 
 GUISRC = src/gui.c
 GUIOBJ = $(GUISRC:.c=.o)
+
+APPSRC = src/app.c
+APPOBJ = $(APPSRC:.c=.o)
+
+FILESRC = src/file.c
+FILEOBJ = $(FILESRC:.c=.o)
 
 .PHONY: clang
 clang: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
@@ -131,13 +142,14 @@ release: $(BIN)
 $(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
 	@mkdir -p bin
 	rm -f bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
-	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ)
+	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(FILEOBJ)
 	$(CC) $(CFLAGS) $(SYSINCL) -o bin/$(BIN) $(SYSSRC) $(SYSLIBS)
 	$(CC) $(CFLAGS) $(DBGINCL) -shared $(INCL) -o bin/dbg.so $(DBGSRC) $(DBGLIBS)
 	$(CC) $(CFLAGS) $(RENINCL) -shared $(INCL) -o bin/ren.so $(RENSRC) $(RENLIBS)
 	$(CC) $(CFLAGS) $(APPINCL) -shared $(INCL) -o bin/app.so $(APPSRC) $(APPLIBS)
 	$(CC) $(CFLAGS) $(RESINCL) -shared $(INCL) -o bin/res.so $(RESSRC) $(RESLIBS)
 	$(CC) $(CFLAGS) $(GUIINCL) -shared $(INCL) -o bin/gui.so $(GUISRC) $(GUILIBS)
+	$(CC) $(CFLAGS) $(FILEINCL) -shared $(INCL) -o bin/file.so $(FILESRC) $(FILELIBS)
 
 endif
 
