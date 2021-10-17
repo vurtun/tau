@@ -3,7 +3,7 @@
 #define RES_MAX_GLYPHSET 256
 #define RES_IMG_SLOT_CNT 64
 
-#include "sys/fnt.h"
+#include "lib/fnt.h"
 
 struct res_glyph_set {
   int texid;

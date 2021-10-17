@@ -27,13 +27,13 @@
 
 /* usr */
 #include "cpu.h"
-#include "fmt.h"
-#include "fmt.c"
-#include "std.h"
+#include "../lib/fmt.h"
+#include "../lib/fmt.c"
+#include "../lib/std.h"
 #include "dbg.h"
 #include "ren.h"
 #include "sys.h"
-#include "std.c"
+#include "../lib/std.c"
 
 @interface sys__mac_app_delegate : NSObject<NSApplicationDelegate>
 @end

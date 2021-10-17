@@ -736,7 +736,6 @@ struct gui_tab_ctl {
   struct gui_btn btn;           /* out */
   unsigned show_btn : 1;        /* in */
   struct gui_tab_ctl_sort sort; /* out */
-
   /* internal */
   int tab_w;
   int total, idx;
@@ -980,6 +979,7 @@ struct gui_input_api {
   void (*consume)(struct gui_ctx *ctx);
 };
 struct gui_txt_api {
+  int (*width)(struct gui_ctx *ctx, struct str txt);
   void (*uln)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct str txt, const struct gui_align *align, int uln_pos, int uln_cnt);
   void (*lbl)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct str txt, const struct gui_align *align);
   void (*fmtv)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, const struct gui_align *align, const char *fmt, va_list args);

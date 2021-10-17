@@ -14,13 +14,13 @@
 
 /* sys */
 #include "sys/cpu.h"
-#include "sys/fmt.h"
-#include "sys/fmt.c"
-#include "sys/std.h"
+#include "lib/fmt.h"
+#include "lib/fmt.c"
+#include "lib/std.h"
 #include "sys/dbg.h"
 #include "sys/ren.h"
 #include "sys/sys.h"
-#include "sys/std.c"
+#include "lib/std.c"
 
 /* app */
 #include "res.h"
@@ -5556,6 +5556,7 @@ dlExport(void *export, void *import) {
   /* input */
   gui->in.consume = gui_input_consume;
   /* txt */
+  gui->txt.width = gui_txt_width;
   gui->txt.uln = gui_txt_uln;
   gui->txt.lbl = gui_txt;
   gui->txt.fmtv = gui_txtvf;

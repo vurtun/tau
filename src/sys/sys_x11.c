@@ -35,13 +35,13 @@
 
 /* usr */
 #include "cpu.h"
-#include "fmt.h"
-#include "fmt.c"
-#include "std.h"
+#include "../lib/fmt.h"
+#include "../lib/fmt.c"
+#include "../lib/std.h"
 #include "dbg.h"
 #include "ren.h"
 #include "sys.h"
-#include "std.c"
+#include "../lib/std.c"
 
 #ifndef SYS_DOUBLE_CLICK_LO
 #define SYS_DOUBLE_CLICK_LO 20000000lu

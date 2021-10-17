@@ -13,16 +13,16 @@
 #include <time.h>
 
 #include "sys/cpu.h"
-#include "sys/fmt.h"
-#include "sys/fmt.c"
-#include "sys/std.h"
+#include "lib/fmt.h"
+#include "lib/fmt.c"
+#include "lib/std.h"
 #include "sys/dbg.h"
 #include "sys/ren.h"
 #include "sys/sys.h"
-#include "sys/std.c"
+#include "lib/std.c"
 
 #include "res.h"
-#include "sys/fnt.c"
+#include "lib/fnt.c"
 
 /* ---------------------------------------------------------------------------
  *

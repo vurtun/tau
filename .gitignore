@@ -1,6 +1,7 @@
 # Prerequisites
 *.d
 *.tok
+*.db
 
 # Object files
 *.o

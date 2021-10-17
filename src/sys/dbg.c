@@ -12,13 +12,13 @@
 #include <time.h>
 
 #include "cpu.h"
-#include "fmt.h"
-#include "std.h"
+#include "../lib/fmt.h"
+#include "../lib/std.h"
 #include "dbg.h"
 #include "ren.h"
 #include "sys.h"
-#include "fmt.c"
-#include "std.c"
+#include "../lib/fmt.c"
+#include "../lib/std.c"
 
 struct dbg_evt {
   enum dbg_type type;

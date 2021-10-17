@@ -14,8 +14,8 @@
 
 /* sys */
 #include "sys/cpu.h"
-#include "sys/fmt.h"
-#include "sys/std.h"
+#include "lib/fmt.h"
+#include "lib/std.h"
 #include "sys/dbg.h"
 #include "sys/ren.h"
 #include "sys/sys.h"
@@ -23,7 +23,8 @@
 /* app */
 #include "res.h"
 #include "gui.h"
-#include "file.h"
+#include "pck.h"
+#include "dbs.h"
 
 /* -----------------------------------------------------------------------------
  *                                  App
@@ -61,6 +62,7 @@ struct app_op {
 };
 enum app_state {
   APP_STATE_FILE,
+  APP_STATE_DB,
 };
 struct app {
   struct res res;
@@ -69,17 +71,21 @@ struct app {
   int quit;
   enum app_state state;
   unsigned long ops[bits_to_long(APP_KEY_CNT)];
+
   dyn(char) file_path;
+  struct file_view *fs;
+  struct db_ui_view *db;
 };
 static void app_op_quit(struct app* app, const union app_param *arg);
 
 #include "cfg.h"
-#include "sys/fmt.c"
-#include "sys/std.c"
+#include "lib/fmt.c"
+#include "lib/std.c"
 
 static struct res_api res;
 static struct gui_api gui;
 static struct file_picker_api file;
+static struct db_api db;
 
 /* =============================================================================
  *
@@ -117,14 +123,16 @@ app_init(struct app *app, struct sys *sys) {
   res.init(&app->res);
   gui.init(&app->gui, sys->mem.arena, CFG_COLOR_SCHEME);
 
-  file.init(sys, &app->gui, sys->mem.arena, sys->mem.tmp);
+  app->fs = file.init(sys, &app->gui, sys->mem.arena, sys->mem.tmp);
   app->file_path = arena_dyn(sys->mem.arena, sys, char, 256);
 }
 static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
-  file.shutdown(sys);
+
+  file.shutdown(app->fs, sys);
+  db.shutdown(app->db, sys);
 }
 static void
 app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
@@ -137,10 +145,15 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   {
     struct gui_panel bdy = {.box = pan->box};
     switch (app->state) {
-    case APP_STATE_FILE:
-      if (file.ui(&app->file_path, ctx, &bdy, pan)) {
-
+    case APP_STATE_FILE: {
+      struct sys *sys = ctx->sys;
+      if (file.ui(&app->file_path, app->fs, ctx, &bdy, pan)) {
+        app->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, dyn_str(app->file_path));
+        app->state = APP_STATE_DB;
       }
+    } break;
+    case APP_STATE_DB:
+      db.ui(app->db, ctx, &bdy, pan);
       break;
     }
   }
@@ -157,8 +170,12 @@ dlRegister(struct sys *sys) {
   if (gui.version != GUI_VERSION) {
 
   }
-  sys->plugin.add(&file, &gui, strv("file"));
-  if (file.version != APP_FILE_VERISON) {
+  sys->plugin.add(&file, &gui, strv("pck"));
+  if (file.version != PCK_VERISON) {
+
+  }
+  sys->plugin.add(&db, &gui, strv("dbs"));
+  if (db.version != DBS_VERISON) {
 
   }
 }
@@ -200,9 +217,13 @@ dlEntry(struct sys *sys) {
       bit_set(ctx->keys, i);
     }
   }
+  /* update */
   switch (app->state) {
   case APP_STATE_FILE:
-    file.update(sys);
+    file.update(app->fs, sys);
+    break;
+  case APP_STATE_DB:
+    db.update(app->db, sys);
     break;
   }
   /* gui */
