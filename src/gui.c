@@ -47,13 +47,13 @@ static const char *gui_img_plus_data[] = {".........",".       .",".   +   .",".
 static const char *gui_img_chevron_left_data[] = {"    ..  ","   ..   ","  ..    "," ..     ","  ..    ","   ..   ","    ..  ","        "};
 static const char *gui_img_chevron_right_data[] = {"  ..    ","   ..   ","    ..  ","     .. ","    ..  ","   ..   ","  ..    ","        "};
 static const struct gui_img_def gui_img_def[GUI_IMG_MAX] = {
-  [GUI_IMG_CHECK]     = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,        .data = gui_img_check_data},
-  [GUI_IMG_TIMES]     = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,        .data = gui_img_times_data},
-  [GUI_IMG_NO]        = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,        .data = gui_img_no_data},
-  [GUI_IMG_MINUS]     = {.w =  9, .h =  9, .cmap = gui_img_minus_cmap,        .data = gui_img_minus_data},
-  [GUI_IMG_PLUS]      = {.w =  9, .h =  9, .cmap = gui_img_plus_cmap,         .data = gui_img_plus_data},
-  [GUI_IMG_CHEVRONL]  = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,        .data = gui_img_chevron_left_data},
-  [GUI_IMG_CHEVRONR]  = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,        .data = gui_img_chevron_right_data},
+  [GUI_IMG_CHECK]     = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_check_data},
+  [GUI_IMG_TIMES]     = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_times_data},
+  [GUI_IMG_NO]        = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_no_data},
+  [GUI_IMG_MINUS]     = {.w =  9, .h =  9, .cmap = gui_img_minus_cmap,  .data = gui_img_minus_data},
+  [GUI_IMG_PLUS]      = {.w =  9, .h =  9, .cmap = gui_img_plus_cmap,   .data = gui_img_plus_data},
+  [GUI_IMG_CHEVRONL]  = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_chevron_left_data},
+  [GUI_IMG_CHEVRONR]  = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_chevron_right_data},
 };
 // clang-format on
 static struct res_api res;
@@ -603,6 +603,7 @@ gui_panel_close(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   unused(ctx);
+
   if (p) {
     p->max[0] = max(p->max[0], pan->box.x.max);
     p->max[1] = max(p->max[1], pan->box.y.max);

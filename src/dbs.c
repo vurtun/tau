@@ -712,145 +712,6 @@ db_graph_end(struct db_ui_view *db, struct db_graph *g, struct gui_ctx *ctx,
     at_x += n->box.x.ext + ctx->cfg.grid;
   }
 }
-static struct db_ui_view*
-db_setup(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem,
-          struct str path) {
-  assert(db);
-  assert(ctx);
-  assert(mem);
-  assert(tmp_mem);
-
-  struct scope scp = {0};
-  scope_begin(&scp, mem);
-  struct db_ui_view *db = arena_obj(mem, ctx->sys, struct db_ui_view);
-  db->path = arena_str(mem, ctx->sys, path);
-
-  int rc = sqlite3_open(db->path.str, &db->con);
-  if (rc != SQLITE_OK) {
-    scope_end(&scp, mem, ctx->sys);
-    return 0;
-  }
-  sqlite3_stmt *stmt;
-  rc = sqlite3_prepare_v2(db->con, "SELECT type, name, sql FROM sqlite_master;", -1, &stmt, 0);
-  if (rc != SQLITE_OK) {
-    goto fail;
-  }
-  int col_cnt = sqlite3_column_count(stmt);
-  assert(col_cnt == 3);
-  if (col_cnt != 3) goto fail;
-
-  db->tree_rev = 0;
-  db->tmp_mem = tmp_mem;
-  lst_init(&db->del_lst);
-  db->tbls = arena_dyn(&db->mem, ctx->sys, struct db_tbl_view*, 32);
-
-  db_tbl_lst_begin(&db->tbl_lst, ctx->sys, &db->mem);
-  db_tree_begin(&db->tree, ctx->sys, &db->mem);
-  db_graph_begin(&db->graph, ctx->sys, &db->mem);
-
-  while (sqlite3_step(stmt) == SQLITE_ROW) {
-    const char *tbl_type = (const char*)sqlite3_column_text(stmt, 0);
-    const char *tbl_name = (const char*)sqlite3_column_text(stmt, 1);
-    const char *tbl_sql = (const char*)sqlite3_column_text(stmt, 2);
-
-    int tbl_type_len = sqlite3_column_bytes(stmt, 0);
-    int tbl_name_len = sqlite3_column_bytes(stmt, 1);
-    int tbl_sql_len = sqlite3_column_bytes(stmt, 2);
-
-    struct str name = str(tbl_name, tbl_name_len);
-    struct str type = str(tbl_type, tbl_type_len);
-    struct str sql = str(tbl_sql, tbl_sql_len);
-
-    /* add table list view entry */
-    if (!strcmp(tbl_type, "table") || (!strcmp(tbl_type, "view"))) {
-      struct db_tbl_lst_elm elm = {0};
-      elm.name = arena_str(&db->mem, ctx->sys, name);
-      elm.type = arena_str(&db->mem, ctx->sys, type);
-      if (!strcmp(tbl_type, "table")) {
-        elm.kind = DB_TBL_LST_ELM_TBL;
-      } else if (!strcmp(tbl_type, "view")) {
-        elm.kind = DB_TBL_LST_ELM_VIEW;
-      }
-      dyn_add(db->tbl_lst.elms, ctx->sys, elm);
-    }
-    /* add tree view node */
-    struct db_tree_node *node = 0;
-    if (!strcmp(tbl_type, "table")) {
-      node = db->tree.tbls;
-    } else if (!strcmp(tbl_type, "index")) {
-      node = db->tree.idxs;
-    } else if (!strcmp(tbl_type, "view")) {
-      node = db->tree.views;
-    } else if (!strcmp(tbl_type, "trigger")) {
-      node = db->tree.trigs;
-    }
-    if (node) {
-      unsigned long long id = fnv1a64(name.str, name.len, node->id);
-      db_tree_node_new(ctx->sys, &db->mem, node, name, type, sql, id);
-    }
-    /* add graph view node */
-    if (!strcmp(tbl_type, "table")) {
-      struct db_graph_node gn = {0};
-      gn.name = arena_str(&db->mem, ctx->sys, name);
-      gn.id = str_hash(name);
-      dyn_add(db->graph.nodes, ctx->sys, gn);
-    }
-  }
-  sqlite3_finalize(stmt);
-
-  db_tbl_lst_end(&db->tbl_lst, ctx);
-  db_tree_end(db, &db->tree, mem, ctx);
-  db_graph_end(db, &db->graph, ctx, mem, db->tmp_mem);
-  return db;
-
-fail:
-  scope_end(&scp, mem, ctx->sys);
-  sqlite3_close(db->con);
-  db->con = 0;
-  return 0;
-}
-static void
-db_update(struct db_ui_view *db, struct sys *sys) {
-  assert(db);
-  if (db->tree_rev != db->tree.rev) {
-    db_tree_update(&db->tree, sys);
-    db->tree.rev = db->tree_rev;
-  }
-}
-static void
-db_tbl_view_free(struct db_tbl_view *tbl, struct sys *sys) {
-  assert(tbl);
-  dyn_free(tbl->fltr.lst, sys);
-  dyn_free(tbl->cols, sys);
-  arena_free(&tbl->mem, sys);
-}
-static void
-db_free(struct db_ui_view *db, struct sys *sys) {
-  assert(db);
-
-  dyn_free(db->tbl_lst.elms, sys);
-  dyn_free(db->tbl_lst.fltr, sys);
-  dyn_free(db->tbl_lst.sel, sys);
-  dyn_free(db->tbl_lst.fnd_buf, sys);
-
-  /* cleanup view list */
-  for (int i = 0; i < dyn_cnt(db->tbls); ++i) {
-    struct db_tbl_view *tbl = db->tbls[i];
-    db_tbl_view_free(tbl, sys);
-  }
-  /* cleanup view free list */
-  struct lst_elm *elm = 0;
-  for_lst(elm, &db->del_lst) {
-    struct db_tbl_view *it = 0;
-    it = lst_get(elm, struct db_tbl_view, hook);
-    db_tbl_view_free(it, sys);
-  }
-  dyn_free(db->tbls, sys);
-  arena_free(&db->mem, sys);
-  if (db->con){
-    sqlite3_close(db->con);
-  }
-}
 static struct db_tbl_view*
 db_tbl_view_new(struct db_ui_view *db, struct sys *sys) {
   assert(db);
@@ -1351,6 +1212,149 @@ db_tbl_fltrs_enabled(struct db_tbl_fltr_view *fltr) {
     }
   }
   return 1;
+}
+static struct db_ui_view*
+db_setup(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem,
+          struct str path) {
+  assert(db);
+  assert(ctx);
+  assert(mem);
+  assert(tmp_mem);
+
+  struct scope scp = {0};
+  scope_begin(&scp, mem);
+  struct db_ui_view *db = arena_obj(mem, ctx->sys, struct db_ui_view);
+  db->path = arena_str(mem, ctx->sys, path);
+
+  int rc = sqlite3_open(db->path.str, &db->con);
+  if (rc != SQLITE_OK) {
+    scope_end(&scp, mem, ctx->sys);
+    return 0;
+  }
+  sqlite3_stmt *stmt;
+  rc = sqlite3_prepare_v2(db->con, "SELECT type, name, sql FROM sqlite_master;", -1, &stmt, 0);
+  if (rc != SQLITE_OK) {
+    goto fail;
+  }
+  int col_cnt = sqlite3_column_count(stmt);
+  assert(col_cnt == 3);
+  if (col_cnt != 3) goto fail;
+
+  db->tree_rev = 0;
+  db->tmp_mem = tmp_mem;
+  lst_init(&db->del_lst);
+  db->tbls = arena_dyn(&db->mem, ctx->sys, struct db_tbl_view*, 32);
+
+  db_tbl_lst_begin(&db->tbl_lst, ctx->sys, &db->mem);
+  db_tree_begin(&db->tree, ctx->sys, &db->mem);
+  db_graph_begin(&db->graph, ctx->sys, &db->mem);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    const char *tbl_type = (const char*)sqlite3_column_text(stmt, 0);
+    const char *tbl_name = (const char*)sqlite3_column_text(stmt, 1);
+    const char *tbl_sql = (const char*)sqlite3_column_text(stmt, 2);
+
+    int tbl_type_len = sqlite3_column_bytes(stmt, 0);
+    int tbl_name_len = sqlite3_column_bytes(stmt, 1);
+    int tbl_sql_len = sqlite3_column_bytes(stmt, 2);
+
+    struct str name = str(tbl_name, tbl_name_len);
+    struct str type = str(tbl_type, tbl_type_len);
+    struct str sql = str(tbl_sql, tbl_sql_len);
+
+    /* add table list view entry */
+    if (!strcmp(tbl_type, "table") || (!strcmp(tbl_type, "view"))) {
+      struct db_tbl_lst_elm elm = {0};
+      elm.name = arena_str(&db->mem, ctx->sys, name);
+      elm.type = arena_str(&db->mem, ctx->sys, type);
+      if (!strcmp(tbl_type, "table")) {
+        elm.kind = DB_TBL_LST_ELM_TBL;
+      } else if (!strcmp(tbl_type, "view")) {
+        elm.kind = DB_TBL_LST_ELM_VIEW;
+      }
+      dyn_add(db->tbl_lst.elms, ctx->sys, elm);
+    }
+    /* add tree view node */
+    struct db_tree_node *node = 0;
+    if (!strcmp(tbl_type, "table")) {
+      node = db->tree.tbls;
+    } else if (!strcmp(tbl_type, "index")) {
+      node = db->tree.idxs;
+    } else if (!strcmp(tbl_type, "view")) {
+      node = db->tree.views;
+    } else if (!strcmp(tbl_type, "trigger")) {
+      node = db->tree.trigs;
+    }
+    if (node) {
+      unsigned long long id = fnv1a64(name.str, name.len, node->id);
+      db_tree_node_new(ctx->sys, &db->mem, node, name, type, sql, id);
+    }
+    /* add graph view node */
+    if (!strcmp(tbl_type, "table")) {
+      struct db_graph_node gn = {0};
+      gn.name = arena_str(&db->mem, ctx->sys, name);
+      gn.id = str_hash(name);
+      dyn_add(db->graph.nodes, ctx->sys, gn);
+    }
+  }
+  sqlite3_finalize(stmt);
+
+  db_tbl_lst_end(&db->tbl_lst, ctx);
+  db_tree_end(db, &db->tree, mem, ctx);
+  db_graph_end(db, &db->graph, ctx, mem, db->tmp_mem);
+
+  struct db_tbl_view *view = db_tbl_view_new(db, ctx->sys);
+  db->sel_tbl = dyn_cnt(db->tbls);
+  dyn_add(db->tbls, ctx->sys, view);
+  return db;
+
+fail:
+  scope_end(&scp, mem, ctx->sys);
+  sqlite3_close(db->con);
+  db->con = 0;
+  return 0;
+}
+static void
+db_update(struct db_ui_view *db, struct sys *sys) {
+  assert(db);
+  if (db->tree_rev != db->tree.rev) {
+    db_tree_update(&db->tree, sys);
+    db->tree.rev = db->tree_rev;
+  }
+}
+static void
+db_tbl_view_free(struct db_tbl_view *tbl, struct sys *sys) {
+  assert(tbl);
+  dyn_free(tbl->fltr.lst, sys);
+  dyn_free(tbl->cols, sys);
+  arena_free(&tbl->mem, sys);
+}
+static void
+db_free(struct db_ui_view *db, struct sys *sys) {
+  assert(db);
+
+  dyn_free(db->tbl_lst.elms, sys);
+  dyn_free(db->tbl_lst.fltr, sys);
+  dyn_free(db->tbl_lst.sel, sys);
+  dyn_free(db->tbl_lst.fnd_buf, sys);
+
+  /* cleanup view list */
+  for (int i = 0; i < dyn_cnt(db->tbls); ++i) {
+    struct db_tbl_view *tbl = db->tbls[i];
+    db_tbl_view_free(tbl, sys);
+  }
+  /* cleanup view free list */
+  struct lst_elm *elm = 0;
+  for_lst(elm, &db->del_lst) {
+    struct db_tbl_view *it = 0;
+    it = lst_get(elm, struct db_tbl_view, hook);
+    db_tbl_view_free(it, sys);
+  }
+  dyn_free(db->tbls, sys);
+  arena_free(&db->mem, sys);
+  if (db->con){
+    sqlite3_close(db->con);
+  }
 }
 
 /* ---------------------------------------------------------------------------
