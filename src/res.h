@@ -14,6 +14,7 @@ struct res_fnt {
   void *data;
   float size;
   int height;
+  float scale;
   struct fnt_info stbfont;
   struct res_glyph_set *sets[RES_MAX_GLYPHSET];
 };

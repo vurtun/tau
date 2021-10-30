@@ -1632,7 +1632,7 @@ retry:;
 static struct res_glyph_set *
 res_fnt_get_glyphset(struct res *res, struct res_fnt *fnt, int codepoint) {
   struct sys *sys = res->sys;
-  const int idx = (codepoint >> 8) % RES_MAX_GLYPHSET;
+  int idx = (codepoint >> 8) % RES_MAX_GLYPHSET;
   if (!fnt->sets[idx]) {
     fnt->sets[idx] = res__load_glyphset(res, fnt, sys->mem.arena, idx);
   }
@@ -1658,10 +1658,10 @@ res_fnt_new(struct res *res, struct arena *a, void *data, float pntsiz) {
   /* get height and scale */
   int ascent, descent, linegap;
   fnt_get_vmetrics(&fnt->stbfont, &ascent, &descent, &linegap);
-  const float scale = fnt_scale_for_mapping_em_to_pixels(&fnt->stbfont, pntsiz);
+  fnt->scale = fnt_scale_for_mapping_em_to_pixels(&fnt->stbfont, pntsiz);
 
   float total_h = cast(float, ascent - descent + linegap);
-  fnt->height = ceili(total_h * scale);
+  fnt->height = ceili(total_h * fnt->scale);
   return fnt;
 
 fail:
@@ -1682,9 +1682,15 @@ res_fnt_ext(int *ext, struct res *res, struct res_fnt *fnt, struct str txt) {
   ext[1] = fnt->height;
 
   unsigned rune = 0;
-  for_utf(&rune, it, _, txt) {
+  for_utf(&rune, it, rest, txt) {
     struct fnt_baked_char *g = res_fnt_glyph(res, fnt, rune);
     ext[0] += ceili(g->xadvance);
+    if (rest.len ) {
+      unsigned nxt = utf_get(rest);
+      int k = fnt_get_codepoint_kern_advance(&fnt->stbfont,
+        cast(int, rune), cast(int, nxt));
+      ext[0] += ceili(fnt->scale * cast(float, k));
+    }
   }
 }
 static struct fnt_baked_char *
@@ -1708,10 +1714,17 @@ static void
 ren_print(struct ren_cmd_buf *buf, struct res *res,
           int x, int y, struct str txt) {
   unsigned rune = 0;
-  for_utf(&rune, _, __, txt) {
+  for_utf(&rune, _, rest, txt) {
     struct fnt_baked_char *g;
     g = res__glyph(buf, res, res->fnt, x, y, cast(int, rune));
     x += roundi(g->xadvance);
+
+    if (rest.len ) {
+      unsigned nxt = utf_get(rest);
+      int k = fnt_get_codepoint_kern_advance(&res->fnt->stbfont,
+        cast(int, rune), cast(int, nxt));
+      x += ceili(res->fnt->scale * cast(float, k));
+    }
   }
 }
 static void
@@ -1730,8 +1743,7 @@ ren_ico_siz(int *siz, struct res *res, const char *ico) {
   }
 }
 static void
-ren_ico(struct ren_cmd_buf *buf, struct res *res,
-        int x, int y, const char *ico) {
+ren_ico(struct ren_cmd_buf *buf, struct res *res, int x, int y, const char *ico) {
   unsigned rune = 0;
   struct str utf8 = str0(ico);
   utf_dec(&rune, &utf8);
@@ -1754,8 +1766,8 @@ res_init(struct res *res) {
   scope_begin(&scp, sys->mem.tmp);
   {
     int fnt_siz = 0;
-    void *fnt_mem = res_default_fnt(&fnt_siz, sys, sys->mem.arena, sys->mem.tmp);
-    res->fnt = res_fnt_new(res, sys->mem.arena, fnt_mem, 16.0f);
+    void *mem = res_default_fnt(&fnt_siz, sys, sys->mem.arena, sys->mem.tmp);
+    res->fnt = res_fnt_new(res, sys->mem.arena, mem, 16.0f);
     assert(res->fnt);
   }
   scope_end(&scp, sys->mem.tmp, sys);
@@ -1763,8 +1775,8 @@ res_init(struct res *res) {
   int ico_siz = 0;
   scope_begin(&scp, sys->mem.tmp);
   {
-    void *ico_mem = res_icon_fnt(&ico_siz, sys, sys->mem.arena, sys->mem.tmp);
-    res->ico = res_fnt_new(res, sys->mem.arena, ico_mem, 14.0f);
+    void *mem = res_icon_fnt(&ico_siz, sys, sys->mem.arena, sys->mem.tmp);
+    res->ico = res_fnt_new(res, sys->mem.arena, mem, 14.0f);
     assert(res->ico);
   }
   scope_end(&scp, sys->mem.tmp, sys);

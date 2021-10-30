@@ -2503,9 +2503,9 @@ ui_db_view_graph_node(struct gui_ctx *ctx, struct db_graph_node *n,
       n->box = gui.box.posv(&n->box, hdr.pos);
     }
     /* body */
-    for (int j = 0; j < dyn_cnt(n->cols); ++j) {
+    for (int i = 0; i < dyn_cnt(n->cols); ++i) {
       struct gui_panel lbl = {0};
-      const struct db_tbl_col *col = n->cols + j;
+      const struct db_tbl_col *col = n->cols + i;
       const char *ico = ui_db_view_graph_node_attr_ico(col);
       gui.node.item(&lbl.box, ctx, &node, 0);
       gui.ico.box(ctx, &lbl, &node.pan, ico, col->name);

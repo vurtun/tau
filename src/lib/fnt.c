@@ -1257,7 +1257,6 @@ fnt_get_glyph_hmetrics(const struct fnt_info *info, int glyph_index,
                   2 * (glyph_index - numOfLongHorMetrics));
   }
 }
-#if 0
 static int
 fnt__get_glyph_kern_info_advance(const struct fnt_info *info, int glyph1,
                                  int glyph2) {
@@ -1553,7 +1552,6 @@ fnt_get_codepoint_hmetrics(const struct fnt_info *info, int codepoint,
   fnt_get_glyph_hmetrics(info, fnt_fnd_glyph_index(info, codepoint),
                          advanceWidth, leftSideBearing);
 }
-#endif
 static void
 fnt_get_vmetrics(const struct fnt_info *info, int *ascent, int *descent,
                  int *lineGap) {

@@ -5,10 +5,10 @@
 #define FNV1A32_HASH_INITIAL 2166136261u
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
 
-static const unsigned char hash_default_seed[16] = {
-  0x32, 0x43, 0xF6, 0xA8, 0x88, 0x5A, 0x30, 0x8D,
-  0x31, 0x31, 0x98, 0xA2, 0xE0, 0x37, 0x07, 0x34};
-
+static const unsigned char aes_seed[16] = {
+  178, 201, 95, 240, 40, 41, 143, 216,
+  2, 209, 178, 114, 232, 4, 176, 188
+};
 static unsigned
 fnv1a32(unsigned h, const void *data, int size) {
   const unsigned char *p = data;
@@ -33,28 +33,34 @@ hash_ptr(const void *ptr) {
   return fnv1a64(&ptr, szof(void *), FNV1A64_HASH_INITIAL);
 }
 static aes128
-hash128(const void *src, int len, aes128 seed) {
-  static const unsigned char mask_len[32] = {
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+hash128(const void *src, int len, unsigned char *seedx16) {
+  static const char unsigned msk[32] = {
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0
   };
-  int len16 = len >> 4;
-  while (len16-- > 0) {
-    aes128 a = aes128_load(src);
-    seed = aes128_dec(a, seed);
-    src = (const unsigned char *)src + 16;
+  const unsigned char *at = src;
+  aes128 h = aes128_int(cast(unsigned,len));
+  h = aes128_xor(h, aes128_load(seedx16));
+  int n = len >> 4;
+  while (n--) {
+    aes128 in = aes128_load(at);
+    h = aes128_xor(h, in);
+    h = aes128_dec(h, aes128_zero());
+    h = aes128_dec(h, aes128_zero());
+    h = aes128_dec(h, aes128_zero());
+    h = aes128_dec(h, aes128_zero());
+    at += 16;
   }
-  int len1 = len & 0x0f;
-  if (len1) {
-    const void *p = (const void *)(&mask_len[0x10 - len1]);
-    aes128 m = aes128_load(p);
-    aes128 a = aes128_load(src);
-    aes128 b = aes128_and(a, m);
-    seed = aes128_dec(b, seed);
-    seed = aes128_dec(b, seed);
-  }
-  return seed;
+  int over = len & 15;
+  aes128 in = aes128_load(at);
+  in = aes128_and(in, aes128_load((msk + 16 - over)));
+  h = aes128_xor(h, in);
+  h = aes128_dec(h, aes128_zero());
+  h = aes128_dec(h, aes128_zero());
+  h = aes128_dec(h, aes128_zero());
+  h = aes128_dec(h, aes128_zero());
+  return h;
 }
 
 /* ---------------------------------------------------------------------------
@@ -729,6 +735,12 @@ utf_dec(unsigned *rune, struct str *s) {
   }
   *s = strp(p + n + 1, s->end);
   return view;
+}
+static unsigned
+utf_get(struct str s) {
+  unsigned rune;
+  utf_dec(&rune, &s);
+  return rune;
 }
 static struct str
 utf_dec_rev(unsigned *rune, struct str *s) {

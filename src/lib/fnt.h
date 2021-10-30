@@ -777,9 +777,9 @@ fnt_get_codepoint_hmetrics(const struct fnt_info *info, int codepoint,
 // left edge of the character advanceWidth is the offset from the current
 // horizontal position to the next horizontal position
 //   these are expressed in unscaled coordinates
-
 static int
 fnt_get_codepoint_kern_advance(const struct fnt_info *info, int ch1, int ch2);
+
 // an additional amount to add to the 'advance' value between ch1 and ch2
 
 static int

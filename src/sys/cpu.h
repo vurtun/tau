@@ -209,7 +209,10 @@ struct cpu_info {
 #define aes128_load(p) _mm_loadu_si128((const __m128i *)(const void*)p)
 #define aes128_dec(a,key) _mm_aesdec_si128(a, key)
 #define aes128_and(a,b) _mm_and_si128(a, b)
+#define aes128_xor(a,b) _mm_xor_si128(a, b)
 #define aes128_eq(a, b) (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
+#define aes128_int(a) _mm_set1_epi32(a)
+#define aes128_zero() _mm_set1_epi32(0)
 
 /* misc */
 #define yield() _mm_pause()
@@ -330,6 +333,9 @@ cpu_info(struct cpu_info *cpu) {
 #define aes128_dec(a,key) (vaesimcq_u8(vaesdq_u8(a, (aes128){0})) ^ (key))
 #define aes128_and(a,b) (vandq_u8(a, b))
 #define aes128_eq(a, b) aes128__eq((a), (b))
+#define aes128_xor(a,b) veorq_u8(a, b)
+#define aes128_int(a) vreinterpretq_u8_u32(vdupq_n_u32(a))
+#define aes128_zero() aes128_int(0)
 
 static inline int
 aes128__eq(aes128 a, aes128 b) {
