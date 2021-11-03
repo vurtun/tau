@@ -523,10 +523,10 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 #define STR_HASH64(s)   cast(unsigned,(H64(s,0,0)^(H64(s,0,0)>>16)))
 
 static inline unsigned
-str__match_hash(const char *s) {
+str__match_hash(struct str s) {
   unsigned int h = 0;
-  for(int i = 0; s[i] != 0; ++i) {
-    h = 65599u * h + (unsigned char)s[i];
+  for (int i = 0; s.len; ++i) {
+    h = 65599u * h + (unsigned char)s.str[i];
   }
   return h ^ (h >> 16);
 }
