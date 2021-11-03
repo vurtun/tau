@@ -259,17 +259,17 @@ struct gui_lay {
   int idx, cnt;
   int gap[2], item;
 };
-#define gui_row(lay, row, def, gap, con, sol) \
+#define gui_row(gui, lay, row, def, gap, con, sol) \
   for (int lay[cntof((int[])def)],            \
-    uniqid__i_) = (gui.lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
+    uniqid__i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_hlay(ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
+#define gui_hlay(gui, ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
   for (int items[cntof(def)],            \
-    uniqid(_i_) = (gui.lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) = ((gui)->lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_vlay(ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
+#define gui_vlay(gui, ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
   for (int items[cntof(def)],            \
-    uniqid(_i_) = (gui.lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 
 /* Widget: Edit */

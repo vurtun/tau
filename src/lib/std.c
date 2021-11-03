@@ -516,10 +516,26 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 #define H32(s,i,x)  H16(s,i,H16(s,i+16,x))
 #define H64(s,i,x)  H16(s,i,H16(s,i+16,H16(s,i+32,H16(s,i+48,x))))
 
+#define STR_HASH4(s)    cast(unsigned,(H4(s,0,0)^(H4(s,0,0)>>16)))
 #define STR_HASH8(s)    cast(unsigned,(H8(s,0,0)^(H8(s,0,0)>>16)))
 #define STR_HASH16(s)   cast(unsigned,(H16(s,0,0)^(H16(s,0,0)>>16)))
 #define STR_HASH32(s)   cast(unsigned,(H32(s,0,0)^(H32(s,0,0)>>16)))
 #define STR_HASH64(s)   cast(unsigned,(H64(s,0,0)^(H64(s,0,0)>>16)))
+
+static inline unsigned
+str__match_hash(const char *s) {
+  unsigned int h = 0;
+  for(int i = 0; s[i] != 0; ++i) {
+    h = 65599u * h + (unsigned char)s[i];
+  }
+  return h ^ (h >> 16);
+}
+#define match(s) switch(str__match_hash(s))
+#define with4(s) case STR_HASH4(s)
+#define with8(s) case STR_HASH8(s)
+#define with16(s) case STR_HASH16(s)
+#define with32(s) case STR_HASH32(s)
+#define with64(s) case STR_HASH64(s)
 
 #define cstrn(s) cast(int, strlen(s))
 #define str(s,n) (struct str){s, (s) + (n), (n)}
