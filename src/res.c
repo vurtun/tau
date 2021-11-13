@@ -1752,13 +1752,6 @@ ren_ico(struct ren_cmd_buf *buf, struct res *res, int x, int y, const char *ico)
     g = res__glyph(buf, res, res->ico, x, y, cast(int, rune));
   }
 }
-
-/* ---------------------------------------------------------------------------
- *                                  System
- * ---------------------------------------------------------------------------
- */
-extern void dlExport(void *export, void *import);
-
 static void
 res_init(struct res *res) {
   struct sys *sys = res->sys;
@@ -1781,15 +1774,24 @@ res_init(struct res *res) {
   }
   scope_end(&scp, sys->mem.tmp, sys);
 }
+
+/* ---------------------------------------------------------------------------
+ *                                  System
+ * ---------------------------------------------------------------------------
+ */
+extern void dlExport(void *export, void *import);
+static const struct res_api res_api = {
+  .version = RES_VERSION,
+  .init = res_init,
+  .ico_siz = ren_ico_siz,
+  .ico = ren_ico,
+  .print = ren_print,
+  .fnt_ext = res_fnt_ext,
+};
 extern void
 dlExport(void *export, void *import) {
   unused(import);
   struct res_api *res = (struct res_api*)export;
-  res->version = RES_VERSION;
-  res->init = res_init;
-  res->ico_siz = ren_ico_siz;
-  res->ico = ren_ico;
-  res->print = ren_print;
-  res->fnt_ext = res_fnt_ext;
+  *res = res_api;
 }
 

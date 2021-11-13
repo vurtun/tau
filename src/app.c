@@ -141,6 +141,7 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   assert(parent);
+
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel bdy = {.box = pan->box};

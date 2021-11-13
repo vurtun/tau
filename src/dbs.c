@@ -2872,16 +2872,17 @@ ui_db_explr(struct db_ui_view *db, struct gui_ctx *ctx,
  * ---------------------------------------------------------------------------
  */
 extern void dlExport(void *export, void *import);
-
+static const struct db_api db_api = {
+  .init = db_setup,
+  .update = db_update,
+  .shutdown = db_free,
+  .ui = ui_db_explr,
+};
 extern void
 dlExport(void *export, void *import) {
   struct db_api *exp = cast(struct db_api*, export);
   struct gui_api *im = cast(struct gui_api*, import);
   gui = *im;
-
-  exp->init = db_setup;
-  exp->update = db_update;
-  exp->shutdown = db_free;
-  exp->ui = ui_db_explr;
+  *exp = db_api;
 }
 

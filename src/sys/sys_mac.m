@@ -653,7 +653,7 @@ sys__mac_load_col(void) {
   NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
   [NSApp activateIgnoringOtherApps:YES];
   [_mac.win makeKeyAndOrderFront:nil];
-  [NSEvent setMouseCoalescingEnabled:NO];
+  // [NSEvent setMouseCoalescingEnabled:NO];
 
   sys_mac__resize();
 }
@@ -900,7 +900,6 @@ sys_mac__mouse_pos(NSEvent *e) {
 }
 - (void)mouseDown:(NSEvent*)e {
   sys__mac_on_btn(&_sys.mouse.btn.left, 1);
-  sys_mac__mouse_pos(e);
   if (e.clickCount == 2) {
     _sys.mouse.btn.left.doubled = 1;
   }
@@ -911,7 +910,6 @@ sys_mac__mouse_pos(NSEvent *e) {
 }
 - (void)mouseUp:(NSEvent*)e {
   sys__mac_on_btn(&_sys.mouse.btn.left, 0);
-  sys_mac__mouse_pos(e);
 
   _sys.btn_mod = 1;
   _sys.mouse_mod = 1;
@@ -920,7 +918,6 @@ sys_mac__mouse_pos(NSEvent *e) {
 }
 - (void)rightMouseDown:(NSEvent*)e {
   sys__mac_on_btn(&_sys.mouse.btn.right, 1);
-  sys_mac__mouse_pos(e);
 
   _sys.btn_mod = 1;
   _sys.mouse_mod = 1;
@@ -929,7 +926,6 @@ sys_mac__mouse_pos(NSEvent *e) {
 }
 - (void)rightMouseUp:(NSEvent*)e {
   sys__mac_on_btn(&_sys.mouse.btn.right, 0);
-  sys_mac__mouse_pos(e);
 
   _sys.btn_mod = 1;
   _sys.mouse_mod = 1;
@@ -952,16 +948,17 @@ sys_mac__mouse_pos(NSEvent *e) {
   sys_mac__mouse_pos(e);
   _sys.mouse_mod = 1;
   _sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_frame();
-}
-- (void)mouseDragged:(NSEvent*)event {
 
+  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
+      abs(_sys.mouse.pos_delta[1]) > 0) {
+    sys__mac_on_frame();
+  }
 }
-- (void)rightMouseDragged:(NSEvent*)event {
-
+- (void)mouseDragged:(NSEvent*)e {
 }
-- (void)otherMouseDragged:(NSEvent*)event {
-
+- (void)rightMouseDragged:(NSEvent*)e {
+}
+- (void)otherMouseDragged:(NSEvent*)e {
 }
 - (void)scrollWheel:(NSEvent*)e {
   float dx = cast(float, e.scrollingDeltaX);

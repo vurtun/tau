@@ -586,7 +586,6 @@ file_view_tree_build(struct file_tree_view *tree,
       s = lst_get(elm, struct file_tree_node, hook);
       set_put(set, sys, s->id);
     }
-
     /* validate child nodes */
     struct sys_dir_iter it = {0};
     for_dir_lst(sys, &it, tmp, n->fullpath) {
@@ -1450,15 +1449,17 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
  */
 extern void dlExport(void *export, void *import);
 
+static const struct file_picker_api pck_api = {
+  .init = file_view_setup,
+  .update = file_view_update,
+  .shutdown = file_view_free,
+  .ui = ui_file_sel,
+};
 extern void
 dlExport(void *export, void *import) {
   struct file_picker_api *exp = cast(struct file_picker_api*, export);
   struct gui_api *im = cast(struct gui_api*, import);
   gui = *im;
-
-  exp->init = file_view_setup;
-  exp->update = file_view_update;
-  exp->shutdown = file_view_free;
-  exp->ui = ui_file_sel;
+  *exp = pck_api;
 }
 

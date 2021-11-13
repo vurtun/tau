@@ -5482,235 +5482,277 @@ gui_graph_node_end(struct gui_ctx *ctx, struct gui_graph_node *n,
  */
 extern void dlExport(void *export, void *import);
 
+static const struct gui_api gui_api = {
+  .version = GUI_VERSION,
+  .init = gui_init,
+  .free = gui_free,
+  .begin = gui_begin,
+  .end = gui_end,
+  .scissor = gui_scissor,
+  .clip_begin = gui_clip_begin,
+  .clip_end = gui_clip_end,
+  .enable = gui_enable,
+  .disable = gui_disable,
+  .color_scheme = gui_color_scheme,
+  .bnd = {
+    .min_max = gui_min_max,
+    .min_ext = gui_min_ext,
+    .max_ext = gui_max_ext,
+    .mid_min = gui_mid_min,
+    .mid_max = gui_mid_max,
+    .mid_ext = gui_mid_ext,
+    .shrink = gui_shrink,
+    .div = gui_div,
+  },
+  .box = {
+    .div_x = gui_box_div_x,
+    .div_y = gui_box_div_y,
+    .div = gui_box_div,
+    .mid_ext = gui_box_mid_ext,
+    .box = gui_box,
+    .pos = gui_box_pos,
+    .mov = gui_box_mov,
+    .clip = gui_clip,
+    .pad = gui_pad,
+    .padv = gui_padv,
+    .posv = gui_box_posv,
+  },
+  .cut = {
+    .lhs = gui_cut_lhs,
+    .top = gui_cut_top,
+    .rhs = gui_cut_rhs,
+    .bot = gui_cut_bot,
+    .box = gui_cut_box,
+  },
+  .lay = {
+    .solve = gui_solve,
+    .hcut = gui_hlay_cut,
+    .vcut = gui_vlay_cut,
+    .hitem = gui_hlay_item,
+    .vitem = gui_vlay_item,
+    .item = gui_lay_item,
+    .vlay = gui__vlay,
+    .hlay = gui__hlay,
+  },
+  .pan = {
+    .hot = gui_panel_hot,
+    .focus = gui_focus,
+    .input = gui_input,
+    .state = gui_panel_state,
+    .drw = gui_panel_drw,
+    .drw_focus = gui_focus_drw,
+    .open = gui_panel_open,
+    .close = gui_panel_close,
+    .begin = gui_panel_begin,
+    .end = gui_panel_close,
+  },
+  .cfg = {
+    .pushi = gui_cfg_pushi,
+    .pushi_on = gui_cfg_pushi_on,
+    .pushu = gui_cfg_pushu,
+    .pushu_on = gui_cfg_pushu_on,
+    .pop = gui_cfg_pop,
+    .pop_on = gui_cfg_pop_on,
+  },
+  .in = {
+    .consume = gui_input_consume,
+  },
+  .txt = {
+    .width = gui_txt_width,
+    .uln = gui_txt_uln,
+    .lbl = gui_txt,
+    .fmtv = gui_txtvf,
+    .txtf = gui_txtf,
+    .tm = gui_tm,
+  },
+  .lbl = {
+    .txt = gui_lbl,
+    .fmtv = gui_lblvf,
+    .fmt = gui_lblf,
+  },
+  .ico = {
+    .icon = gui_icon,
+    .box = gui_icon_box,
+  },
+  .btn = {
+    .begin = gui_btn_begin,
+    .end = gui_btn_end,
+    .txt = gui_btn_txt,
+    .lbl = gui_btn_lbl,
+    .ico = gui_btn_ico,
+  },
+  .chk = {
+    .ico = gui_chk,
+    .box = gui_chk_box,
+    .boxi = gui_chk_boxi,
+  },
+  .tog = {
+    .ico = gui_tog,
+    .box = gui_tog_box,
+  },
+  .scrl = {
+    .map = gui_scrl,
+    .barh = gui_hscrl,
+    .barv = gui_vscrl,
+  },
+  .edt = {
+    .drw = gui_edit_drw,
+    .fld = gui_edit_field,
+    .txt = gui_edit,
+    .box = gui_edit_box,
+    .buf = {
+      .init = gui_txt_ed_init,
+      .has_sel = gui_txt_ed_has_sel,
+      .reset = gui_txt_ed_reset,
+      .undo = gui_txt_ed_undo,
+      .redo = gui_txt_ed_redo,
+      .cut = gui_txt_ed_cut,
+      .paste = gui_txt_ed_paste,
+      .sel_all = gui_txt_ed_sel_all,
+    },
+  },
+  .spin = {
+    .val = gui_spin,
+    .flt = gui_spin_flt,
+    .f = gui_spin_f,
+    .num = gui_spin_int,
+    .i = gui_spin_i,
+  },
+  .grp = {
+    .begin = gui_grp_begin,
+    .end = gui_grp_end,
+  },
+  .reg = {
+    .begin = gui_reg_begin,
+    .apply_lst = gui_reg_apply_lst,
+    .end = gui_reg_end,
+  },
+  .lst = {
+    .view = gui_lst_view,
+    .cfg = gui_lst_cfg_init,
+    .begin = gui_lst_begin,
+    .begin_def = gui_lst_begin_def,
+    .nxt = gui_lst_nxt,
+    .end = gui_lst_end,
+    .set_sel_idx = gui_lst_set_sel_idx,
+    .set_cur_idx = gui_lst_set_cur_idx,
+    .lay = {
+      .init = gui_lst_lay_init,
+      .gen = gui_lst_lay_gen,
+      .apply_view = gui_lst_lay_apply_view,
+      .center = gui_lst_lay_center,
+      .fit_start = gui_lst_lay_fit_start,
+      .fit_end = gui_lst_lay_fit_end,
+      .clamps = gui_lst_lay_clamp,
+    },
+    .ctl = {
+      .elm = gui_lst_ctl_elm,
+      .proc = gui_lst_ctl_proc,
+    },
+    .sel = {
+      .elm = gui_lst_sel_elm,
+      .proc = gui_lst_sel_proc,
+    },
+    .elm = {
+      .begin = gui_lst_elm_begin,
+      .end = gui_lst_elm_end,
+    },
+    .reg = {
+      .begin = gui_lst_reg_begin,
+      .nxt = gui_lst_reg_nxt,
+      .center = gui_lst_reg_center,
+      .fit_start = gui_lst_reg_fit_start,
+      .fit_end = gui_lst_reg_fit_end,
+      .clamp = gui_lst_reg_clamp,
+      .end = gui_lst_reg_end,
+      .elm = {
+        .begin = gui_lst_reg_elm_begin,
+        .end = gui_lst_reg_elm_end,
+        .txt = gui_lst_reg_elm_txt,
+      },
+    },
+  },
+  .tree = {
+    .begin = gui_tree_node_begin,
+    .end = gui_tree_node_end,
+    .node = gui_tree_node,
+  },
+  .splt = {
+    .begin = gui_split_begin,
+    .sep = gui_split_sep,
+    .end = gui_split_end,
+    .lay = {
+      .begin = gui_split_lay_begin,
+      .add = gui_split_lay_add,
+      .end = gui_split_lay_end,
+      .bld = gui_split_lay,
+    },
+  },
+  .tbl = {
+    .begin = gui_tbl_begin,
+    .end = gui_tbl_end,
+    .lay = gui_split_lay,
+    .hdr = {
+      .begin = gui_tbl_hdr_begin,
+      .end = gui_tbl_hdr_end,
+      .slot = {
+        .begin = gui_tbl_hdr_slot_begin,
+        .end = gui_tbl_hdr_slot_end,
+        .txt = gui_tbl_hdr_slot,
+      },
+    },
+    .lst = {
+      .cfg = gui_tbl_lst_cfg_init,
+      .begin = gui_tbl_lst_begin,
+      .begin_def = gui_tbl_lst_begin_def,
+      .end = gui_tbl_lst_end,
+      .nxt = gui_lst_nxt,
+      .elm = {
+        .begin = gui_tbl_lst_elm_begin,
+        .end = gui_tbl_lst_elm_end,
+        .col = {
+          .slot = gui_tbl_lst_elm_col,
+          .txt = gui_tbl_lst_txt,
+          .txtf = gui_tbl_lst_txtf,
+          .tm = gui_tbl_lst_tm,
+        },
+      },
+    },
+  },
+  .tab = {
+    .begin = gui_tab_ctl_begin,
+    .sel = gui_tab_ctl_sel,
+    .end = gui_tab_ctl_end,
+    .hdr = {
+      .begin = gui_tab_hdr_begin,
+      .end = gui_tab_hdr_end,
+      .slot = {
+        .begin = gui_tab_hdr_slot_begin,
+        .end = gui_tab_hdr_slot_end,
+        .txt_id = gui_tab_hdr_slot_id,
+        .txt = gui_tab_hdr_slot,
+      },
+    },
+  },
+  .grid = {
+    .begin = gui_grid_begin,
+    .end = gui_grid_end,
+  },
+  .node = {
+    .begin = gui_graph_node_begin,
+    .item = gui_graph_node_item,
+    .end = gui_graph_node_end,
+    .hdr = {
+      .begin = gui_graph_node_hdr_begin,
+      .end = gui_graph_node_hdr_end,
+    },
+  },
+};
 extern void
 dlExport(void *export, void *import) {
   struct gui_api *gui = (struct gui_api*)export;
   struct res_api *im = (struct res_api*)import;
   res = *im;
-
-  /* gui */
-  gui->version = GUI_VERSION;
-  gui->init = gui_init;
-  gui->free = gui_free;
-  gui->begin = gui_begin;
-  gui->end = gui_end;
-  gui->scissor = gui_scissor;
-  gui->clip_begin = gui_clip_begin;
-  gui->clip_end = gui_clip_end;
-  gui->enable = gui_enable;
-  gui->disable = gui_disable;
-  gui->color_scheme = gui_color_scheme;
-  /* bnd */
-  gui->bnd.min_max = gui_min_max;
-  gui->bnd.min_ext = gui_min_ext;
-  gui->bnd.max_ext = gui_max_ext;
-  gui->bnd.mid_min = gui_mid_min;
-  gui->bnd.mid_max = gui_mid_max;
-  gui->bnd.mid_ext = gui_mid_ext;
-  gui->bnd.shrink = gui_shrink;
-  gui->bnd.div = gui_div;
-  /* box */
-  gui->box.div_x = gui_box_div_x;
-  gui->box.div_y = gui_box_div_y;
-  gui->box.div = gui_box_div;
-  gui->box.mid_ext = gui_box_mid_ext;
-  gui->box.box = gui_box;
-  gui->box.pos = gui_box_pos;
-  gui->box.mov = gui_box_mov;
-  gui->box.clip = gui_clip;
-  gui->box.pad = gui_pad;
-  gui->box.padv = gui_padv;
-  gui->box.posv = gui_box_posv;
-  /* cut */
-  gui->cut.lhs = gui_cut_lhs;
-  gui->cut.top = gui_cut_top;
-  gui->cut.rhs = gui_cut_rhs;
-  gui->cut.bot = gui_cut_bot;
-  gui->cut.box = gui_cut_box;
-  /* lay */
-  gui->lay.solve = gui_solve;
-  gui->lay.hcut = gui_hlay_cut;
-  gui->lay.vcut = gui_vlay_cut;
-  gui->lay.hitem = gui_hlay_item;
-  gui->lay.vitem = gui_vlay_item;
-  gui->lay.item = gui_lay_item;
-  gui->lay.vlay = gui__vlay;
-  gui->lay.hlay = gui__hlay;
-  /* panel */
-  gui->pan.hot = gui_panel_hot;
-  gui->pan.focus = gui_focus;
-  gui->pan.input = gui_input;
-  gui->pan.state = gui_panel_state;
-  gui->pan.drw = gui_panel_drw;
-  gui->pan.drw_focus = gui_focus_drw;
-  gui->pan.open = gui_panel_open;
-  gui->pan.close = gui_panel_close;
-  gui->pan.begin = gui_panel_begin;
-  gui->pan.end = gui_panel_close;
-  /* config */
-  gui->cfg.pushi = gui_cfg_pushi;
-  gui->cfg.pushi_on = gui_cfg_pushi_on;
-  gui->cfg.pushu = gui_cfg_pushu;
-  gui->cfg.pushu_on = gui_cfg_pushu_on;
-  gui->cfg.pop = gui_cfg_pop;
-  gui->cfg.pop_on = gui_cfg_pop_on;
-  /* input */
-  gui->in.consume = gui_input_consume;
-  /* txt */
-  gui->txt.width = gui_txt_width;
-  gui->txt.uln = gui_txt_uln;
-  gui->txt.lbl = gui_txt;
-  gui->txt.fmtv = gui_txtvf;
-  gui->txt.txtf = gui_txtf;
-  gui->txt.tm = gui_tm;
-  /* lbl */
-  gui->lbl.txt = gui_lbl;
-  gui->lbl.fmtv = gui_lblvf;
-  gui->lbl.fmt = gui_lblf;
-  /* ico */
-  gui->ico.icon = gui_icon;
-  gui->ico.box = gui_icon_box;
-  /* btn */
-  gui->btn.begin = gui_btn_begin;
-  gui->btn.end = gui_btn_end;
-  gui->btn.txt = gui_btn_txt;
-  gui->btn.lbl = gui_btn_lbl;
-  gui->btn.ico = gui_btn_ico;
-  /* chk */
-  gui->chk.ico = gui_chk;
-  gui->chk.box = gui_chk_box;
-  gui->chk.boxi = gui_chk_boxi;
-  /* tog */
-  gui->tog.ico = gui_tog;
-  gui->tog.box = gui_tog_box;
-  /* scrl */
-  gui->scrl.map = gui_scrl;
-  gui->scrl.barh = gui_hscrl;
-  gui->scrl.barv = gui_vscrl;
-  /* edit: buf */
-  gui->edt.buf.init = gui_txt_ed_init;
-  gui->edt.buf.has_sel = gui_txt_ed_has_sel;
-  gui->edt.buf.reset = gui_txt_ed_reset;
-  gui->edt.buf.undo = gui_txt_ed_undo;
-  gui->edt.buf.redo = gui_txt_ed_redo;
-  gui->edt.buf.cut = gui_txt_ed_cut;
-  gui->edt.buf.paste = gui_txt_ed_paste;
-  gui->edt.buf.sel_all = gui_txt_ed_sel_all;
-  /* edit */
-  gui->edt.drw = gui_edit_drw;
-  gui->edt.fld = gui_edit_field;
-  gui->edt.txt = gui_edit;
-  gui->edt.box = gui_edit_box;
-  /* spin */
-  gui->spin.val = gui_spin;
-  gui->spin.flt = gui_spin_flt;
-  gui->spin.f = gui_spin_f;
-  gui->spin.num = gui_spin_int;
-  gui->spin.i = gui_spin_i;
-  /* grp */
-  gui->grp.begin = gui_grp_begin;
-  gui->grp.end = gui_grp_end;
-  /* reg */
-  gui->reg.begin = gui_reg_begin;
-  gui->reg.apply_lst = gui_reg_apply_lst;
-  gui->reg.end = gui_reg_end;
-  /* lst: lay */
-  gui->lst.lay.init = gui_lst_lay_init;
-  gui->lst.lay.gen = gui_lst_lay_gen;
-  gui->lst.lay.apply_view = gui_lst_lay_apply_view;
-  gui->lst.lay.center = gui_lst_lay_center;
-  gui->lst.lay.fit_start = gui_lst_lay_fit_start;
-  gui->lst.lay.fit_end = gui_lst_lay_fit_end;
-  gui->lst.lay.clamps = gui_lst_lay_clamp;
-  /* lst: ctl */
-  gui->lst.ctl.elm = gui_lst_ctl_elm;
-  gui->lst.ctl.proc = gui_lst_ctl_proc;
-  /* lst: sel */
-  gui->lst.sel.elm = gui_lst_sel_elm;
-  gui->lst.sel.proc = gui_lst_sel_proc;
-  /* lst: elm */
-  gui->lst.elm.begin = gui_lst_elm_begin;
-  gui->lst.elm.end = gui_lst_elm_end;
-  /* lst: reg: elm */
-  gui->lst.reg.elm.begin = gui_lst_reg_elm_begin;
-  gui->lst.reg.elm.end = gui_lst_reg_elm_end;
-  gui->lst.reg.elm.txt = gui_lst_reg_elm_txt;
-  /* lst: reg */
-  gui->lst.reg.begin = gui_lst_reg_begin;
-  gui->lst.reg.nxt = gui_lst_reg_nxt;
-  gui->lst.reg.center = gui_lst_reg_center;
-  gui->lst.reg.fit_start = gui_lst_reg_fit_start;
-  gui->lst.reg.fit_end = gui_lst_reg_fit_end;
-  gui->lst.reg.clamp = gui_lst_reg_clamp;
-  gui->lst.reg.end = gui_lst_reg_end;
-  /* lst */
-  gui->lst.view = gui_lst_view;
-  gui->lst.cfg = gui_lst_cfg_init;
-  gui->lst.begin = gui_lst_begin;
-  gui->lst.begin_def = gui_lst_begin_def;
-  gui->lst.nxt = gui_lst_nxt;
-  gui->lst.end = gui_lst_end;
-  gui->lst.set_sel_idx = gui_lst_set_sel_idx;
-  gui->lst.set_cur_idx = gui_lst_set_cur_idx;
-  /* tree */
-  gui->tree.begin = gui_tree_node_begin;
-  gui->tree.end = gui_tree_node_end;
-  gui->tree.node = gui_tree_node;
-  /* split: lay */
-  gui->splt.lay.begin = gui_split_lay_begin;
-  gui->splt.lay.add = gui_split_lay_add;
-  gui->splt.lay.end = gui_split_lay_end;
-  gui->splt.lay.bld = gui_split_lay;
-  /* split */
-  gui->splt.begin = gui_split_begin;
-  gui->splt.sep = gui_split_sep;
-  gui->splt.end = gui_split_end;
-  /* tbl: hdr: slot */
-  gui->tbl.hdr.slot.begin = gui_tbl_hdr_slot_begin;
-  gui->tbl.hdr.slot.end = gui_tbl_hdr_slot_end;
-  gui->tbl.hdr.slot.txt = gui_tbl_hdr_slot;
-  /* tbl: hdr */
-  gui->tbl.hdr.begin = gui_tbl_hdr_begin;
-  gui->tbl.hdr.end = gui_tbl_hdr_end;
-  /* tbl: lst: elm */
-  gui->tbl.lst.elm.col.slot = gui_tbl_lst_elm_col;
-  gui->tbl.lst.elm.col.txt = gui_tbl_lst_txt;
-  gui->tbl.lst.elm.col.txtf = gui_tbl_lst_txtf;
-  gui->tbl.lst.elm.col.tm = gui_tbl_lst_tm;
-  /* tbl: lst: elm */
-  gui->tbl.lst.elm.begin = gui_tbl_lst_elm_begin;
-  gui->tbl.lst.elm.end = gui_tbl_lst_elm_end;
-  /* tbl: lst */
-  gui->tbl.lst.cfg = gui_tbl_lst_cfg_init;
-  gui->tbl.lst.begin = gui_tbl_lst_begin;
-  gui->tbl.lst.begin_def = gui_tbl_lst_begin_def;
-  gui->tbl.lst.end = gui_tbl_lst_end;
-  gui->tbl.lst.nxt = gui_lst_nxt;
-  /* tbl */
-  gui->tbl.begin = gui_tbl_begin;
-  gui->tbl.end = gui_tbl_end;
-  gui->tbl.lay = gui_split_lay;
-  /* tab: hdr: slot */
-  gui->tab.hdr.slot.begin = gui_tab_hdr_slot_begin;
-  gui->tab.hdr.slot.end = gui_tab_hdr_slot_end;
-  gui->tab.hdr.slot.txt_id = gui_tab_hdr_slot_id;
-  gui->tab.hdr.slot.txt = gui_tab_hdr_slot;
-  /* tab: hdr */
-  gui->tab.hdr.begin = gui_tab_hdr_begin;
-  gui->tab.hdr.end = gui_tab_hdr_end;
-  /* tab */
-  gui->tab.begin = gui_tab_ctl_begin;
-  gui->tab.sel = gui_tab_ctl_sel;
-  gui->tab.end = gui_tab_ctl_end;
-  /* grid */
-  gui->grid.begin = gui_grid_begin;
-  gui->grid.end = gui_grid_end;
-  /* graph: hdr */
-  gui->node.hdr.begin = gui_graph_node_hdr_begin;
-  gui->node.hdr.end = gui_graph_node_hdr_end;
-  /* graph */
-  gui->node.begin = gui_graph_node_begin;
-  gui->node.item = gui_graph_node_item;
-  gui->node.end = gui_graph_node_end;
+  *gui = gui_api;
 }
 

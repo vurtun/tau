@@ -51,11 +51,14 @@ dbg_rec(struct sys *sys, enum dbg_type type, const char *guid, const char *name)
   evt->guid = guid;
   evt->name = name;
 }
+static const struct dbg_api dbg_api = {
+  .rec = dbg_rec,
+};
 extern void
 dlInit(struct sys *sys) {
   assert(sys);
   sys->debug = arena_obj(sys->mem.arena, sys, struct dbg);
-  sys->dbg.rec = dbg_rec;
+  sys->dbg = dbg_api;
 }
 extern void
 dlBegin(struct sys *sys) {

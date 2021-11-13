@@ -29,6 +29,8 @@
 /* compiler specific intrinisics */
 #ifdef _MSC_VER
 
+#define alignto(x) __declspec(align(x))
+
 #define lfence() _ReadBarrier()
 #define sfence() _WriteBarrier()
 
@@ -39,6 +41,8 @@
 
 #else
 
+#define alignto(x) __attribute__((aligned(x)))
+
 #define lfence() asm volatile("" ::: "memory")
 #define sfence() asm volatile("" ::: "memory")
 
@@ -48,6 +52,9 @@
 #define atom_sub(val, sub) __sync_fetch_and_sub(val, sub)
 
 #endif
+
+#define sse_align alignto(16)
+#define avx_align alignto(32)
 
 /* os specific definitions */
 #if defined(SYS_WIN) || defined(SYS_WIN_CYG)
@@ -159,6 +166,7 @@ struct cpu_info {
 
 #include <emmintrin.h>
 #include <smmintrin.h>
+#include <xmmintrin.h>
 #include <immintrin.h>
 #include <wmmintrin.h>
 
@@ -167,10 +175,21 @@ struct cpu_info {
 #define CPU_SIMD_128
 #endif
 
-#define int4 __m128i
 #define flt4 __m128
+#define flt4_flt(a) _mm_set_ps1(a)
+#define flt4_str(d,r) _mm_storeu_ps(((float*)(d)),r)
+#define flt4_max(a,b) _mm_max_ps(a,b)
+#define flt4_mul(a,b) _mm_mul_ps(a,b)
+#define flt4_add(a,b) _mm_add_ps(a,b)
+#define flt4_cmp_gt(a,b) _mm_castps_si128(_mm_cmpgt_ps(a,b))
+#define flt4_zip_lo32(a,b) _mm_unpacklo_ps(a,b)
+#define flt4_zip_hi32(a,b) _mm_unpackhi_ps(a,b)
+#define flt4_zip_lo64(a,b) _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
+#define flt4_zip_hi64(a,b) _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
 
+#define int4 __m128i
 #define int4_ld(p) _mm_loadu_si128((const __m128i*)(const void*)p)
+#define int4_set(x,y,z,w) _mm_setr_epi32(x,y,z,w)
 #define int4_str(p,i) _mm_storeu_si128((__m128i*)(void*)p, i)
 #define int4_char(i) _mm_set1_epi8(i)
 #define int4_int(i) _mm_set1_epi32(i)
@@ -182,6 +201,7 @@ struct cpu_info {
 #define int4_add(a,b) _mm_add_epi32(a, b)
 #define int4_sub(a,b) _mm_sub_epi32(a, b)
 #define int4_mul(a,b) _mm_mullo_epi32(a, b)
+#define int4_blend(a,b,m) _mm_blendv_epi8(a,b,m)
 
 /* simd 256-bit */
 #ifdef USE_SIMD_256
@@ -290,9 +310,19 @@ cpu_info(struct cpu_info *cpu) {
 #define CPU_SIMD_128
 #endif
 
-#define int4 int32x4_t
 #define flt4 float32x4_t
+#define flt4_flt(a) vdupq_n_f32(a)
+#define flt4_str(d,r) vst1q_f32((float*)d, r)
+#define flt4_max(a,b) vmaxnmq_f32(a,b)
+#define flt4_mul(a,b) vmulq_f32(a,b)
+#define flt4_add(a,b) vaddq_f32(a,b)
+#define flt4_cmp_gt(a,b) vcgtq_f32(a,b)
+#define flt4_zip_lo32(a,b) vzip1q_f32(a,b)
+#define flt4_zip_hi32(a,b) vzip2q_f32(a,b)
+#define flt4_zip_lo64(a,b) vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
+#define flt4_zip_hi64(a,b) vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
 
+#define int4 int32x4_t
 #define int4_ld(p) vld1q_s32((const int*)(const void*)p)
 #define int4_str(p,i) vst1q_s32((int*)(void*)p, i)
 #define int4_char(i) vreinterpretq_s32_s8(vdupq_n_s8(i))
@@ -305,6 +335,13 @@ cpu_info(struct cpu_info *cpu) {
 #define int4_mul(a,b) vmulq_s32(a,b)
 #define int4_sll(a,i) vshlq_s32(a, vdupq_n_s32(i))
 #define int4_srl(a,i) vshlq_s32(a, vdupq_n_s32(-i))
+#define int4_blend(a,b,msk) vbslq_s32(msk, b, a)
+
+static inline int4
+int4_set(int i3, int i2, int i1, int i0) {
+  int sse_align v[4] = {i3, i2, i1, i0};
+  return vld1q_s32(v);
+}
 
 /* simd 256-bit */
 #ifdef USE_SIMD_256
