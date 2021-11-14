@@ -605,7 +605,7 @@ sys__mac_col(NSColor *col) {
 static void
 sys__mac_load_col(void) {
   _sys.col_mod = 1;
-  _sys.col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
+  _sys.col[SYS_COL_HOV] = col_rgba(0,0,0,0);
   _sys.col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
   _sys.col[SYS_COL_BG] = sys__mac_col([NSColor controlBackgroundColor]);
   _sys.col[SYS_COL_CTRL] = sys__mac_col([NSColor controlColor]);
@@ -653,8 +653,6 @@ sys__mac_load_col(void) {
   NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
   [NSApp activateIgnoringOtherApps:YES];
   [_mac.win makeKeyAndOrderFront:nil];
-  // [NSEvent setMouseCoalescingEnabled:NO];
-
   sys_mac__resize();
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -948,7 +946,6 @@ sys_mac__mouse_pos(NSEvent *e) {
   sys_mac__mouse_pos(e);
   _sys.mouse_mod = 1;
   _sys.keymod |= sys__mac_mods(e);
-
   if (abs(_sys.mouse.pos_delta[0]) > 0 ||
       abs(_sys.mouse.pos_delta[1]) > 0) {
     sys__mac_on_frame();

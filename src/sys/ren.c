@@ -25,14 +25,15 @@
 #define REN_CEL_SIZ 96
 
 #define REN_OP_TBL(REN_OP) \
-  REN_OP(NXT, 1)           \
-  REN_OP(EOL, 1)           \
-  REN_OP(COL, 2)           \
-  REN_OP(STYL, 2)          \
-  REN_OP(CLIP, 4)          \
-  REN_OP(RECT, 4)          \
-  REN_OP(SRECT, 4)         \
-  REN_OP(IMG, 6)
+  REN_OP(NOP,   0) \
+  REN_OP(NXT,   2) \
+  REN_OP(EOL,   1) \
+  REN_OP(COL,   2) \
+  REN_OP(STYL,  2) \
+  REN_OP(CLIP,  3) \
+  REN_OP(BOX,   3) \
+  REN_OP(SBOX,  3) \
+  REN_OP(IMG,   4)
 
 enum ren_op_code {
 #define REN_OPS(a, b) REN_OP_##a,
@@ -42,7 +43,8 @@ enum ren_op_code {
 };
 union ren_op {
   struct ren_op_hdr {
-    int op, win;
+    int op;
+    unsigned hash;
   } hdr;
   struct ren_op_pos {
     int x, y;
@@ -50,8 +52,11 @@ union ren_op {
   struct ren_op_siz {
     int w, h;
   } siz;
+  struct ren_op_img {
+    int id;
+    unsigned short sx, sy;
+  } img;
   long long word;
-  unsigned hash;
   unsigned char buf[sizeof(long long)];
   void *p;
 };
@@ -77,7 +82,7 @@ struct ren_cmd_buf {
   int cur_op_idx;
   struct ren_op_buf *ops;
   struct ren_op_buf *cur_op_buf;
-  unsigned long long hash;
+  unsigned hash;
 };
 #define REN_MAX_CMD_BUF_CNT 4
 struct ren_cmd_que {
@@ -99,8 +104,8 @@ struct ren {
   int tex_cnt;
   struct ren_tex tex[REN_TEX_MAX];
 
-  unsigned long long hash;
-  unsigned long long prev_hash;
+  unsigned hash;
+  unsigned prev_hash;
 
   struct ren_state state;
   int cel_act;
@@ -782,7 +787,7 @@ ren__blit_img_fast(struct sys *sys, struct sys_ren_target *tar,
  *                              Commands
  * ---------------------------------------------------------------------------
  */
-static const int ren__op_tbl_size[] = {
+static const int ren__op_tbl_size[REN_OP_CNT] = {
 #define REN_OPS(a, b) b,
   REN_OP_TBL(REN_OPS)
 #undef REN_OPS
@@ -790,10 +795,12 @@ static const int ren__op_tbl_size[] = {
 static const union ren_op *
 ren_op_begin(const struct ren_op_buf *ob) {
   const union ren_op *p = ob->ops;
+  assert(p[0].hdr.op != REN_OP_NOP);
   if (p[0].hdr.op == REN_OP_EOL) {
     return 0;
+  } else {
+    return p;
   }
-  return p;
 }
 static const union ren_op *
 ren_op_next(const union ren_op *p) {
@@ -807,71 +814,72 @@ ren_op_next(const union ren_op *p) {
   return p;
 }
 static union ren_op *
-ren__push_op(struct ren_cmd_buf *buf, int op, int extra) {
+ren__push_op(struct ren_cmd_buf *buf, int cnt) {
   int idx = buf->cur_op_idx;
-  int cnt = ren__op_tbl_size[op] + extra;
   struct ren_op_buf *ob = buf->cur_op_buf;
   if (idx + cnt >= REN_OP_BUF_SIZE - 2) {
     struct ren_op_buf *obn = arena_alloc(buf->mem, buf->sys, szof(struct ren_op_buf));
     ob->ops[idx + 0].hdr = (struct ren_op_hdr){REN_OP_NXT, 0};
-    ob->ops[idx + 1].p = (void *)obn;
+    ob->ops[idx + 1].p = cast(void*, obn);
     buf->cur_op_buf = obn;
     ob = obn;
     idx = 0;
   }
-  memset(&ob->ops[idx], 0, cast(size_t, cnt) * sizeof(union ren_op));
-  ob->ops[idx].hdr = (struct ren_op_hdr){op, 0};
+  memset(ob->ops + idx, 0, cast(size_t, cnt) * sizeof(union ren_op));
   buf->cur_op_idx = idx + cnt;
-  return &ob->ops[idx + 1];
+  return ob->ops + idx;
 }
 static union ren_op *
-ren_push_op(struct ren_cmd_buf *buf, int op, int extra) {
+ren_push_op(struct ren_cmd_buf *buf, int cnt) {
   if (!buf->cur_op_buf) {
     buf->ops = arena_alloc(buf->mem, buf->sys, szof(struct ren_op_buf));
-    buf->hash = FNV1A64_HASH_INITIAL;
+    buf->hash = FNV1A32_HASH_INITIAL;
     buf->cur_op_buf = buf->ops;
     buf->cur_op_idx = 0;
   }
-  return ren__push_op(buf, op, extra);
+  return ren__push_op(buf, cnt);
 }
 static void
-ren_reg_op(struct ren_cmd_buf *buf, unsigned long long hash) {
-  buf->hash = fnv1au64(hash, buf->hash);
+ren_reg_op(struct ren_cmd_buf *buf, unsigned h) {
+  buf->hash = fnv1au32(buf->hash, h);
 }
 static void
 ren_col(struct ren_cmd_buf *buf, unsigned col) {
-  if (buf->state.col == col) {
-    return;
+  if (buf->state.col != col) {
+    buf->state.col = col;
+    union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_COL]);
+    p[0].hdr = (struct ren_op_hdr){REN_OP_COL};
+    p[1].word = col;
   }
-  union ren_op *p = ren_push_op(buf, REN_OP_COL, 0);
-  buf->state.col = col;
-  p[0].word = col;
 }
 static void
 ren_line_style(struct ren_cmd_buf *buf, int thickness) {
-  if (buf->state.thick == thickness) {
-    return;
+  if (buf->state.thick != thickness) {
+    union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_STYL]);
+    p[0].hdr = (struct ren_op_hdr){.op = REN_OP_STYL};
+    p[1].word = thickness;
+    buf->state.thick = thickness;
   }
-  union ren_op *p = ren_push_op(buf, REN_OP_STYL, 0);
-  p[0].word = thickness;
-  buf->state.thick = thickness;
 }
 static void
 ren_scissor(struct ren_cmd_buf *buf, int x, int y, int w, int h) {
-  union ren_op *p = ren_push_op(buf, REN_OP_CLIP, 0);
-  p[0].pos = (struct ren_op_pos){x, y};
-  p[1].siz = (struct ren_op_siz){w, h};
-  p[2].hash = fnv1a32(FNV1A32_HASH_INITIAL, p - 1, 3 * szof(union ren_op));
-  ren_reg_op(buf, p[2].hash);
+  union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_CLIP]);
+  p[0].hdr = (struct ren_op_hdr){.op = REN_OP_CLIP};
+  p[1].pos = (struct ren_op_pos){x, y};
+  p[2].siz = (struct ren_op_siz){w, h};
+  p[0].hdr.hash = fnv1a32(p, 3 * szof(union ren_op), FNV1A32_HASH_INITIAL);
+  ren_reg_op(buf, p[0].hdr.hash);
 }
 static void
 ren_box(struct ren_cmd_buf *buf, int x0, int y0, int x1, int y1) {
-  union ren_op *p = ren_push_op(buf, REN_OP_RECT, 0);
-  p[0].pos = (struct ren_op_pos){x0, y0};
-  p[1].siz = (struct ren_op_siz){x1 - x0, y1 - y0};
-  p[2].hash = fnv1a32(FNV1A32_HASH_INITIAL, p - 1, 3 * szof(union ren_op));
-  p[2].hash = fnv1a32(p[2].hash, &buf->state.col, szof(buf->state.col));
-  ren_reg_op(buf, p[2].hash);
+  if (col_a(buf->state.col) == 0) return;
+  union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_BOX]);
+  p[0].hdr = (struct ren_op_hdr){.op = REN_OP_BOX};
+  p[1].pos = (struct ren_op_pos){x0, y0};
+  p[2].siz = (struct ren_op_siz){x1 - x0, y1 - y0};
+  p[0].hdr.hash = fnv1a32(p, 3 * szof(union ren_op), FNV1A32_HASH_INITIAL);
+  p[0].hdr.hash = fnv1a32(&buf->state.col, szof(buf->state.col), p[0].hdr.hash);
+  ren_reg_op(buf, p[0].hdr.hash);
 }
 static void
 ren_hline(struct ren_cmd_buf *buf, int y, int x0, int x1) {
@@ -883,24 +891,25 @@ ren_vline(struct ren_cmd_buf *buf, int x, int y0, int y1) {
 }
 static void
 ren_srect(struct ren_cmd_buf *buf, int x0, int y0, int x1, int y1) {
-  union ren_op *p = ren_push_op(buf, REN_OP_SRECT, 0);
-  p[0].pos = (struct ren_op_pos){x0, y0};
-  p[1].siz = (struct ren_op_siz){x1 - x0, y1 - y0};
-  p[2].hash = fnv1a32(FNV1A32_HASH_INITIAL, p - 1, 3 * szof(union ren_op));
-  p[2].hash = fnv1a32(p[2].hash, &buf->state.col, szof(buf->state.col));
-  p[2].hash = fnv1a32(p[2].hash, &buf->state.thick, szof(buf->state.thick));
-  ren_reg_op(buf, p[2].hash);
+  union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_SBOX]);
+  p[0].hdr = (struct ren_op_hdr){.op = REN_OP_SBOX};
+  p[1].pos = (struct ren_op_pos){x0, y0};
+  p[2].siz = (struct ren_op_siz){x1 - x0, y1 - y0};
+  p[0].hdr.hash = fnv1a32(p, 3 * szof(union ren_op), FNV1A32_HASH_INITIAL);
+  p[0].hdr.hash = fnv1a32(&buf->state.col, szof(buf->state.col), p[0].hdr.hash);
+  p[0].hdr.hash = fnv1a32(&buf->state.thick, szof(buf->state.thick), p[0].hdr.hash);
+  ren_reg_op(buf, p[0].hdr.hash);
 }
 static void
 ren_img(struct ren_cmd_buf *buf, int dx, int dy, int sx, int sy,
         int w, int h, int img_id) {
-  union ren_op *p = ren_push_op(buf, REN_OP_IMG, 0);
-  p[0].pos = (struct ren_op_pos){dx, dy};
-  p[1].siz = (struct ren_op_siz){w, h};
-  p[2].pos = (struct ren_op_pos){sx, sy};
-  p[3].word = cast(long long, img_id);
-  p[4].hash = fnv1a32(FNV1A32_HASH_INITIAL, p - 1, 5 * szof(union ren_op));
-  ren_reg_op(buf, p[4].hash);
+  union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_IMG]);
+  p[0].hdr = (struct ren_op_hdr){.op = REN_OP_IMG};
+  p[1].pos = (struct ren_op_pos){dx, dy};
+  p[2].siz = (struct ren_op_siz){w, h};
+  p[3].img = (struct ren_op_img){img_id, (unsigned short)sx, (unsigned short)sy};
+  p[0].hdr.hash = fnv1a32(p, 4 * szof(union ren_op), FNV1A32_HASH_INITIAL);
+  ren_reg_op(buf, p[0].hdr.hash);
 }
 
 /* ---------------------------------------------------------------------------
@@ -934,7 +943,7 @@ ren__update_overlapping_cells(struct ren *ren, struct sys_rect r,
     for (int x = x1; x <= x2; x++) {
       int idx = ren__cell_idx(x, y);
       unsigned s = ren->cel[ren->cel_act][idx];
-      ren->cel[ren->cel_act][idx] = fnv1a32(s, &h, szof(h));
+      ren->cel[ren->cel_act][idx] = fnv1au32(h, s);
     }
   }
 }
@@ -963,38 +972,38 @@ ren__drw_cmd(struct sys *sys, struct ren *ren, struct sys_ren_target *tar,
              struct ren_state *s, const union ren_op *p,
              const struct ren_clip *dirty) {
   switch (p[0].hdr.op) {
-    case REN_OP_STYL:
-      s->thick = cast(int, p[1].word);
+  case REN_OP_STYL:
+    s->thick = cast(int, p[1].word);
+    break;
+  case REN_OP_COL:
+    s->col = cast(unsigned, p[1].word);
+    break;
+  case REN_OP_CLIP: {
+    struct ren_clip c = ren_clip(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
+    s->clip.min_x = max(dirty->min_x, c.min_x);
+    s->clip.min_y = max(dirty->min_y, c.min_y);
+    s->clip.max_x = min(dirty->max_x, c.max_x);
+    s->clip.max_y = min(dirty->max_y, c.max_y);
+  } break;
+  case REN_OP_BOX: {
+    struct sys_rect r = sys_rect(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
+    ren__rect_fast(sys, tar, &r, &s->clip, s->col);
+  } break;
+  case REN_OP_SBOX: {
+    struct sys_rect r = sys_rect(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
+    ren__srect(sys, tar, &r, &s->clip, s->col, s->thick);
+  } break;
+  case REN_OP_IMG: {
+    int img_id = p[3].img.id;
+    assert (img_id < REN_TEX_MAX && img_id >= 0);
+    if (img_id >= REN_TEX_MAX || img_id < 0) {
       break;
-    case REN_OP_COL:
-      s->col = cast(unsigned, p[1].word);
-      break;
-    case REN_OP_CLIP: {
-      struct ren_clip c = ren_clip(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
-      s->clip.min_x = max(dirty->min_x, c.min_x);
-      s->clip.min_y = max(dirty->min_y, c.min_y);
-      s->clip.max_x = min(dirty->max_x, c.max_x);
-      s->clip.max_y = min(dirty->max_y, c.max_y);
-    } break;
-    case REN_OP_RECT: {
-      struct sys_rect r = sys_rect(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
-      ren__rect_fast(sys, tar, &r, &s->clip, s->col);
-    } break;
-    case REN_OP_SRECT: {
-      struct sys_rect r = sys_rect(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
-      ren__srect(sys, tar, &r, &s->clip, s->col, s->thick);
-    } break;
-    case REN_OP_IMG: {
-      long long img_id = p[4].word;
-      assert (img_id < REN_TEX_MAX && img_id >= 0);
-      if (img_id >= REN_TEX_MAX || img_id < 0) {
-        break;
-      }
-      assert(ren->tex[img_id].act);
-      const struct ren_tex *tex = ren->tex + img_id;
-      struct sys_rect r = sys_rect(p[3].pos.x, p[3].pos.y, p[2].siz.w, p[2].siz.h);
-      ren__blit_img_fast(sys, tar, tex->mem, p[1].pos.x, p[1].pos.y, &r, tex->w, &s->clip, s->col);
-    } break;
+    }
+    assert(ren->tex[img_id].act);
+    const struct ren_tex *tex = ren->tex + img_id;
+    struct sys_rect r = sys_rect(p[3].img.sx, p[3].img.sy, p[2].siz.w, p[2].siz.h);
+    ren__blit_img_fast(sys, tar, tex->mem, p[1].pos.x, p[1].pos.y, &r, tex->w, &s->clip, s->col);
+  } break;
   }
 }
 static struct ren_cmd_buf*
@@ -1007,6 +1016,7 @@ ren_mk_buf(struct ren_cmd_que *q) {
   buf->mem = q->mem;
   buf->sys = q->sys;
 
+  buf->hash = FNV1A32_HASH_INITIAL;
   buf->cur_op_buf = 0;
   buf->cur_op_idx = 0;
   buf->state.thick = 1;
@@ -1053,36 +1063,44 @@ ren_tex_siz(int *siz, void *ren_hdl, int id) {
   siz[0] = tex->w;
   siz[1] = tex->h;
 }
+static const struct ren_api ren_api = {
+  .version = REN_VERSION,
+  .que = {
+    .mk = ren_mk_buf,
+  },
+  .drw = {
+    .col = ren_col,
+    .line_style = ren_line_style,
+    .clip = ren_scissor,
+    .box = ren_box,
+    .hln = ren_hline,
+    .vln = ren_vline,
+    .sbox = ren_srect,
+    .img = ren_img,
+  },
+  .tex = {
+    .mk = ren_tex_mk,
+    .del = ren_tex_del,
+    .siz = ren_tex_siz,
+  },
+};
 extern void
 dlInit(struct sys *sys) {
   struct ren *ren = arena_obj(sys->mem.arena, sys, struct ren);
   for (int i = 0; i < REN_CEL_X * REN_CEL_Y; i++) {
     ren->cel[0][i] = FNV1A32_HASH_INITIAL;
   }
-  ren->hash = FNV1A64_HASH_INITIAL;
+  ren->hash = FNV1A32_HASH_INITIAL;
   ren->que.mem = &ren->mem;
   ren->que.sys = sys;
   sys->renderer = ren;
 
-  sys->ren.version = REN_VERSION;
+  sys->ren = ren_api;
   sys->ren.que.dev = &ren->que;
-  sys->ren.que.mk = ren_mk_buf;
-  sys->ren.drw.col = ren_col;
-  sys->ren.drw.line_style = ren_line_style;
-  sys->ren.drw.clip = ren_scissor;
-  sys->ren.drw.box = ren_box;
-  sys->ren.drw.hln = ren_hline;
-  sys->ren.drw.vln = ren_vline;
-  sys->ren.drw.sbox = ren_srect;
-  sys->ren.drw.img = ren_img;
-  sys->ren.tex.mk = ren_tex_mk;
-  sys->ren.tex.del = ren_tex_del;
-  sys->ren.tex.siz = ren_tex_siz;
 }
 extern void
 dlBegin(struct sys *sys) {
   struct ren *ren = sys->renderer;
-  ren->prev_hash = ren->hash;
   scope_begin(&ren->scp, &ren->mem);
 }
 static void
@@ -1094,22 +1112,27 @@ extern void
 dlEnd(struct sys *sys) {
   dbg_blk_begin(sys, "render");
   struct ren *ren = sys->renderer;
-  ren->hash = FNV1A64_HASH_INITIAL;
+
+  ren->prev_hash = ren->hash;
+  ren->hash = FNV1A32_HASH_INITIAL;
   for (int i = 0; i < ren->que.cnt; ++i) {
     struct ren_cmd_buf *buf = ren->que.bufs + i;
-    ren__push_op(buf, REN_OP_EOL, 0);
-    ren->hash = fnv1au64(ren->hash, buf->hash);
+    union ren_op *p = ren__push_op(buf, ren__op_tbl_size[REN_OP_EOL]);
+    p[0].hdr = (struct ren_op_hdr){.op = REN_OP_EOL};
+    ren->hash = fnv1au32(ren->hash, buf->hash);
   }
   struct sys_ren_target *ren_tar = &sys->ren_target;
   if (ren_tar->resized) {
     memset(ren->cel[!ren->cel_act], 0xff, sizeof(ren->cel[!ren->cel_act]));
-    ren->prev_hash = FNV1A64_HASH_INITIAL;
+    ren->prev_hash = FNV1A32_HASH_INITIAL;
   }
   if (ren->hash == ren->prev_hash) {
     dbg_blk_end(sys);
     ren__cleanup(ren, sys);
     return;
   }
+  printf("[ren] paint %u %u\n", ren->prev_hash, ren->hash);
+
   dbg_blk_begin(sys, "ren:hash_grid");
   for (int bi = 0; bi < ren->que.cnt; ++bi) {
     struct ren_cmd_buf *buf = ren->que.bufs + bi;
@@ -1120,14 +1143,14 @@ dlEnd(struct sys *sys) {
       switch (p[0].hdr.op) {
         default: {
           struct sys_rect r = sys_rect(p[1].pos.x, p[1].pos.y, p[2].siz.w, p[2].siz.h);
-          unsigned h = p[ren__op_tbl_size[p[0].hdr.op] - 1].hash;
           ren__intersect_rects(&r, &r, &c);
           if (r.w != 0 && r.h != 0) {
-            ren__update_overlapping_cells(ren, r, h);
+            ren__update_overlapping_cells(ren, r, p[0].hdr.hash);
           }
         } break;
         case REN_OP_STYL:
         case REN_OP_COL:
+        case REN_OP_EOL:
           break;
       }
     }

@@ -10,9 +10,11 @@ static const unsigned char aes_seed[16] = {
   2, 209, 178, 114, 232, 4, 176, 188
 };
 static unsigned
-fnv1a32(unsigned h, const void *data, int size) {
-  const unsigned char *p = data;
-  while (size--) h = (h ^ *p++) * 16777619u;
+fnv1a32(const void *ptr, int size, unsigned h) {
+  const unsigned char *p = ptr;
+  for (int i = 0; i < size; ++i) {
+     h = (h ^ p[i]) * 16777619u;
+  }
   return h;
 }
 static unsigned long long
@@ -23,6 +25,10 @@ fnv1a64(const void *ptr, int len, unsigned long long h) {
     h *= 1099511628211llu;
   }
   return h;
+}
+static unsigned
+fnv1au32(unsigned h, unsigned id) {
+  return fnv1a32(&id, sizeof(id), h);
 }
 static unsigned long long
 fnv1au64(unsigned long long id, unsigned long long h) {

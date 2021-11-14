@@ -4023,8 +4023,10 @@ gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,
       sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SEL]);
       sys->ren.drw.box(ctx->ren, gui_unbox(box));
     } else if (sel->hov == GUI_LST_SEL_HOV_YES && item.is_hot) {
-      sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_CONTENT_HOV]);
-      sys->ren.drw.box(ctx->ren, gui_unbox(box));
+      if (ctx->cfg.col[GUI_COL_CONTENT_HOV] != ctx->cfg.col[GUI_COL_BG]) {
+        sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_CONTENT_HOV]);
+        sys->ren.drw.box(ctx->ren, gui_unbox(box));
+      }
     }
   }
 }
