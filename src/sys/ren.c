@@ -872,7 +872,6 @@ ren_scissor(struct ren_cmd_buf *buf, int x, int y, int w, int h) {
 }
 static void
 ren_box(struct ren_cmd_buf *buf, int x0, int y0, int x1, int y1) {
-  if (col_a(buf->state.col) == 0) return;
   union ren_op *p = ren_push_op(buf, ren__op_tbl_size[REN_OP_BOX]);
   p[0].hdr = (struct ren_op_hdr){.op = REN_OP_BOX};
   p[1].pos = (struct ren_op_pos){x0, y0};
