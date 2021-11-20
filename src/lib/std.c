@@ -1,3 +1,32 @@
+static inline int
+rng__bnd(int i, int n) {
+  int l = max(n, 1) - 1;
+  int v = (i < 0) ? (n - i) : i;
+  return clamp(v, 0, l);
+}
+static inline struct rng
+rng__mk(int lo, int hi, int s) {
+  struct rng res = {.lo = lo, .hi = hi, .step = s};
+  res.cnt = abs(res.hi - res.lo);
+  return res;
+}
+#define arrv(b) (b), (sizeof((b))/sizeof((b)[0]))
+#define arr(b) (b), dyn_cnt((b))
+#define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
+#define intvl(b,s,n) rng(b,n,s,n)
+
+#define for_rng(i,l,r)\
+  for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
+#define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
+#define for_cnt(i,n) for_nstep(i,n,1)
+
+#define for_arrp(it,a,e) for ((it) = (a); (it) < (e); ++(it))
+#define for_arr(it,a,n) for_arrp(it,a,(a)+(n))
+#define for_arrv(it,a) for_arr(it,a,cntof(a))
+#define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
+#define for_arr_rng(it,a,r)\
+  for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
+
 /* ---------------------------------------------------------------------------
  *                                  Hash
  * ---------------------------------------------------------------------------
@@ -557,6 +586,15 @@ str__match_hash(struct str s) {
 #define str_lhs(s, n) str_sub(s, 0, min((s).len, n))
 #define str_cut_lhs(s, n) *s = str_rhs(*s, n)
 #define str_cut_rhs(s, n) *s = str_lhs(*s, n)
+
+#define for_str(it,c,s)\
+  for (const char *it = (c)->str; it < (c)->end; it += (s))
+#define fori_str(i,c,s)\
+  for (int i = 0; i < (c)->len; i += (s))
+#define for_str_rng(it,a, b,e,s)\
+  for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;\
+   (it) != (a)->str + rng(b,e,s,(a)->len).hi;\
+   (it) += rng(b,e,s,(a)->len).step)
 #define for_str_tok(it, rest, src, delim)                       \
   for (struct str rest = src, it = str_split_cut(&rest, delim); \
        it.len; it = str_split_cut(&rest, delim))
@@ -1065,6 +1103,14 @@ struct dyn_hdr {
 #define dyn_str(b) str(dyn_begin(b), dyn_cnt(b))
 #define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
 #define dyn_asn_str(b,sys, s) dyn_asn(b,sys,(s).str,(s).len)
+
+#define fori_dyn(i,c)\
+  for (int i = 0; i < dyn_cnt(c); ++i)
+#define for_dyn(it,c) for_arr(it, c, dyn_cnt(c))
+#define for_dyn_rng(it,a, b,e,s)                            \
+  for (const char *it = (a)->str + rng(b,e,s,dyn_cnt(a)).lo;\
+   (it) != (a)->str + rng(b,e,s,dyn_cnt(a)).hi;             \
+   (it) += rng(b,e,s,dyn_cnt(a)).step)
 
 #define dyn_asn(b, s, x, n)                       \
   do {                                            \

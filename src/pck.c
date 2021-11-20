@@ -355,11 +355,10 @@ static const struct gui_split_lay_slot file_split_def[FILE_SPLIT_MAX] = {
 
 static const struct file_def *
 file_type(struct str ext) {
-  for (int i = 0; i < cntof(file_groups); ++i) {
-    const struct file_group_def *grp = file_groups + i;
-    const struct file_def *file_defs = grp->files;
-    for (int j = 0; j < grp->cnt; ++j) {
-      const struct file_def *def = file_defs + j;
+  const struct file_group_def *grp = 0;
+  for_arrv(grp, file_groups) {
+    const struct file_def *def = 0;
+    for_arr(def, grp->files, grp->cnt) {
       if (def->suffix && str_cmp(str0(def->suffix), ext) == 0) {
         return def;
       }
@@ -804,9 +803,11 @@ file_list_view_fltr(struct file_list_view *lst, struct str fltr) {
 
   int tbl[UCHAR_MAX + 1];
   str__fnd_tbl(tbl, fltr);
-  for (int i = 0; i < dyn_cnt(lst->elms); ++i) {
-    if (str_fnd_str(lst->elms[i].name, fltr, tbl) >= fltr.len) {
-      bit_set(lst->fltr, i);
+
+  struct file_elm *elm = 0;
+  for_dyn(elm, lst->elms) {
+    if (str_fnd_str(elm->name, fltr, tbl) >= fltr.len) {
+      bit_set(lst->fltr, cast(int, elm - lst->elms));
     }
   }
 }
@@ -1073,7 +1074,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       /* header */
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, lst->tbl.state);
-      for (int i = 0; i < tbl.cnt; ++i) {
+      for_cnt(i, tbl.cnt) {
         struct str title = file_tbl_def[i].title;
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_lay, lst->tbl.state, title);
       }
@@ -1092,7 +1093,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       cfg.fltr.bitset = lst->fltr;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for (int i = tbl.lst.begin; i < tbl.lst.end; i = gui.tbl.lst.nxt(&tbl.lst, i)) {
+      for_gui_tbl_lst(i,gui,&tbl) {
         struct gui_panel elm = {0};
         int is_sel = lst->sel_idx == i;
         ui_file_view_tbl_elm(ctx, &tbl, tbl_lay, &elm, lst->elms + i, is_sel);
@@ -1236,7 +1237,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, tree->off);
-    for (int i = reg.lst.begin; i < reg.lst.end; ++i) {
+    for_gui_reg_lst(i,gui,&reg) {
       struct gui_panel elm = {0};
       struct file_tree_node *n = tree->lst[i];
       if (ui_file_view_tree_elm(ctx, tree, n, &reg, &elm, tree->sel == i)) {
@@ -1245,7 +1246,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
     }
     if (tree->jmp) {
       /* jump to element */
-      for (int i = 0; i < dyn_cnt(tree->lst); ++i) {
+      fori_dyn(i, tree->lst) {
         struct file_tree_node *n = tree->lst[i];
         if (n->id != tree->jmp_to) continue;
         gui.lst.reg.center(&reg, i);

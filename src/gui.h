@@ -593,6 +593,8 @@ struct gui_lst {
   enum gui_lst_fltr_on fltr_on;
   unsigned long long id;
 };
+#define for_gui_lst(i,gui,l)\
+  for (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
 
 /* Widget: List-Area */
 struct gui_lst_reg {
@@ -600,6 +602,8 @@ struct gui_lst_reg {
   struct gui_lst lst;
   struct gui_reg reg;
 };
+#define for_gui_reg_lst(i,gui,r)\
+  for (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
 
 /* Widget: Tree-Node */
 enum gui_tree_type {
@@ -709,6 +713,8 @@ struct gui_tbl {
   struct gui_box col_lay;
   int idx, cnt;
 };
+#define for_gui_tbl_lst(i,gui,t)\
+  for (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
 
 /* Widget: Tab Control */
 struct gui_tab_ctl_hdr {

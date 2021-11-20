@@ -55,6 +55,9 @@
 #define bits_to_long(nr) (int)div_round_up((unsigned long)nr, BITS_PER_LONG)
 // clang-format on
 
+struct rng {
+  int lo, hi, step, cnt;
+};
 struct str {
   const char *str;
   const char *end;
@@ -84,5 +87,4 @@ struct color {
   unsigned char r, g, b, a;
 };
 #define dyn(T) T*
-
 

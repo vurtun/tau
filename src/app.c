@@ -200,17 +200,17 @@ dlEntry(struct sys *sys) {
   }
 #endif
   memset(app->ops, 0, sizeof(app->ops));
-  for (int i = 0; i < cntof(app_ops); ++i) {
+  const struct app_op *op = 0;
+  for_arrv(op, app_ops) {
     /* handle app shortcuts */
-    const struct app_op *op = app_ops + i;
     if ((bit_tst(sys->keys, op->key.code) && sys->keymod == op->key.mod) ||
         (bit_tst(sys->keys, op->alt.code) && sys->keymod == op->alt.mod))
       op->handler(app, &op->arg);
   }
-  for (int i = 0; i < cntof(app_ui_key_tbl); ++i) {
+  fori_arrv(i, app_ui_key_tbl) {
     /* map system keys to ui shortcuts */
-    struct gui_ctx *ctx = &app->gui;
     const struct app_ui_shortcut *s = app_ui_key_tbl + i;
+    struct gui_ctx *ctx = &app->gui;
     int keymod = app_on_mod(s->key.mod, sys->keymod);
     if (bit_tst(sys->keys, s->key.code) && keymod) {
       bit_set(ctx->keys, i);

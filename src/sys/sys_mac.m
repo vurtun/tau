@@ -605,7 +605,7 @@ sys__mac_col(NSColor *col) {
 static void
 sys__mac_load_col(void) {
   _sys.col_mod = 1;
-  _sys.col[SYS_COL_HOV] = col_rgba(0,0,0,0);
+  _sys.col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
   _sys.col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
   _sys.col[SYS_COL_BG] = sys__mac_col([NSColor controlBackgroundColor]);
   _sys.col[SYS_COL_CTRL] = sys__mac_col([NSColor controlColor]);

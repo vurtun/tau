@@ -254,7 +254,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   sol = !sol ? &dummy : sol;
   memset(sol, 0, sizeof(*sol));
 
-  for (int i = 0; i < cnt; ++i) {
+  for_cnt(i,cnt) {
     if (slots[i] < 0) {
       sol->dyn_cnt++;
       continue;
@@ -266,7 +266,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   }
   int total = max(0, ext - (gap * cnt));
   if (sol->fix_siz >= total || !sol->dyn_cnt) {
-    for (int i = 0; i < cnt; ++i) {
+    for_cnt(i,cnt) {
       if (slots[i] < 0) {
         ret[i] = con ? con[i*2+0] : 0;
       }
@@ -274,14 +274,14 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   }
   sol->weight = 0.0f;
   sol->dyn_siz = max(0, total - sol->fix_siz);
-  for (int i = 0; i < cnt; ++i) {
+  for_cnt(i, cnt) {
     if (slots[i] >= 0) {
       continue;
     }
     sol->weight += cast(float, -slots[i]);
   }
   int def_dyn_siz = 0;
-  for (int i = 0; i < cnt; ++i) {
+  for_cnt(i,cnt) {
     if (slots[i] >= 0) {
       continue;
     }
@@ -294,7 +294,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
     int grow_cnt = 0;
     float weight = 0.0f;
     int grow_siz = def_dyn_siz - sol->dyn_siz;
-    for (int i = 0; i < cnt; ++i) {
+    for_cnt(i,cnt) {
       if (slots[i] >= 0) {
         continue;
       }
@@ -307,7 +307,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
       int nxt_siz = 0;
       int nxt_cnt = 0;
       float nxt_weight = 0.0f;
-      for (int i = 0; i < cnt; ++i) {
+      for_cnt(i, cnt) {
         if (slots[i] >= 0) {
           continue;
         }
@@ -476,7 +476,7 @@ gui_input(struct gui_input *in, struct gui_ctx *ctx,
     ctx->prev_id = p->id;
   }
   /* mouse button */
-  for (int i = 0; i < GUI_MOUSE_BTN_CNT; ++i) {
+  for_cnt(i, GUI_MOUSE_BTN_CNT) {
     struct gui_mouse_btn *btn = &in->mouse.btns[i];
     if (p->is_hot) {
       btn->down = mouse->btns[i].down;
@@ -703,8 +703,8 @@ static int
 gui__blit_ico(const struct gui_img_def *img, struct sys *sys, struct arena *mem) {
   int siz = align_up(img->w * img->h, 4);
   unsigned *dst = arena_alloc(mem, sys, siz * 4);
-  for (int y = 0; y < img->h; ++y) {
-    for (int x = 0; x < img->w; ++x) {
+  for_cnt(y, img->h) {
+    for_cnt(x, img->w) {
       unsigned char sym = (unsigned char)img->data[y][x];
       dst[x + y * img->w] = col_rgba_hex(img->cmap[sym]);
     }
@@ -746,7 +746,7 @@ gui_init(struct gui_ctx *ctx, struct arena *mem, enum gui_col_scheme scm) {
   ctx->cfg.ico = 14;
   ctx->cfg.scrl = 14;
   ctx->txt_state.buf = arena_dyn(mem, ctx->sys, char, 2 * 1024);
-  for (int i = 0; i < GUI_IMG_MAX; ++i) {
+  for_cnt(i, GUI_IMG_MAX) {
     ctx->ico[i] = gui__blit_ico(gui_img_def + i, ctx->sys, mem);
   }
 }
@@ -799,7 +799,7 @@ static void
 gui_input_begin(struct gui_ctx *ctx, struct sys_mouse *mouse) {
   assert(ctx);
   assert(mouse);
-  for (int i = 0; i < GUI_MOUSE_BTN_CNT; ++i) {
+  for_cnt(i, GUI_MOUSE_BTN_CNT) {
     if (!mouse->btns[i].pressed) {
       continue;
     }
@@ -814,7 +814,7 @@ static void
 gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
   assert(ctx);
   assert(mouse);
-  for (int i = 0; i < GUI_MOUSE_BTN_CNT; ++i) {
+  for_cnt(i, GUI_MOUSE_BTN_CNT) {
     ctx->btn[i].prev_active = ctx->btn[i].active;
     if (mouse->btns[i].released) {
       ctx->btn[i].origin = ctx->root.id;
@@ -823,7 +823,7 @@ gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
 }
 static void
 gui_input_consume(struct gui_ctx *ctx) {
-  for (int i = 0; i < GUI_MOUSE_BTN_CNT; ++i) {
+  for_cnt(i, GUI_MOUSE_BTN_CNT) {
     memset(&ctx->btn, 0, sizeof(ctx->btn));
   }
   memset(ctx->keys, 0, sizeof(ctx->keys));
@@ -1775,25 +1775,25 @@ gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
     sys->ren.drw.line_style(ctx->ren, 1);
     switch (orient) {
       case GUI_NORTH: {
-        for (int i = 0; i < pan->box.y.ext; ++i) {
+        for_cnt(i, pan->box.y.ext) {
           sys->ren.drw.hln(ctx->ren, pan->box.y.max - 1 - i, pan->box.x.min + i - 1,
                     pan->box.x.max - i - 1);
         }
       } break;
       case GUI_WEST: {
-        for (int i = 0; i < pan->box.x.ext; ++i) {
+        for_cnt(i, pan->box.x.ext) {
           sys->ren.drw.vln(ctx->ren, pan->box.x.max - 1 - i, pan->box.y.min + i - 1,
                     pan->box.y.min + pan->box.y.ext - i);
         }
       } break;
       case GUI_SOUTH: {
-        for (int i = 0; i < pan->box.y.ext; ++i) {
+        for_cnt(i, pan->box.y.ext) {
           sys->ren.drw.hln(ctx->ren, pan->box.y.min + i, pan->box.x.min + i - 1,
                     pan->box.x.max - i - 1);
         }
       } break;
       case GUI_EAST: {
-        for (int i = 0; i < pan->box.x.ext; ++i) {
+        for_cnt(i, pan->box.x.ext) {
           sys->ren.drw.vln(ctx->ren, pan->box.x.min + i, pan->box.y.min + i - 1,
                     pan->box.y.min + pan->box.y.ext - i - 1);
         }
@@ -2032,7 +2032,7 @@ gui_txt_ed_undo_discard(struct gui_txt_ed_undo *s) {
     s->undo_char_pnt = (short)(s->undo_char_pnt - n);
     memcpy(s->buf, s->buf + n,
            cast(size_t, s->undo_char_pnt) + sizeof(s->buf[0]));
-    for (int i = 0; i < s->undo_pnt; ++i) {
+    for_cnt(i, s->undo_pnt) {
       if (s->stk[i].char_at < 0) continue;
       s->stk[i].char_at = cast(short, s->stk[i].char_at - n);
     }
@@ -2139,7 +2139,7 @@ gui_txt_ed_undo(struct gui_txt_ed *edt, struct sys *sys, char **buf) {
       rdo = s->stk + s->redo_pnt - 1;
       rdo->char_at = cast(short, s->redo_char_pnt - udo.del_len);
       s->redo_char_pnt = cast(short, s->redo_char_pnt - udo.del_len);
-      for (int i = 0; i < udo.del_len; ++i) {
+      for_cnt(i, udo.del_len) {
         s->buf[rdo->char_at + i] = (*buf)[udo.where + i];
       }
     } else {
@@ -2177,7 +2177,7 @@ gui_txt_ed_redo(struct gui_txt_ed *edt, struct sys *sys, char **buf) {
       udo->char_at = s->undo_char_pnt;
       s->undo_char_pnt = cast(short, s->undo_char_pnt + udo->in_len);
       /* now save the characters */
-      for (int i = 0; i < udo->in_len; ++i)
+      for_cnt(i, udo->in_len)
         s->buf[udo->char_at + i] = (*buf)[udo->where + i];
     } else {
       udo->in_len = udo->del_len = 0;
@@ -4023,7 +4023,7 @@ gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,
       sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SEL]);
       sys->ren.drw.box(ctx->ren, gui_unbox(box));
     } else if (sel->hov == GUI_LST_SEL_HOV_YES && item.is_hot) {
-      if (ctx->cfg.col[GUI_COL_CONTENT_HOV] != ctx->cfg.col[GUI_COL_BG]) {
+      if (ctx->cfg.col[GUI_COL_CONTENT_HOV] != ctx->cfg.col[GUI_COL_CONTENT]) {
         sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_CONTENT_HOV]);
         sys->ren.drw.box(ctx->ren, gui_unbox(box));
       }
@@ -4621,7 +4621,7 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
 
   struct gui_split_lay bld = {0};
   gui_split_lay_begin(&bld, state, cnt, ctx->cfg.sep);
-  for (int i = 0; i < cnt; ++i) {
+  for_cnt(i, cnt) {
     int idx = cfg->sort ? cfg->sort[i] : i;
     if (cfg->fltr && bit_tst(cfg->fltr, idx) == 0) {
       continue;
