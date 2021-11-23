@@ -535,7 +535,7 @@ sys__mac_on_frame(void) {
     _mac.ren.dlEnd(&_sys);
 
     _sys.ren_target.resized = 0;
-    if (dyn_has(_sys.ren_target.dirty_rects)) {
+    if (dyn_any(_sys.ren_target.dirty_rects)) {
       [_mac.view setNeedsDisplay:YES];
     }
   }
@@ -848,7 +848,7 @@ sys__macos_on_key(unsigned long *keys, int scan) {
     sys__mac_on_frame();
     _mac.col_mod = 0;
   }
-  if (dyn_has(_sys.ren_target.dirty_rects)) {
+  if (dyn_any(_sys.ren_target.dirty_rects)) {
     CGImageRelease(_mac.cg_img);
     _mac.cg_img = CGBitmapContextCreateImage(_mac.ctx_ref);
   }

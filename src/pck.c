@@ -522,7 +522,7 @@ file_node_alloc(struct file_tree_view *tree, struct sys *sys,
   assert(mem);
 
   struct file_tree_node *s = 0;
-  if (lst_has(&tree->del_lst)) {
+  if (lst_any(&tree->del_lst)) {
     s = lst_get(tree->del_lst.nxt, struct file_tree_node, hook);
     lst_del(&s->hook);
     memset(s, 0, sizeof(*s));
@@ -800,15 +800,11 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *sys,
 static void
 file_list_view_fltr(struct file_list_view *lst, struct str fltr) {
   assert(lst);
-
-  int tbl[UCHAR_MAX + 1];
-  str__fnd_tbl(tbl, fltr);
-
-  struct file_elm *elm = 0;
-  for_dyn(elm, lst->elms) {
-    if (str_fnd_str(elm->name, fltr, tbl) >= fltr.len) {
-      bit_set(lst->fltr, cast(int, elm - lst->elms));
-    }
+  struct str_fnd_tbl tbl;
+  str_fnd_tbl(&tbl, fltr);
+  fori_dyn(i, lst->elms) {
+    int has = str_fnd_tbl_has(lst->elms[i].name, fltr, &tbl);
+    bit_set_on(lst->fltr, i, has);
   }
 }
 static void
@@ -990,7 +986,7 @@ ui_file_lst_view_fnd(struct file_list_view *lst,
   if (edt.mod) {
     /* filter files by name */
     bit_fill(lst->fltr, 0x00, dyn_cnt(lst->elms));
-    if (dyn_has(lst->fnd_buf)) {
+    if (dyn_any(lst->fnd_buf)) {
       file_list_view_fltr(lst, dyn_str(lst->fnd_buf));
     }
   }
@@ -1165,7 +1161,7 @@ ui_file_view_tree_elm(struct gui_ctx *ctx, struct file_tree_view *tree,
   gui.lst.reg.elm.begin(ctx, reg, elm, n->id, is_sel);
   {
     struct gui_tree_node node = {0};
-    node.type = lst_has(&n->sub) ? GUI_TREE_NODE : GUI_TREE_LEAF;
+    node.type = lst_any(&n->sub) ? GUI_TREE_NODE : GUI_TREE_LEAF;
     node.open = set_fnd(tree->exp, n->id);
     ui_file_view_tree_node(ctx, &node, elm, n);
     if (node.changed) {

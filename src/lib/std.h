@@ -63,6 +63,9 @@ struct str {
   const char *end;
   int len;
 };
+struct str_fnd_tbl {
+  int tbl[UCHAR_MAX + 1];
+};
 struct mem_blk {
   unsigned long long flags;
   int size;

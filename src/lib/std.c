@@ -6,9 +6,9 @@ rng__bnd(int i, int n) {
 }
 static inline struct rng
 rng__mk(int lo, int hi, int s) {
-  struct rng res = {.lo = lo, .hi = hi, .step = s};
-  res.cnt = abs(res.hi - res.lo);
-  return res;
+  struct rng r = {.lo = lo, .hi = hi, .step = s};
+  r.cnt = abs(r.hi - r.lo);
+  return r;
 }
 #define arrv(b) (b), (sizeof((b))/sizeof((b)[0]))
 #define arr(b) (b), dyn_cnt((b))
@@ -384,6 +384,12 @@ bit_set(unsigned long *addr, int nr) {
   *p |= m;
   return ret;
 }
+static void
+bit_set_on(unsigned long *addr, int nr, int cond) {
+  if (cond) {
+    bit_set(addr, nr);
+  }
+}
 static int
 bit_clr(unsigned long *addr, int nr) {
   assert(addr);
@@ -392,6 +398,12 @@ bit_clr(unsigned long *addr, int nr) {
   int ret = cast(int, *p &m);
   *p &= ~m;
   return ret;
+}
+static void
+bit_clr_on(unsigned long *addr, int nr, int cond) {
+  if (cond) {
+    bit_clr(addr, nr);
+  }
 }
 static int
 bit_xor(unsigned long *addr, int nr) {
@@ -622,21 +634,21 @@ str_cmp(struct str a, struct str b) {
   return 0;
 }
 static void
-str__fnd_tbl(int *tbl, struct str s) {
+str_fnd_tbl(struct str_fnd_tbl *fnd, struct str s) {
   if (s.len < 2) return;
   for (int i = 0; i < UCHAR_MAX + 1; ++i) {
-    tbl[i] = s.len;
+    fnd->tbl[i] = s.len;
   }
   if (s.len > 0) {
     int n = s.len - 1;
     for (int i = 0; i < n; ++i) {
       unsigned char at = cast(unsigned char, s.str[i]);
-      tbl[at] = n - i;
+      fnd->tbl[at] = n - i;
     }
   }
 }
 static int
-str_fnd_str(struct str hay, struct str needle, int *tbl) {
+str_fnd_tbl_str(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
   if (needle.len > hay.len) {
     return hay.len;
   }
@@ -653,15 +665,23 @@ str_fnd_str(struct str hay, struct str needle, int *tbl) {
         !memcmp(needle.str, hay.str + hpos, cast(size_t, n))) {
       return hpos;
     }
-    hpos += tbl[c];
+    hpos += fnd->tbl[c];
   }
   return hay.len;
 }
 static int
+str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
+  return str_fnd_tbl_str(hay, needle, fnd) >= hay.len;
+}
+static int
 str_fnd(struct str hay, struct str needle) {
-  int tbl[UCHAR_MAX + 1];
-  str__fnd_tbl(tbl, needle);
-  return str_fnd_str(hay, needle, tbl);
+  struct str_fnd_tbl fnd;
+  str_fnd_tbl(&fnd, needle);
+  return str_fnd_tbl_str(hay, needle, &fnd);
+}
+static int
+str_has(struct str hay, struct str needle) {
+  return str_fnd(hay, needle) >= hay.len;
 }
 static struct str
 str_split_cut(struct str *s, struct str delim) {
@@ -1061,7 +1081,7 @@ static void lst__add(struct lst_elm *e, struct lst_elm *p, struct lst_elm *n)\
 static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt = n;}
 #define lst_del(n) lst__del((n)->prv, (n)->nxt)
 #define lst_empty(lst) ((lst)->nxt == (lst))
-#define lst_has(lst) (!lst_empty(lst))
+#define lst_any(lst) (!lst_empty(lst))
 #define for_lst(e, l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
 #define for_lst_safe(a, b, l) \
     for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
@@ -1089,7 +1109,7 @@ struct dyn_hdr {
 #define dyn_cap(b) ((b) ? abs(dyn__hdr(b)->cap) : 0)
 #define dyn_begin(b) ((b) + 0)
 #define dyn_empty(b) (dyn_cnt(b) == 0)
-#define dyn_has(b) (dyn_cnt(b) > 0)
+#define dyn_any(b) (dyn_cnt(b) > 0)
 #define dyn_end(b) ((b) + dyn_cnt(b))
 #define dyn_fit(b, s, n) (dyn__fits((b), (n)) ? 0:((b) = dyn__grow((b), (s), dyn_cnt(b) + (n), szof(*(b)))))
 #define dyn__add(b, s, x) (dyn_fit((b), (s), 1), (b)[dyn__hdr(b)->cnt++] = x)

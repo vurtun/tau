@@ -717,7 +717,7 @@ db_tbl_view_new(struct db_ui_view *db, struct sys *sys) {
   assert(db);
 
   struct db_tbl_view *s;
-  if (lst_has(&db->del_lst)) {
+  if (lst_any(&db->del_lst)) {
     s = lst_get(db->del_lst.nxt, struct db_tbl_view, hook);
     lst_del(db->del_lst.nxt);
   } else {
@@ -1195,14 +1195,11 @@ db_tab_open(struct db_ui_view *ui, struct db_tbl_view *v, struct sys *sys,
 static void
 db_tbl_lst_fltr(struct db_tbl_lst *lst, struct str fltr) {
   assert(lst);
-  int tbl[UCHAR_MAX + 1];
-  str__fnd_tbl(tbl, fltr);
-
+  struct str_fnd_tbl tbl;
+  str_fnd_tbl(&tbl, fltr);
   fori_dyn(i, lst->elms) {
-    int n = lst->elms[i].name.len;
-    if (str_fnd_str(lst->elms[i].name, fltr, tbl) >= n) {
-      bit_set(lst->fltr, i);
-    }
+    int fnd = str_fnd_tbl_has(lst->elms[i].name, fltr, &tbl);
+    bit_set_on(lst->fltr, i, fnd);
   }
 }
 static int
@@ -1455,7 +1452,7 @@ ui_db_tbl_lst_fnd(struct db_tbl_lst *lst, struct gui_ctx *ctx,
   ui_edit_search(ctx, &edt, pan, parent, &lst->fnd_ed, &lst->fnd_buf);
   if (edt.mod) {
     bit_fill(lst->fltr, 0x00, dyn_cnt(lst->elms));
-    if (dyn_has(lst->fnd_buf)) {
+    if (dyn_any(lst->fnd_buf)) {
       db_tbl_lst_fltr(lst, dyn_str(lst->fnd_buf));
     }
   }
@@ -2361,7 +2358,7 @@ ui_db_view_tree_elm_node_col(struct gui_ctx *ctx, struct db_tree_view *t,
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_tree_node node = {0};
-    node.type = lst_has(&n->sub) ? GUI_TREE_NODE : GUI_TREE_LEAF;
+    node.type = lst_any(&n->sub) ? GUI_TREE_NODE : GUI_TREE_LEAF;
     node.open = set_fnd(t->exp, n->id);
     node.box = pan->box;
 

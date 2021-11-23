@@ -87,6 +87,30 @@ static struct gui_api gui;
 static struct file_picker_api file;
 static struct db_api db;
 
+#if 0
+#ifdef NDEBUG
+#if defined(SYS_MAC)
+#include "sys/sys_mac.m"
+#elif defined(SYS_WIN)
+#include "sys/sys_win.c"
+#else
+#include "sys/sys_x11.c"
+#endif
+#include "sys/dbg.c"
+#include "sys/ren.h"
+#include "sys/ren.c"
+#include "lib/fnt.c"
+#include "lib/img.h"
+#include "lib/img.c"
+#include "lib/sql.h"
+#include "lib/sql.c"
+#include "res.c"
+#include "gui.c"
+#include "pck.c"
+#include "dbs.c"
+#endif
+#endif
+
 /* =============================================================================
  *
  *                                  App
