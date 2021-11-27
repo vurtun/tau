@@ -895,6 +895,7 @@ db_tbl_setup(struct db_tbl_view *view, struct sys *sys, sqlite3 *con,
   view->row_cnt = view->total;
   sqlite3_finalize(stmt);
   scope_end(&scp, tmp_mem, sys);
+  view->rev = (unsigned)-1;
 
   /* setup filter list table */
   struct gui_split_lay_cfg tbl_cfg = {0};
@@ -1651,6 +1652,7 @@ ui_db_tbl_view_lst_elm(struct db_ui_view *sql, struct db_tbl_view *view,
   assert(view);
   assert(tbl_cols);
 
+  gui.tbl.lst.elm.begin(ctx, tbl, elm, id, 0);
   fori_dyn(i, view->cols) {
     struct db_tbl_col *meta = &view->cols[i];
     if (data[i].len) {
@@ -1752,7 +1754,9 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
       mod |= tbl.lst.begin != view->row_begin;
       mod |= tbl.lst.end != view->row_end;
       mod |= view->rev != view->fltr.rev;
-      if (mod) db_tbl_view_setup(view, ctx->sys, sql->con, tbl.lst.begin, tbl.lst.cnt);
+      if (mod) {
+         db_tbl_view_setup(view, ctx->sys, sql->con, tbl.lst.begin, tbl.lst.cnt);
+      }
 
       int idx = 0;
       for_gui_tbl_lst(i,gui,&tbl) {
