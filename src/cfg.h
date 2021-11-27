@@ -74,8 +74,6 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_EDIT_PASTE]         = {.key = {'v', SYS_KEYMOD_CTRL}},
   [GUI_KEY_EDIT_UNDO]          = {.key = {'z', SYS_KEYMOD_CTRL}},
   [GUI_KEY_EDIT_REDO]          = {.key = {'z', SYS_KEYMOD_CTRL|SYS_KEYMOD_SHIFT}},
-  [GUI_KEY_EDIT_IN_MODE]       = {.key = {'i', 0}},
-  [GUI_KEY_EDIT_REPL_MODE]     = {.key = {'r', 0}},
   [GUI_KEY_EDIT_CLR_MODE]      = {.key = {SYS_KEY_ESCAPE, 0}},
   [GUI_KEY_EDIT_WORD_LEFT]     = {.key = {SYS_KEY_LEFT, SYS_KEYMOD_CTRL}},
   [GUI_KEY_EDIT_WORD_RIGHT]    = {.key = {SYS_KEY_RIGHT, SYS_KEYMOD_CTRL}},

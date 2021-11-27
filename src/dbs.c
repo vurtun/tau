@@ -807,7 +807,6 @@ db_tbl_view_setup(struct db_tbl_view *view, struct sys *sys, sqlite3 *con,
                   int off, int lim) {
   assert(con);
   assert(view);
-
   if (view->data) {
     scope_end(&view->scp, &view->mem, sys);
   }

@@ -1130,8 +1130,6 @@ dlEnd(struct sys *sys) {
     ren__cleanup(ren, sys);
     return;
   }
-  printf("[ren] paint %u %u\n", ren->prev_hash, ren->hash);
-
   dbg_blk_begin(sys, "ren:hash_grid");
   for (int bi = 0; bi < ren->que.cnt; ++bi) {
     struct ren_cmd_buf *buf = ren->que.bufs + bi;

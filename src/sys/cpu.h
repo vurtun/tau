@@ -351,18 +351,18 @@ int4_set(int i3, int i2, int i1, int i0) {
 #define int8 int
 #define flt8 float
 
-#define int8_ld(p) 0
-#define int8_str(p,i) 0
-#define int8_char(i) 0
-#define int8_int(i) 0
-#define int8_sll(v,i) 0
-#define int8_srl(v,i) 0
-#define int8_and(a,b) 0
-#define int8_andnot(a,b) 0
-#define int8_or(a,b) 0
-#define int8_add(a,b) 0
-#define int8_sub(a,b) 0
-#define int8_mul(a,b) 0
+#define int8_ld(p)
+#define int8_str(p,i)
+#define int8_char(i)
+#define int8_int(i)
+#define int8_sll(v,i)
+#define int8_srl(v,i)
+#define int8_and(a,b)
+#define int8_andnot(a,b)
+#define int8_or(a,b)
+#define int8_add(a,b)
+#define int8_sub(a,b)
+#define int8_mul(a,b)
 
 /* aes */
 #define aes128 uint8x16_t

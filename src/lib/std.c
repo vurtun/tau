@@ -1,3 +1,7 @@
+/* ---------------------------------------------------------------------------
+ *                                Foreach
+ * ---------------------------------------------------------------------------
+ */
 static inline int
 rng__bnd(int i, int n) {
   int l = max(n, 1) - 1;
@@ -7,6 +11,7 @@ rng__bnd(int i, int n) {
 static inline struct rng
 rng__mk(int lo, int hi, int s) {
   struct rng r = {.lo = lo, .hi = hi, .step = s};
+  assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
   r.cnt = abs(r.hi - r.lo);
   return r;
 }
@@ -15,10 +20,10 @@ rng__mk(int lo, int hi, int s) {
 #define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
 
-#define for_rng(i,l,r)\
-  for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
 #define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
 #define for_cnt(i,n) for_nstep(i,n,1)
+#define for_rng(i,l,r)\
+  for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
 
 #define for_arrp(it,a,e) for ((it) = (a); (it) < (e); ++(it))
 #define for_arr(it,a,n) for_arrp(it,a,(a)+(n))
@@ -26,6 +31,10 @@ rng__mk(int lo, int hi, int s) {
 #define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
 #define for_arr_rng(it,a,r)\
   for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
+#define for_arrv_rng(it,a, b,e,s)       \
+  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;\
+       (it) != (a) + rng(b,e,s,cntof(a)).hi;\
+       (it) += rng(b,e,s,cntof(a)).step)
 
 /* ---------------------------------------------------------------------------
  *                                  Hash
@@ -1127,10 +1136,10 @@ struct dyn_hdr {
 #define fori_dyn(i,c)\
   for (int i = 0; i < dyn_cnt(c); ++i)
 #define for_dyn(it,c) for_arr(it, c, dyn_cnt(c))
-#define for_dyn_rng(it,a, b,e,s)                            \
-  for (const char *it = (a)->str + rng(b,e,s,dyn_cnt(a)).lo;\
-   (it) != (a)->str + rng(b,e,s,dyn_cnt(a)).hi;             \
-   (it) += rng(b,e,s,dyn_cnt(a)).step)
+#define for_dyn_rng(it,a, b,e,s)                \
+  for ((it) = (a) + rng(b,e,s,dyn_cnt(a)).lo;   \
+       (it) != (a) + rng(b,e,s,dyn_cnt(a)).hi;  \
+       (it) += rng(b,e,s,dyn_cnt(a)).step)
 
 #define dyn_asn(b, s, x, n)                       \
   do {                                            \
@@ -1143,8 +1152,9 @@ struct dyn_hdr {
 #define dyn_put(b, s, i, x, n)                                            \
   do {                                                                    \
     dyn_fit(b, s, n);                                                     \
-    assert((i) < dyn_cnt(b));                                             \
-    memmove(dyn_end(b), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
+    assert((i) <= dyn_cnt(b));                                            \
+    assert((i) < dyn_cap(b));                                             \
+    memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
     memcpy((b) + (i), (x), sizeof((b)[0]) * cast(size_t, (n)));           \
     dyn__hdr(b)->cnt += (n);                                              \
   } while (0)
@@ -1154,6 +1164,7 @@ struct dyn_hdr {
     assert((i) < dyn_cnt(b));                                             \
     assert((i) + (n) <= dyn_cnt(b));                                      \
     memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
+    dyn__hdr(b)->cnt -= (n);                                              \
   } while (0)
 // clang-format on
 

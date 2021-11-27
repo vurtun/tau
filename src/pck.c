@@ -715,8 +715,8 @@ file_lst_view_clr(struct file_list_view *lst, struct sys *sys) {
   zero2(lst->off);
   lst->fltr = arena_dyn(&lst->mem, sys, unsigned long, 128);
   lst->elms = arena_dyn(&lst->mem, sys, struct file_elm, 256);
-  lst->nav_path = arena_dyn(&lst->mem, sys, char, 1024);
-  lst->full_path = arena_dyn(&lst->mem, sys, char, 1024);
+  lst->nav_path = arena_dyn(&lst->mem, sys, char, 256);
+  lst->full_path = arena_dyn(&lst->mem, sys, char, 256);
   lst->fnd_buf = arena_dyn(&lst->mem, sys, char, MAX_FILTER);
 
   gui.edt.buf.reset(&lst->fnd_ed);

@@ -2238,18 +2238,22 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
   assert(fnt);
   assert(row);
 
+  struct str begin = utf_at(0, dyn_str(buf), line_begin);
+  struct str txt = strp(begin.str, dyn_end(buf));
+  struct str end  = begin;
+
   int cnt = 0;
   unsigned rune = 0;
-  struct str end, begin = utf_at(0, dyn_str(buf), line_begin);
-  for_utf(&rune, it, _, strp(begin.end, dyn_end(buf))) {
+  for_utf(&rune, it, _, txt) {
+    end = it;
     if (rune == '\n') {
-      end = it;
       break;
     }
     cnt++;
   }
   int ext[2];
-  res.fnt_ext(ext, r, fnt, strp(begin.str, end.end));
+  struct str ln = strp(begin.str, end.end);
+  res.fnt_ext(ext, r, fnt, ln);
 
   row->char_cnt = cnt;
   row->baseline_y_dt = row_h;
@@ -2342,19 +2346,19 @@ static void
 gui__txt_edt_del(struct gui_txt_ed *edt, char **buf, int where, int len) {
   assert(edt);
   gui_txt_ed_undo_del(edt, buf, where, len);
-  dyn_cut(buf, where, len);
+  dyn_cut(*buf, where, len);
   gui_txt_ed_clamp(edt, *buf);
 }
 static void
 gui_txt_ed_del(struct gui_txt_ed *edt, char **buf, int where, int len) {
   assert(edt);
   struct str begin = utf_at(0, dyn_str(*buf), where);
-  struct str end = utf_at(0, strp(begin.end, dyn_end(*buf)), len);
-  if (!begin.len || !end.len) {
+  struct str end = utf_at(0, strp(begin.str, dyn_end(*buf)), len);
+  if (!begin.len) {
     return;
   }
   int w = cast(int, begin.str - *buf);
-  int n = cast(int, end.str - begin.end);
+  int n = cast(int, end.str - begin.str);
   gui__txt_edt_del(edt, buf, w, n);
 }
 static void
@@ -2557,6 +2561,9 @@ gui_txt_ed_txt(struct gui_txt_ed *edt, struct sys *sys, char **buf, struct str t
       edt->cur += 1;
     } else {
       gui_txt_ed_del_sel(edt, buf); /* implicitly clamps */
+      cur = utf_at(0, dyn_str(*buf), edt->cur);
+      at = cast(int, cur.str - *buf);
+
       dyn_put(*buf, sys, at, it.str, it.len);
       gui_txt_ed_undo_in(edt, at, it.len);
       edt->cur += 1;
@@ -2578,72 +2585,86 @@ gui_txt_ed_clip(struct gui_txt_ed *edt, char *buf, struct sys *sys) {
   sys->clipboard.set(str(buf + sel0, sel1 - sel0), sys->mem.tmp);
 }
 static int
-gui_txt_ed_on_key(struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
+gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
   assert(edt);
   assert(ctx);
 
   /* mode */
-  int result = 0;
+  int mod = 0;
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_IN_MODE)) {
     edt->mode = GUI_EDT_MODE_INSERT;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REPL_MODE)) {
     edt->mode = GUI_EDT_MODE_REPLACE;
+    *ret = 1;
   }
   /* selection */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_ALL)) {
     gui_txt_ed_sel_all(edt, *buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_UP)) {
     bit_set(ctx->keys, GUI_KEY_EDIT_SEL_CUR_RIGHT);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_DOWN)) {
     bit_set(ctx->keys, GUI_KEY_EDIT_SEL_CUR_LEFT);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_LEFT)) {
     gui_txt_ed_clamp(edt, *buf);
     gui_txt_ed_prep_sel_at_cur(edt);
     if (edt->sel[1] > 0) edt->sel[1]--;
     edt->cur = edt->sel[1];
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_RIGHT)) {
     gui_txt_ed_prep_sel_at_cur(edt);
     edt->sel[1]++;
     gui_txt_ed_clamp(edt, *buf);
     edt->cur = edt->sel[1];
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_LEFT)) {
     if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
     edt->cur = gui_txt_ed_move_to_prev_word(edt, *buf);
     edt->sel[1] = edt->cur;
     gui_txt_ed_clamp(edt, *buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_RIGHT)) {
     if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
     edt->cur = gui_txt_ed_move_to_next_word(edt, *buf);
     edt->sel[1] = edt->cur;
     gui_txt_ed_clamp(edt, *buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_START)) {
     gui_txt_ed_prep_sel_at_cur(edt);
     edt->cur = edt->sel[1] = 0;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_END)) {
     gui_txt_ed_prep_sel_at_cur(edt);
     edt->cur = edt->sel[1] = utf_len(dyn_str(*buf));
+    *ret = 1;
   }
   /* movement */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_UP)) {
     bit_set(ctx->keys, GUI_KEY_EDIT_CUR_LEFT);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_DOWN)) {
     bit_set(ctx->keys, GUI_KEY_EDIT_CUR_RIGHT);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_LEFT)) {
     if (gui_txt_ed_has_sel(edt))
       gui_txt_ed_move_sel_first(edt);
     else if (edt->cur > 0)
       edt->cur--;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_RIGHT)) {
     if (gui_txt_ed_has_sel(edt)) {
@@ -2652,6 +2673,7 @@ gui_txt_ed_on_key(struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
       edt->cur++;
     }
     gui_txt_ed_clamp(edt, *buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_WORD_LEFT)) {
     if (!gui_txt_ed_has_sel(edt)) {
@@ -2660,6 +2682,7 @@ gui_txt_ed_on_key(struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
     } else {
       gui_txt_ed_move_sel_first(edt);
     }
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_WORD_RIGHT)) {
     if (!gui_txt_ed_has_sel(edt)) {
@@ -2668,53 +2691,65 @@ gui_txt_ed_on_key(struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
     } else {
       gui_txt_ed_move_sel_last(edt, *buf);
     }
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_START)) {
     edt->cur = edt->sel[0] = edt->sel[1] = 0;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_END)) {
     edt->cur = utf_len(dyn_str(*buf));
     edt->sel[0] = edt->sel[1] = 0;
+    *ret = 1;
   }
   /* modification */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_DELETE)) {
     if (!gui_txt_ed_has_sel(edt)) {
-      if (edt->cur < utf_len(dyn_str(*buf))) {
+      int n = utf_len(dyn_str(*buf));
+      if (edt->cur < n) {
         gui_txt_ed_del(edt, buf, edt->cur, 1);
+      } else if (n) {
+        gui_txt_ed_del(edt, buf, n-1, 1);
       }
     } else {
       gui_txt_ed_del_sel(edt, buf);
     }
-    result = 1;
+    mod = 1;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REMOVE)) {
     if (!gui_txt_ed_has_sel(edt)) {
       if (edt->cur > 0) {
         gui_txt_ed_del(edt, buf, edt->cur - 1, 1);
-        if (edt->cur < utf_len(dyn_str(*buf))) {
-          edt->cur = max(0, edt->cur - 1);
-        }
+        edt->cur = max(0, edt->cur - 1);
+      } else if (utf_len(dyn_str(*buf))) {
+        gui_txt_ed_del(edt, buf, 0, 1);
       }
     } else {
       gui_txt_ed_del_sel(edt, buf);
     }
-    result = 1;
+    mod = 1;
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_UNDO)) {
     gui_txt_ed_undo(edt, ctx->sys, buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REDO)) {
     gui_txt_ed_redo(edt, ctx->sys, buf);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_COPY)) {
     gui_txt_ed_clip(edt, *buf, ctx->sys);
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUT)) {
     if (gui_txt_ed_has_sel(edt)) {
       gui_txt_ed_clip(edt, *buf, ctx->sys);
       gui_txt_ed_cut(edt, buf);
-      result = 1;
+      mod = 1;
     }
+    *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_PASTE)) {
     struct scope scp;
@@ -2723,9 +2758,9 @@ gui_txt_ed_on_key(struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
     struct str p = sys->clipboard.get(sys->mem.tmp);
     gui_txt_ed_paste(edt, ctx->sys, buf, p);
     scope_end(&scp, sys->mem.tmp, sys);
-    result = 1;
+    mod = 1;
   }
-  return result;
+  return mod;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2873,7 +2908,8 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
   /* input handling */
   box->active = pan->id == ctx->focused;
   if (box->active) {
-    box->mod = gui_txt_ed_on_key(edt, buf, ctx) ? 1 : 0;
+    int key = 0;
+    box->mod = !!gui_txt_ed_on_key(&key, edt, buf, ctx);
     if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_COMMIT)) {
       ctx->focused = ctx->root.id;
       box->unfocused = 1;
@@ -2883,7 +2919,7 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
       ctx->focused = ctx->root.id;
       box->aborted = 1;
     }
-    if (sys->txt_len) {
+    if (!key && sys->txt_len) {
       gui_txt_ed_txt(edt, ctx->sys, buf, str(sys->txt, sys->txt_len));
       box->mod = 1;
     }

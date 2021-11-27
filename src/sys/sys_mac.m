@@ -726,7 +726,7 @@ static unsigned
 sys__mac_mods(NSEvent* ev) {
   unsigned res = 0u;
   const NSEventModifierFlags flg = ev.modifierFlags;
-  if (flg & NSEventModifierFlagControl) {
+  if (flg & NSEventModifierFlagCommand) {
     res |= SYS_KEYMOD_CTRL;
   }
   if (flg & NSEventModifierFlagShift) {
