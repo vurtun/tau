@@ -1640,6 +1640,37 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_view *view, struct db_tbl_col *col,
   gui.tbl.hdr.slot.end(ctx, tbl, tbl_lay, &slot, view->tbl.state);
 }
 static void
+ui_db_tbl_view_lst_elm_blob(struct db_ui_view *sql, struct db_tbl_view *view,
+                            struct gui_ctx *ctx, struct gui_panel *col,
+                            struct db_tbl_col *meta, const struct str *data) {
+  if (col->is_hot && !view->blob.disabled) {
+    /* show icon to open hex view on column hover */
+    struct gui_icon btn;
+    struct gui_box lay = col->box;
+    btn.box = gui.cut.rhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
+
+    gui.ico.icon(ctx, &btn, col, ICO_FILE_IMPORT);
+    if (btn.clk) {
+      int pki = db_tbl_view_fnd_pk(view);
+      if (pki < dyn_cnt(view->cols)) {
+        struct db_tbl_col *pk = &view->cols[pki];
+        db_tbl_view_blob_view(view, &view->blob, ctx->sys, sql->con,
+          view->name, pk->name, data[pki], meta->name);
+      }
+    }
+    gui.disable(ctx, 1);
+    struct gui_panel lbl = {.box = lay};
+    gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
+    gui.enable(ctx, 1);
+  } else {
+    /* show dummy text for blob data */
+    gui.disable(ctx, 1);
+    struct gui_panel lbl = {.box = col->box};
+    gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
+    gui.enable(ctx, 1);
+  }
+}
+static void
 ui_db_tbl_view_lst_elm(struct db_ui_view *sql, struct db_tbl_view *view,
                        struct gui_ctx *ctx, struct gui_tbl *tbl,
                        struct gui_panel *elm, const int *tbl_cols,
@@ -1663,31 +1694,7 @@ ui_db_tbl_view_lst_elm(struct db_ui_view *sql, struct db_tbl_view *view,
     gui.tbl.lst.elm.col.slot(&col.box, ctx, tbl, tbl_cols);
     gui.pan.begin(ctx, &col, elm);
     if (meta->blob) {
-      if (col.is_hot && !view->blob.disabled) {
-        /* show icon to open hex view on column hover */
-        struct gui_box lay = col.box;
-        struct gui_icon btn = {0};
-        btn.box = gui.cut.rhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
-        gui.ico.icon(ctx, &btn, &col, ICO_FILE_IMPORT);
-        if (btn.clk) {
-          int pki = db_tbl_view_fnd_pk(view);
-          if (pki < dyn_cnt(view->cols)) {
-            struct db_tbl_col *pk = &view->cols[pki];
-            db_tbl_view_blob_view(view, &view->blob, ctx->sys, sql->con,
-              view->name, pk->name, data[pki], meta->name);
-          }
-        }
-        gui.disable(ctx, 1);
-        struct gui_panel lbl = {.box = lay};
-        gui.txt.lbl(ctx, &lbl, &col, strv("blob"), 0);
-        gui.enable(ctx, 1);
-      } else {
-        /* show dummy text for blob data */
-        gui.disable(ctx, 1);
-        struct gui_panel lbl = {.box = col.box};
-        gui.txt.lbl(ctx, &lbl, &col, strv("blob"), 0);
-        gui.enable(ctx, 1);
-      }
+      ui_db_tbl_view_lst_elm_blob(sql, view, ctx, &col, meta, data);
     } else {
       gui.disable(ctx, 1);
       struct gui_panel lbl = {.box = col.box};
@@ -1754,9 +1761,7 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
       mod |= tbl.lst.begin != view->row_begin;
       mod |= tbl.lst.end != view->row_end;
       mod |= view->rev != view->fltr.rev;
-      if (mod) {
-         db_tbl_view_setup(view, ctx->sys, sql->con, tbl.lst.begin, tbl.lst.cnt);
-      }
+      if (mod) db_tbl_view_setup(view, ctx->sys, sql->con, tbl.lst.begin, tbl.lst.cnt);
 
       int idx = 0;
       for_gui_tbl_lst(i,gui,&tbl) {
@@ -1900,14 +1905,15 @@ ui_db_tbl_fltr_lst_view(struct db_tbl_view *view, struct gui_ctx *ctx,
           gui.tbl.lst.elm.col.slot(&del.box, ctx, &tbl, tbl_cols);
           gui.ico.icon(ctx, &del, &elm, ICO_TRASH_ALT);
           if (del.clk){
-            del_idx= i;
+            del_idx = i;
           }
         }
         gui.tbl.lst.elm.end(ctx, &tbl, &elm);
       }
       gui.tbl.lst.end(ctx, &tbl);
-      if (del_idx >= 0)
+      if (del_idx >= 0) {
         dyn_rm(fltr->lst, del_idx);
+      }
     }
     gui.tbl.end(ctx, &tbl, pan, fltr->tbl.off);
   }

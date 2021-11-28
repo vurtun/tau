@@ -952,10 +952,28 @@ sys_mac__mouse_pos(NSEvent *e) {
   }
 }
 - (void)mouseDragged:(NSEvent*)e {
+  sys_mac__mouse_pos(e);
+  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
+      abs(_sys.mouse.pos_delta[1]) > 0) {
+    _sys.btn_mod = 1;
+    sys__mac_on_frame();
+  }
 }
 - (void)rightMouseDragged:(NSEvent*)e {
+  sys_mac__mouse_pos(e);
+  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
+      abs(_sys.mouse.pos_delta[1]) > 0) {
+    _sys.btn_mod = 1;
+    sys__mac_on_frame();
+  }
 }
 - (void)otherMouseDragged:(NSEvent*)e {
+  sys_mac__mouse_pos(e);
+  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
+      abs(_sys.mouse.pos_delta[1]) > 0) {
+    _sys.btn_mod = 1;
+    sys__mac_on_frame();
+  }
 }
 - (void)scrollWheel:(NSEvent*)e {
   float dx = cast(float, e.scrollingDeltaX);
