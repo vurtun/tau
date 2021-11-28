@@ -14,3 +14,4 @@ struct db_api {
   void (*ui)(struct db_ui_view *db, struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent);
 };
 
+

@@ -1230,4 +1230,5 @@ struct gui_api {
   struct gui_grid_api grid;
   struct gui_graph_api node;
 };
+static void gui_get_api(void *export, void *import);
 

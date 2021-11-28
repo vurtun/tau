@@ -1,3 +1,4 @@
+#ifdef DEBUG_MODE
 #include <assert.h>
 #include <stddef.h>
 #include <ctype.h>
@@ -19,6 +20,7 @@
 #include "sys.h"
 #include "../lib/fmt.c"
 #include "../lib/std.c"
+#endif
 
 #define REN_CEL_X 80
 #define REN_CEL_Y 45
@@ -1083,8 +1085,10 @@ static const struct ren_api ren_api = {
     .siz = ren_tex_siz,
   },
 };
-extern void
-dlInit(struct sys *sys) {
+
+
+static void
+ren_init(struct sys *sys) {
   struct ren *ren = arena_obj(sys->mem.arena, sys, struct ren);
   for (int i = 0; i < REN_CEL_X * REN_CEL_Y; i++) {
     ren->cel[0][i] = FNV1A32_HASH_INITIAL;
@@ -1097,8 +1101,8 @@ dlInit(struct sys *sys) {
   sys->ren = ren_api;
   sys->ren.que.dev = &ren->que;
 }
-extern void
-dlBegin(struct sys *sys) {
+static void
+ren_begin(struct sys *sys) {
   struct ren *ren = sys->renderer;
   scope_begin(&ren->scp, &ren->mem);
 }
@@ -1107,8 +1111,8 @@ ren__cleanup(struct ren *ren, struct sys *sys) {
   scope_end(&ren->scp, &ren->mem, sys);
   ren->que.cnt = 0;
 }
-extern void
-dlEnd(struct sys *sys) {
+static void
+ren_end(struct sys *sys) {
   dbg_blk_begin(sys, "render");
   struct ren *ren = sys->renderer;
 
@@ -1193,9 +1197,31 @@ dlEnd(struct sys *sys) {
   ren__cleanup(ren, sys);
   dbg_blk_end(sys);
 }
-extern void
-dlShutdown(struct sys *sys) {
+static void
+ren_shutdown(struct sys *sys) {
   struct ren *ren = sys->renderer;
   arena_free(&ren->mem, sys);
 }
+/* -----------------------------------------------------------------------------
+ *                                    API
+ * -----------------------------------------------------------------------------
+ */
+#ifdef DEBUG_MODE
+extern void
+dlInit(struct sys *sys) {
+  ren_init(sys);
+}
+extern void
+dlBegin(struct sys *sys) {
+  ren_begin(sys);
+}
+extern void
+dlEnd(struct sys *sys) {
+  ren_end(sys);
+}
+extern void
+dlShutdown(struct sys *sys) {
+  ren_shutdown(sys);
+}
+#endif
 

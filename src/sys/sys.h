@@ -1,6 +1,7 @@
 #define SYS_VERSION 1
 
 /* input */
+struct sys;
 struct sys_btn {
   unsigned down : 1;
   unsigned pressed : 1;
@@ -191,6 +192,7 @@ struct sys_clip_api {
 struct sys_time_api {
   unsigned long long (*timestamp)(void);
 };
+typedef void (*sys_mod_export)(void *export, void *import);
 struct sys_mod_api {
   int (*add)(void *exp, void *imp, struct str name);
 };

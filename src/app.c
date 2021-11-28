@@ -25,6 +25,7 @@
 #include "gui.h"
 #include "pck.h"
 #include "dbs.h"
+#include "app.h"
 
 /* -----------------------------------------------------------------------------
  *                                  App
@@ -87,18 +88,7 @@ static struct gui_api gui;
 static struct file_picker_api file;
 static struct db_api db;
 
-#if 0
-#ifdef NDEBUG
-#if defined(SYS_MAC)
-#include "sys/sys_mac.m"
-#elif defined(SYS_WIN)
-#include "sys/sys_win.c"
-#else
-#include "sys/sys_x11.c"
-#endif
-#include "sys/dbg.c"
-#include "sys/ren.h"
-#include "sys/ren.c"
+#ifdef RELEASE_MODE
 #include "lib/fnt.c"
 #include "lib/img.h"
 #include "lib/img.c"
@@ -108,7 +98,6 @@ static struct db_api db;
 #include "gui.c"
 #include "pck.c"
 #include "dbs.c"
-#endif
 #endif
 
 /* =============================================================================
@@ -185,8 +174,15 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.end(ctx, pan, parent);
 }
 extern void
-dlRegister(struct sys *sys) {
+app_on_api(struct sys *sys) {
   assert(sys);
+#ifdef RELEASE_MODE
+  unused(sys);
+  res_get_api(&res, 0);
+  gui_get_api(&gui, &res);
+  pck_get_api(&file, &gui);
+  db_get_api(&db, &gui);
+#else
   sys->plugin.add(&res, 0, strv("res"));
   if (res.version != RES_VERSION) {
 
@@ -203,9 +199,10 @@ dlRegister(struct sys *sys) {
   if (db.version != DBS_VERISON) {
 
   }
+#endif
 }
 extern void
-dlEntry(struct sys *sys) {
+app_run(struct sys *sys) {
   struct app *app = sys->app;
   if (!sys->app) {
     sys->app = arena_obj(sys->mem.arena, sys, struct app);
@@ -262,4 +259,15 @@ dlEntry(struct sys *sys) {
   }
   dbg_blk_end(sys);
 }
+
+#ifdef DEBUG_MODE
+extern void
+dlRegister(struct sys *sys) {
+  app_on_api(sys);
+}
+extern void
+dlEntry(struct sys *sys) {
+  app_run(sys);
+}
+#endif
 

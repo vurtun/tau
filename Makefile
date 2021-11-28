@@ -1,6 +1,7 @@
 platform=$(shell uname -s)
 
-BIN = muon
+DBIN = muon
+BIN = tau
 CC = clang
 DCC = clang
 
@@ -16,6 +17,7 @@ RESLIBS =
 GUILIBS =
 APPLIBS =
 PCKLIBS =
+RELLIBS = $(SYSLIBS)
 
 SYSINCL =
 DBGINCL =
@@ -24,6 +26,7 @@ RESINCL =
 GUIINCL =
 APPINCL =
 PCKINCL =
+RELINCL =
 
 SYSSRC = src/sys/sys_mac.m
 SYSOBJ = $(SYSSRC:.m=.o)
@@ -49,6 +52,9 @@ PCKOBJ = $(PCKSRC:.c=.o)
 DBSSRC = src/dbs.c
 DBSOBJ = $(DBSSRC:.c=.o)
 
+RELSRC = src/app.c
+RELOBJ = $(RELSRC:.c=.o)
+
 .PHONY: clang
 clang: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
 clang: CFLAGS += -Wno-padded -Wno-comma -Wno-missing-field-initializers
@@ -57,24 +63,28 @@ clang: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonlit
 clang: CFLAGS += -Wc++-compat -Wno-unused-function
 clang: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough
 clang: CFLAGS += -Wno-atomic-implicit-seq-cst
+clang: CFLAGS += -DDEBUG_MODE
 clang: OBJCFLAGS = -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
 clang: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-missing-field-initializers
 clang: OBJCFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch -Wno-switch-enum
 clang: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
 clang: OBJCFLAGS += -Wno-unused-function -Wimplicit-int-conversion -Wimplicit-fallthrough
 clang: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations
+clang: OBJCFLAGS += -DDEBUG_MODE
 clang: CC = clang
-clang: $(BIN)
+clang: $(DBIN)
 
 .PHONY: release
-release: CFLAGS += -g -Wall -Wextra -O2
-release: OBJCFLAGS = -g -Wall -Wextra -O2
+release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto
+release: CFLAGS += -DRELEASE_MODE
+release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto
+release: OBJCFLAGS += -DRELEASE_MODE
 release: CC = clang
 release: $(BIN)
 
-$(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(PCKOBJ) $(DBSOBJ)
+$(DBIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(PCKOBJ) $(DBSOBJ)
 	@mkdir -p bin
-	rm -f bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
+	rm -f bin/$(DBIN) bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
 	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(PCKOBJ) $(DBSOBJ)
 	$(CC) $(OBJCFLAGS) $(SYSINCL) -o bin/$(BIN) $(SYSSRC) $(SYSLIBS)
 	$(CC) $(CFLAGS) $(DBGINCL) -shared $(INCL) -o bin/dbg.so $(DBGSRC) $(DBGLIBS)
@@ -84,6 +94,14 @@ $(BIN): $(APPOBJ) $(SYSOBJ) $(RENOBJ) $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(PCKOBJ) $(
 	$(CC) $(CFLAGS) $(GUIINCL) -shared $(INCL) -o bin/gui.so $(GUISRC) $(GUILIBS)
 	$(CC) $(CFLAGS) $(PCKINCL) -shared $(INCL) -o bin/pck.so $(PCKSRC) $(PCKLIBS)
 	$(CC) $(CFLAGS) $(DBSINCL) -shared $(INCL) -o bin/dbs.so $(DBSSRC) $(DBSLIBS)
+
+$(BIN): $(RELOBJ) $(APPOBJ)
+	@mkdir -p bin
+	rm -f bin/$(DBIN) bin/$(BIN) $(APPOBJ) $(SYSOBJ) $(RENOBJ)
+	rm -f $(RESOBJ) $(GUIOBJ) $(DBGOBJ) $(PCKOBJ) $(DBSOBJ)
+	rm -f bin/$(BIN) $(RELOBJ) $(SYSOBJ)
+	$(CC) $(OBJCFLAGS) $(SYSINCL) -c $(SYSSRC) -o $(SYSOBJ)  $(SYSLIBS)
+	$(CC) $(CFLAGS) $(RELINCL) -o bin/$(BIN) $(APPSRC) $(SYSOBJ) $(RELLIBS)
 
 else # UNIX
 

@@ -31,6 +31,7 @@ struct res_api {
   void (*print)(struct ren_cmd_buf *buf, struct res *res, int x, int y, struct str txt);
   void (*fnt_ext)(int *ext, struct res *res, struct res_fnt *fnt, struct str txt);
 };
+static void res_get_api(void *export, void *import);
 
 #define ICO_MIN_FA 0xf000
 #define ICO_MAX_FA 0xf976

@@ -1,3 +1,4 @@
+#ifdef DEBUG_MODE
 /* std */
 #include <assert.h>
 #include <stddef.h>
@@ -25,6 +26,9 @@
 /* app */
 #include "res.h"
 #include "gui.h"
+
+static struct res_api res;
+#endif
 
 /* ---------------------------------------------------------------------------
  *                                Data
@@ -56,7 +60,6 @@ static const struct gui_img_def gui_img_def[GUI_IMG_MAX] = {
   [GUI_IMG_CHEVRONR]  = {.w =  8, .h =  8, .cmap = gui_img_check_cmap,  .data = gui_img_chevron_right_data},
 };
 // clang-format on
-static struct res_api res;
 
 /* ---------------------------------------------------------------------------
  *                                Utility
@@ -5786,11 +5789,18 @@ static const struct gui_api gui_api = {
     },
   },
 };
+static void
+gui_get_api(void *export, void *import) {
+  unused(import);
+  struct gui_api *api = (struct gui_api*)export;
+  *api = gui_api;
+}
+#ifdef DEBUG_MODE
 extern void
 dlExport(void *export, void *import) {
-  struct gui_api *gui = (struct gui_api*)export;
   struct res_api *im = (struct res_api*)import;
+  gui_get_api(export, import);
   res = *im;
-  *gui = gui_api;
 }
+#endif
 

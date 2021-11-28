@@ -55,6 +55,7 @@
 #define bits_to_long(nr) (int)div_round_up((unsigned long)nr, BITS_PER_LONG)
 // clang-format on
 
+typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
   int lo, hi, step, cnt;
 };

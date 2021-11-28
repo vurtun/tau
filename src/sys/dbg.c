@@ -1,3 +1,4 @@
+#ifdef DEBUG_MODE
 #include <assert.h>
 #include <stddef.h>
 #include <ctype.h>
@@ -19,6 +20,7 @@
 #include "sys.h"
 #include "../lib/fmt.c"
 #include "../lib/std.c"
+#endif
 
 struct dbg_evt {
   enum dbg_type type;
@@ -51,22 +53,22 @@ dbg_rec(struct sys *sys, enum dbg_type type, const char *guid, const char *name)
   evt->guid = guid;
   evt->name = name;
 }
-static const struct dbg_api dbg_api = {
-  .rec = dbg_rec,
-};
-extern void
-dlInit(struct sys *sys) {
+static void
+dbg_init(struct sys *sys) {
+  static const struct dbg_api dbg_api = {
+    .rec = dbg_rec,
+  };
   assert(sys);
   sys->debug = arena_obj(sys->mem.arena, sys, struct dbg);
   sys->dbg = dbg_api;
 }
-extern void
-dlBegin(struct sys *sys) {
+static void
+dbg_begin(struct sys *sys) {
   assert(sys);
-  dbg_blk_begin(sys, "FrameBegin");
+  dbg_blk_begin(sys, "frame");
 }
-extern void
-dlEnd(struct sys *sys) {
+static void
+dbg_end(struct sys *sys) {
   assert(sys);
   dbg_blk_end(sys);
 
@@ -81,4 +83,18 @@ dlEnd(struct sys *sys) {
   unsigned evt_cnt = evt_idx & 0xFFFFFFFF;
 #endif
 }
+#ifdef DEBUG_MODE
+extern void
+dlInit(struct sys *sys) {
+  dbg_init(sys);
+}
+extern void
+dlBegin(struct sys *sys) {
+  dbg_begin(sys);
+}
+extern void
+dlEnd(struct sys *sys) {
+  dbg_end(sys);
+}
+#endif
 

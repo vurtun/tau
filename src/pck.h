@@ -14,4 +14,5 @@ struct file_picker_api {
   int (*ui)(char **filepath, struct file_view*, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent);
 };
+static void pck_get_api(void *export, void *import);
 

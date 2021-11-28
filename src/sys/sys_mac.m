@@ -35,6 +35,12 @@
 #include "sys.h"
 #include "../lib/std.c"
 
+#ifdef RELEASE_MODE
+#include "../app.h"
+#include "dbg.c"
+#include "ren.c"
+#endif
+
 @interface sys__mac_app_delegate : NSObject<NSApplicationDelegate>
 @end
 @interface sys__mac_window : NSWindow
@@ -73,7 +79,7 @@ struct sys_mac_module {
   int sym_cnt;
   char **sym_names;
   void **syms;
-  void(*dlExport)(void *export, void *import);
+  sys_mod_export dlExport;
 };
 struct sys_mac {
   int quit;
@@ -512,6 +518,9 @@ sys__mac_free(void) {
   if (_mac.cg_img) {
     CGImageRelease(_mac.cg_img);
   }
+  sys_mac_mod_close(&_mac.dbg_lib);
+  sys_mac_mod_close(&_mac.ren_lib);
+  sys_mac_mod_close(&_mac.app_lib);
 }
 static void
 sys__mac_on_frame(void) {
@@ -1083,6 +1092,22 @@ main(int argc, char* argv[]) {
   /* constants */
   _sys.dpi_scale[0] = 1.0f;
   _sys.dpi_scale[1] = 1.0f;
+
+#ifdef RELEASE_MODE
+  _mac.dbg.dlInit = dbg_init;
+  _mac.dbg.dlBegin = dbg_begin;
+  _mac.dbg.dlEnd = dbg_end;
+  dbg_init(&_sys);
+
+  _mac.ren.dlInit = ren_init;
+  _mac.ren.dlBegin = ren_begin;
+  _mac.ren.dlEnd = ren_end;
+  _mac.ren.dlShutdown = ren_shutdown;
+
+  _mac.app.dlRegister = app_on_api;
+  _mac.app.dlEntry = app_run;
+  _mac.app.dlRegister(&_sys);
+#else
   _mac.exe_path = sys_mac_get_exe_path(&_mac.mem);
   _mac.ren_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("ren"), strv(".so"), &_mac.mem);
   _mac.app_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("app"), strv(".so"), &_mac.mem);
@@ -1116,6 +1141,8 @@ main(int argc, char* argv[]) {
   if (_mac.app.dlRegister)  {
     _mac.app.dlRegister(&_sys);
   }
+#endif
+
   /* start application */
   [NSApplication sharedApplication];
   _mac.app_dlg = [[sys__mac_app_delegate alloc] init];

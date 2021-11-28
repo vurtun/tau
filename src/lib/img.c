@@ -1057,10 +1057,10 @@ static int
 img_is_hdr_from_file(FILE *f) {
 #ifndef IMG_NO_HDR
   long pos = ftell(f);
-  int res;
+  int ret;
   img__context s;
   img__start_file(&s, f);
-  res = img__hdr_test(&s);
+  ret = img__hdr_test(&s);
   fseek(f, pos, SEEK_SET);
   return res;
 #else
@@ -1191,14 +1191,14 @@ img__getn(img__context *s, img_uc *buffer, int n) {
   if (s->io.read) {
     int blen = (int)(s->img_buffer_end - s->img_buffer);
     if (blen < n) {
-      int res, count;
+      int ret, count;
 
       memcpy(buffer, s->img_buffer, blen);
 
       count = (s->io.read)(s->io_user_data, (char *)buffer + blen, n - blen);
-      res = (count == (n - blen));
+      ret = (count == (n - blen));
       s->img_buffer = s->img_buffer_end;
-      return res;
+      return ret;
     }
   }
 
@@ -5706,7 +5706,7 @@ img__tga_info(img__context *s, int *x, int *y, int *comp) {
 
 static int
 img__tga_test(img__context *s) {
-  int res = 0;
+  int ret = 0;
   int sz, tga_color_type;
   img__get8(s);                           //   discard Offset
   tga_color_type = img__get8(s);          //   color type
@@ -5734,12 +5734,12 @@ img__tga_test(img__context *s) {
   if ((sz != 8) && (sz != 15) && (sz != 16) && (sz != 24) && (sz != 32))
     goto errorEnd;
 
-  res = 1;  // if we got this far, everything's good and we can return 1 instead
+  ret = 1;  // if we got this far, everything's good and we can return 1 instead
             // of 0
 
 errorEnd:
   img__rewind(s);
-  return res;
+  return ret;
 }
 
 // read 16bit value and convert to 24bit RGB

@@ -31,3 +31,7 @@ struct ren_api {
   struct ren_img_api tex;
 };
 
+static void ren_init(struct sys *sys);
+static void ren_begin(struct sys *sys);
+static void ren_end(struct sys *sys);
+

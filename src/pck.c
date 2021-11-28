@@ -1,3 +1,4 @@
+#ifdef DEBUG_MODE
 /* std */
 #include <assert.h>
 #include <stddef.h>
@@ -26,6 +27,9 @@
 #include "res.h"
 #include "gui.h"
 #include "pck.h"
+
+static struct gui_api gui;
+#endif
 
 /* -----------------------------------------------------------------------------
  *                              File Picker
@@ -82,11 +86,10 @@ struct file_elm {
   unsigned isvalid : 1;
   unsigned isdir : 1;
 };
-typedef int (*tbl_sort_f)(const void *a, const void *b);
 struct file_tbl_col_def {
   struct str title;
   struct gui_split_lay_slot ui;
-  tbl_sort_f sort[2];
+  sort_f sort[2];
 };
 enum file_tbl_hdr_col {
   FILE_TBL_NAME,
@@ -169,7 +172,6 @@ struct file_view {
   unsigned tree_rev;
   struct file_tree_view tree;
 };
-static struct gui_api gui;
 
 /* =============================================================================
  *
@@ -660,8 +662,8 @@ file_tree_node_fnd(struct file_tree_node *n, struct str str) {
   struct file_tree_node *s = 0;
   for_lst(elm, &n->sub) {
     s = lst_get(elm, struct file_tree_node, hook);
-    struct str file = path_file(s->fullpath);
-    if (str_eq(str, file)) {
+    struct str file_name = path_file(s->fullpath);
+    if (str_eq(str, file_name)) {
       return s;
     }
   }
@@ -1013,9 +1015,10 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
     struct gui_btn up = {.box = gui.cut.rhs(&lay, ctx->cfg.item, gap)};
     if (gui.btn.ico(ctx, &up, pan, ICO_ARROW_CIRCLE_UP)) {
       /* go up to parent directory  */
-      struct str file = path_file(dyn_str(lst->full_path));
-      if (file.str - lst->full_path > fs->home.len) {
-        file_view_cd(fs, ctx->sys, strp(lst->full_path, file.str));
+      struct str file_name = path_file(dyn_str(lst->full_path));
+      struct str file_path = strp(lst->full_path, file_name.str);
+      if (file_path.len > fs->home.len) {
+        file_view_cd(fs, ctx->sys, strp(lst->full_path, file_name.str));
       }
     }
     struct gui_edit_box edt = {.box = lay};
@@ -1445,18 +1448,24 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
  * ---------------------------------------------------------------------------
  */
 extern void dlExport(void *export, void *import);
-
 static const struct file_picker_api pck_api = {
   .init = file_view_setup,
   .update = file_view_update,
   .shutdown = file_view_free,
   .ui = ui_file_sel,
 };
-extern void
-dlExport(void *export, void *import) {
+static void
+pck_get_api(void *export, void *import) {
+  unused(import);
   struct file_picker_api *exp = cast(struct file_picker_api*, export);
-  struct gui_api *im = cast(struct gui_api*, import);
-  gui = *im;
   *exp = pck_api;
 }
+#ifdef DEBUG_MODE
+extern void
+dlExport(void *export, void *import) {
+  struct gui_api *im = cast(struct gui_api*, import);
+  pck_get_api(export, import);
+  gui = *im;
+}
+#endif
 

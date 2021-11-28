@@ -1,3 +1,4 @@
+#ifdef DEBUG_MODE
 /* std */
 #include <assert.h>
 #include <stddef.h>
@@ -23,6 +24,7 @@
 
 #include "res.h"
 #include "lib/fnt.c"
+#endif
 
 /* ---------------------------------------------------------------------------
  *
@@ -1603,11 +1605,11 @@ retry:;
   set->img = img_new(a, sys, w, h);
   float s = fnt_scale_for_mapping_em_to_pixels(&fnt->stbfont, 1) /
             fnt_scale_for_pixel_height(&fnt->stbfont, 1);
-  int res = fnt_bake_bitmap(fnt->data, 0, fnt->size * s, (void *)set->img,
+  int ret = fnt_bake_bitmap(fnt->data, 0, fnt->size * s, (void *)set->img,
                             w, h, idx * 256, 256, set->glyphs);
 
   /* retry with a larger image buffer if the buffer wasn't large enough */
-  if (res < 0) {
+  if (ret < 0) {
     w *= 2, h *= 2;
     scope_end(&scp, a, sys);
     goto retry;
@@ -1630,17 +1632,17 @@ retry:;
   return set;
 }
 static struct res_glyph_set *
-res_fnt_get_glyphset(struct res *res, struct res_fnt *fnt, int codepoint) {
-  struct sys *sys = res->sys;
+res_fnt_get_glyphset(struct res *r, struct res_fnt *fnt, int codepoint) {
+  struct sys *sys = r->sys;
   int idx = (codepoint >> 8) % RES_MAX_GLYPHSET;
   if (!fnt->sets[idx]) {
-    fnt->sets[idx] = res__load_glyphset(res, fnt, sys->mem.arena, idx);
+    fnt->sets[idx] = res__load_glyphset(r, fnt, sys->mem.arena, idx);
   }
   return fnt->sets[idx];
 }
 static struct res_fnt *
-res_fnt_new(struct res *res, struct arena *a, void *data, float pntsiz) {
-  struct sys *sys = res->sys;
+res_fnt_new(struct res *r, struct arena *a, void *data, float pntsiz) {
+  struct sys *sys = r->sys;
 
   /* init font */
   struct scope scp;
@@ -1669,12 +1671,12 @@ fail:
   return 0;
 }
 static struct fnt_baked_char *
-res_fnt_glyph(struct res *res, struct res_fnt *fnt, long rune) {
-  struct res_glyph_set *set = res_fnt_get_glyphset(res, fnt, cast(int, rune));
+res_fnt_glyph(struct res *r, struct res_fnt *fnt, long rune) {
+  struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
   return &set->glyphs[rune & 0xFF];
 }
 static void
-res_fnt_ext(int *ext, struct res *res, struct res_fnt *fnt, struct str txt) {
+res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
   assert(ext);
   assert(fnt);
 
@@ -1683,7 +1685,7 @@ res_fnt_ext(int *ext, struct res *res, struct res_fnt *fnt, struct str txt) {
 
   unsigned rune = 0;
   for_utf(&rune, it, rest, txt) {
-    struct fnt_baked_char *g = res_fnt_glyph(res, fnt, rune);
+    struct fnt_baked_char *g = res_fnt_glyph(r, fnt, rune);
     ext[0] += ceili(g->xadvance);
     if (rest.len ) {
       unsigned nxt = utf_get(rest);
@@ -1694,10 +1696,10 @@ res_fnt_ext(int *ext, struct res *res, struct res_fnt *fnt, struct str txt) {
   }
 }
 static struct fnt_baked_char *
-res__glyph(struct ren_cmd_buf *buf, struct res *res, struct res_fnt *fnt,
+res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
            int x, int y, int rune) {
-  struct sys *sys = res->sys;
-  struct res_glyph_set *set = res_fnt_get_glyphset(res, fnt, cast(int, rune));
+  struct sys *sys = r->sys;
+  struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
   struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
 
   int sx = g->x0;
@@ -1711,31 +1713,30 @@ res__glyph(struct ren_cmd_buf *buf, struct res *res, struct res_fnt *fnt,
   return g;
 }
 static void
-ren_print(struct ren_cmd_buf *buf, struct res *res,
-          int x, int y, struct str txt) {
+ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) {
   unsigned rune = 0;
   for_utf(&rune, _, rest, txt) {
     struct fnt_baked_char *g;
-    g = res__glyph(buf, res, res->fnt, x, y, cast(int, rune));
+    g = res__glyph(buf, r, r->fnt, x, y, cast(int, rune));
     x += roundi(g->xadvance);
 
     if (rest.len ) {
       unsigned nxt = utf_get(rest);
-      int k = fnt_get_codepoint_kern_advance(&res->fnt->stbfont,
+      int k = fnt_get_codepoint_kern_advance(&r->fnt->stbfont,
         cast(int, rune), cast(int, nxt));
-      x += ceili(res->fnt->scale * cast(float, k));
+      x += ceili(r->fnt->scale * cast(float, k));
     }
   }
 }
 static void
-ren_ico_siz(int *siz, struct res *res, const char *ico) {
+ren_ico_siz(int *siz, struct res *r, const char *ico) {
   siz[0] = siz[1] = 0;
 
   unsigned rune = 0;
   struct str utf8 = str0(ico);
   utf_dec(&rune, &utf8);
   if (rune != UTF_INVALID) {
-    struct res_glyph_set *set = res_fnt_get_glyphset(res, res->ico, cast(int, rune));
+    struct res_glyph_set *set = res_fnt_get_glyphset(r, r->ico, cast(int, rune));
     struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
 
     siz[0] = g->x1 - g->x0;
@@ -1743,25 +1744,25 @@ ren_ico_siz(int *siz, struct res *res, const char *ico) {
   }
 }
 static void
-ren_ico(struct ren_cmd_buf *buf, struct res *res, int x, int y, const char *ico) {
+ren_ico(struct ren_cmd_buf *buf, struct res *r, int x, int y, const char *ico) {
   unsigned rune = 0;
   struct str utf8 = str0(ico);
   utf_dec(&rune, &utf8);
   if (rune != UTF_INVALID) {
     struct fnt_baked_char *g;
-    g = res__glyph(buf, res, res->ico, x, y, cast(int, rune));
+    g = res__glyph(buf, r, r->ico, x, y, cast(int, rune));
   }
 }
 static void
-res_init(struct res *res) {
-  struct sys *sys = res->sys;
+res_init(struct res *r) {
+  struct sys *sys = r->sys;
   struct scope scp;
   scope_begin(&scp, sys->mem.tmp);
   {
     int fnt_siz = 0;
     void *mem = res_default_fnt(&fnt_siz, sys, sys->mem.arena, sys->mem.tmp);
-    res->fnt = res_fnt_new(res, sys->mem.arena, mem, 16.0f);
-    assert(res->fnt);
+    r->fnt = res_fnt_new(r, sys->mem.arena, mem, 16.0f);
+    assert(r->fnt);
   }
   scope_end(&scp, sys->mem.tmp, sys);
 
@@ -1769,14 +1770,14 @@ res_init(struct res *res) {
   scope_begin(&scp, sys->mem.tmp);
   {
     void *mem = res_icon_fnt(&ico_siz, sys, sys->mem.arena, sys->mem.tmp);
-    res->ico = res_fnt_new(res, sys->mem.arena, mem, 14.0f);
-    assert(res->ico);
+    r->ico = res_fnt_new(r, sys->mem.arena, mem, 14.0f);
+    assert(r->ico);
   }
   scope_end(&scp, sys->mem.tmp, sys);
 }
 
 /* ---------------------------------------------------------------------------
- *                                  System
+ *                                  API
  * ---------------------------------------------------------------------------
  */
 extern void dlExport(void *export, void *import);
@@ -1788,10 +1789,16 @@ static const struct res_api res_api = {
   .print = ren_print,
   .fnt_ext = res_fnt_ext,
 };
-extern void
-dlExport(void *export, void *import) {
+static void
+res_get_api(void *export, void *import) {
   unused(import);
   struct res_api *res = (struct res_api*)export;
   *res = res_api;
 }
+#ifdef DEBUG_MODE
+extern void
+dlExport(void *export, void *import) {
+  res_get_api(export, import);
+}
+#endif
 
