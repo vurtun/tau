@@ -141,7 +141,7 @@ struct file_tree_node {
   struct lst_elm hook;
   struct lst_elm sub;
 
-  uintptr_t id;
+  unsigned long long id;
   struct str fullpath;
   int depth;
 };
@@ -151,7 +151,7 @@ struct file_tree_view {
   struct file_tree_node root;
   dyn(struct file_tree_node*) lst;
   struct lst_elm del_lst;
-  uintptr_t *exp;
+  unsigned long long *exp;
 
   int sel;
   double off[2];
@@ -478,7 +478,7 @@ file_tree_node_sort_after_elm(struct file_tree_node *n,
 
   struct lst_elm *elm = 0;
   for_lst(elm, &n->sub) {
-    struct file_tree_node *it;
+    struct file_tree_node *it = 0;
     it = lst_get(elm, struct file_tree_node, hook);
     if (str_cmp(s->fullpath, it->fullpath) < 0) {
       break;
@@ -498,10 +498,8 @@ file_tree_node_lnk(struct file_tree_node *n,
   lst__add(&s->hook, elm->prv, elm);
 }
 static void
-file_tree_node_setup(struct sys *sys, struct arena *mem,
-                         struct file_tree_node *s,
-                         struct file_tree_node *n, struct str p,
-                         unsigned long long id) {
+file_tree_node_init(struct sys *sys, struct arena *mem, struct file_tree_node *s,
+                    struct file_tree_node *n, struct str p, unsigned long long id) {
   assert(sys);
   assert(mem);
   assert(s);
@@ -517,8 +515,7 @@ file_tree_node_setup(struct sys *sys, struct arena *mem,
   file_tree_node_lnk(n, s);
 }
 static struct file_tree_node*
-file_node_alloc(struct file_tree_view *tree, struct sys *sys,
-                    struct arena *mem) {
+file_node_alloc(struct file_tree_view *tree, struct sys *sys, struct arena *mem) {
   assert(tree);
   assert(sys);
   assert(mem);
@@ -535,8 +532,8 @@ file_node_alloc(struct file_tree_view *tree, struct sys *sys,
 }
 static struct file_tree_node*
 file_view_tree_node_new(struct file_tree_view *tree, struct sys *sys,
-                            struct arena *mem, struct file_tree_node *n,
-                            struct str path, unsigned long long id) {
+                        struct arena *mem, struct file_tree_node *n,
+                        struct str path, unsigned long long id) {
   assert(tree);
   assert(sys);
   assert(mem);
@@ -544,7 +541,7 @@ file_view_tree_node_new(struct file_tree_view *tree, struct sys *sys,
 
   struct file_tree_node *s = 0;
   s = file_node_alloc(tree, sys, mem);
-  file_tree_node_setup(sys, mem, s, n, path, id);
+  file_tree_node_init(sys, mem, s, n, path, id);
   return s;
 }
 static void
@@ -580,7 +577,7 @@ file_view_tree_build(struct file_tree_view *tree,
   struct scope scp = {0};
   scope_begin(&scp, tmp);
   {
-    uintptr_t *set = arena_set(tmp, sys, 1024);
+    unsigned long long *set = arena_set(tmp, sys, 1024);
     struct lst_elm *elm = 0;
     for_lst(elm, &n->sub) {
       struct file_tree_node *s;
@@ -637,7 +634,7 @@ file_view_tree_serial(struct file_tree_view *tree,
   if (set_fnd(tree->exp, n->id)) {
     struct lst_elm *it = 0;
     for_lst(it, &n->sub) {
-      struct file_tree_node *s;
+      struct file_tree_node *s = 0;
       s = lst_get(it, struct file_tree_node, hook);
       lst = file_view_tree_serial(tree, s, lst, sys);
     }
@@ -657,7 +654,6 @@ file_tree_update(struct file_view *fs, struct sys *sys) {
 static struct file_tree_node*
 file_tree_node_fnd(struct file_tree_node *n, struct str str) {
   assert(n);
-
   struct lst_elm *elm = 0;
   struct file_tree_node *s = 0;
   for_lst(elm, &n->sub) {
@@ -675,7 +671,6 @@ file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
   assert(tree);
   assert(sys);
   assert(fs);
-
   int off = fs->home.len + 1;
   if (p.len < off) {
     return;
@@ -837,7 +832,7 @@ file_view_cd(struct file_view *fs, struct sys *sys, struct str path) {
   fs->lst.con = FILE_CON_MENU_MAIN;
 }
 static void
-file_list_view_setup(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx) {
+file_list_view_init(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx) {
   assert(fs);
   assert(sys);
   assert(ctx);
@@ -860,7 +855,7 @@ file_list_view_setup(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx)
   file_view_cd(fs, sys, fs->home);
 }
 static void
-file_tree_view_setup(struct file_view *fs, struct sys *sys) {
+file_tree_view_init(struct file_view *fs, struct sys *sys) {
   assert(fs);
   assert(sys);
 
@@ -877,7 +872,7 @@ file_tree_view_setup(struct file_view *fs, struct sys *sys) {
   set_put(fs->tree.exp, sys, fs->tree.root.id);
 }
 static struct file_view*
-file_view_setup(struct sys *sys, struct gui_ctx *ctx, struct arena *mem,
+file_view_init(struct sys *sys, struct gui_ctx *ctx, struct arena *mem,
                 struct arena *tmp_arena) {
   assert(sys);
   assert(ctx);
@@ -895,8 +890,8 @@ file_view_setup(struct sys *sys, struct gui_ctx *ctx, struct arena *mem,
   cfg.cnt = FILE_SPLIT_MAX;
   gui.splt.lay.bld(fs->split, ctx, &cfg);
 
-  file_list_view_setup(fs, sys, ctx);
-  file_tree_view_setup(fs, sys);
+  file_list_view_init(fs, sys, ctx);
+  file_tree_view_init(fs, sys);
   return fs;
 }
 static void
@@ -1449,7 +1444,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
  */
 extern void dlExport(void *export, void *import);
 static const struct file_picker_api pck_api = {
-  .init = file_view_setup,
+  .init = file_view_init,
   .update = file_view_update,
   .shutdown = file_view_free,
   .ui = ui_file_sel,

@@ -304,6 +304,9 @@ sys_mac_mem_alloc(struct mem_blk* opt_old, int siz, unsigned flags,
       lck_rel(&_mac.mem_lck);
     }
     blk = realloc(opt_old, (size_t)total);
+    if (!opt_old) {
+      memset(blk, 0, cast(size_t, total));
+    }
     blk->blk.base = (unsigned char*)blk + base_off;
   } else {
     blk = mmap(0, mapsiz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);

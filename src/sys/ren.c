@@ -958,7 +958,8 @@ ren__merge_rects(struct sys_rect *res, const struct sys_rect *a,
   *res = (struct sys_rect){x1, y1, x2 - x1, y2 - y1};
 }
 static void
-ren__push_rect(struct sys_ren_target *ren_tar, struct sys *s, const struct sys_rect *r) {
+ren__push_rect(struct sys_ren_target *ren_tar, struct sys *s,
+               const struct sys_rect *r) {
   for (int i = dyn_cnt(ren_tar->dirty_rects) - 1; i >= 0; i--) {
     struct sys_rect *rp = ren_tar->dirty_rects + i;
     if (ren__rects_overlap(rp, r)) {
@@ -1031,14 +1032,13 @@ ren_tex_mk(void *ren_hdl, const unsigned *mem, int w, int h) {
   assert(ren_hdl);
   struct ren *ren = cast(struct ren*, ren_hdl);
   for (int i = 0; i < REN_TEX_MAX; ++i) {
-    if (ren->tex[i].act) {
-      continue;
+    if (!ren->tex[i].act) {
+      struct ren_tex *tex = ren->tex + i;
+      tex->w = w, tex->h = h;
+      tex->mem = mem;
+      tex->act = 1;
+      return i;
     }
-    struct ren_tex *tex = ren->tex + i;
-    tex->w = w, tex->h = h;
-    tex->mem = mem;
-    tex->act = 1;
-    return i;
   }
   return REN_TEX_MAX;
 }
@@ -1085,8 +1085,6 @@ static const struct ren_api ren_api = {
     .siz = ren_tex_siz,
   },
 };
-
-
 static void
 ren_init(struct sys *sys) {
   struct ren *ren = arena_obj(sys->mem.arena, sys, struct ren);
@@ -1130,6 +1128,7 @@ ren_end(struct sys *sys) {
     ren->prev_hash = FNV1A32_HASH_INITIAL;
   }
   if (ren->hash == ren->prev_hash) {
+    /* coarse grained change detection */
     dbg_blk_end(sys);
     ren__cleanup(ren, sys);
     return;

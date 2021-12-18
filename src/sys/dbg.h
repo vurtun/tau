@@ -24,6 +24,7 @@ struct dbg_api {
   void (*rec)(struct sys *sys, enum dbg_type type, const char *guid, const char *name);
 };
 
+
 static void dbg_init(struct sys *sys);
 static void dbg_begin(struct sys *sys);
 static void dbg_end(struct sys *sys);

@@ -501,7 +501,7 @@ struct gui_lst_sel {
   enum gui_lst_sel_hov hov;
   enum gui_lst_sel_behavior bhv;
   unsigned long *bitset;
-  uintptr_t *set;
+  unsigned long long *set;
   int cnt;
   /* out: */
   enum gui_lst_sel_mod mut;
@@ -703,9 +703,9 @@ struct gui_tbl {
   struct gui_tbl_sort sort;
   /* out: loop */
   struct gui_panel *pan;
+  struct gui_lst lst;
   /* internal */
   int hdr_h;
-  struct gui_lst lst;
   struct gui_reg reg;
   struct gui_split spt;
   struct gui_box clip;

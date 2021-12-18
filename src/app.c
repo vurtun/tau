@@ -183,6 +183,7 @@ app_on_api(struct sys *sys) {
   pck_get_api(&file, &gui);
   db_get_api(&db, &gui);
 #else
+  /* load plugins */
   sys->plugin.add(&res, 0, strv("res"));
   if (res.version != RES_VERSION) {
 
@@ -199,6 +200,9 @@ app_on_api(struct sys *sys) {
   if (db.version != DBS_VERISON) {
 
   }
+  /* run unit tests */
+  ut_set(sys);
+  ut_tbl(sys);
 #endif
 }
 extern void

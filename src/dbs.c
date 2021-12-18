@@ -205,7 +205,7 @@ struct db_tree_node {
   struct db_tree_node *parent;
   struct lst_elm hook;
   struct lst_elm sub;
-  uintptr_t id;
+  unsigned long long id;
   int depth;
 
   struct str name;
@@ -221,7 +221,7 @@ struct db_tree_view {
   unsigned rev;
   struct arena mem;
   dyn(struct db_tree_node*) lst;
-  uintptr_t *exp;
+  unsigned long long *exp;
 
   /* tree */
   struct db_tree_node root;
@@ -717,7 +717,6 @@ db_graph_end(struct db_ui_view *d, struct db_graph *g, struct gui_ctx *ctx,
 static struct db_tbl_view*
 db_tbl_view_new(struct db_ui_view *d, struct sys *sys) {
   assert(db);
-
   struct db_tbl_view *s;
   if (lst_any(&d->del_lst)) {
     s = lst_get(d->del_lst.nxt, struct db_tbl_view, hook);
@@ -986,19 +985,24 @@ db_tbl_view_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
 #endif
   }
 }
+struct db_fltr_arg {
+  struct str tbl;
+  struct str col;
+  struct str match;
+  int off, lim;
+};
 static void
-db_tbl_view_fltr_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
-                       struct sys *sys, struct arena *mem, sqlite3 *con,
-                       struct str tbl, struct str col, struct str match,
-                       int off, int lim) {
+db_tbl_view_fltr_init(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
+                      struct sys *sys, struct arena *mem, sqlite3 *con,
+                      struct db_fltr_arg *arg) {
   assert(con);
   assert(mem);
   assert(view);
   assert(fltr);
 
   view->row_cnt = 0;
-  view->row_begin = off;
-  view->row_end = off + lim;
+  view->row_begin = arg->off;
+  view->row_end = arg->off + arg->lim;
 
   if (view->data) {
     scope_end(&view->scp, mem, sys);
@@ -1010,16 +1014,17 @@ db_tbl_view_fltr_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
   sqlite3_stmt *stmt;
   struct scope scp = {0};
   scope_begin(&scp, mem);
-  int has_match = match.len > 0;
+  int has_match = arg->match.len > 0;
   if (has_match) {
     sql = arena_fmt(mem, sys, "SELECT COUNT(%.*s) FROM %.*s WHERE %.*s LIKE '%%%.*s%%';",
-                    strf(col), strf(tbl), strf(col), strf(match));
+                    strf(arg->col), strf(arg->tbl), strf(arg->col), strf(arg->match));
     sqlite3_prepare_v2(con, sql.str, -1, &stmt, 0);
     sqlite3_step(stmt);
     view->row_cnt = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
   } else {
-    sql = arena_fmt(mem, sys, "SELECT COUNT(%.*s) FROM %.*s;", strf(col), strf(tbl));
+    sql = arena_fmt(mem, sys, "SELECT COUNT(%.*s) FROM %.*s;",
+                    strf(arg->col), strf(arg->tbl));
     sqlite3_prepare_v2(con, sql.str, -1, &stmt, 0);
     sqlite3_step(stmt);
     view->row_cnt = sqlite3_column_int(stmt, 0);
@@ -1031,14 +1036,14 @@ db_tbl_view_fltr_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
   /* retrieve data window */
   int i = 0;
   scope_begin(&view->scp, mem);
-  view->data = arena_arr(mem, sys, struct str, lim);
+  view->data = arena_arr(mem, sys, struct str, arg->lim);
   if (has_match) {
     sql = arena_fmt(mem, sys, "SELECT %.*s FROM %.*s WHERE %.*s LIKE '%%%.*s%%'"
-                    "LIMIT %d, %d;", strf(col), strf(tbl), strf(col),
-                    strf(match), off, lim);
+                    "LIMIT %d, %d;", strf(arg->col), strf(arg->tbl), strf(arg->col),
+                    strf(arg->match), arg->off, arg->lim);
   } else {
-    sql = arena_fmt(mem, sys, "SELECT %.*s FROM %.*s LIMIT %d, %d;", strf(col),
-                    strf(tbl), off, lim);
+    sql = arena_fmt(mem, sys, "SELECT %.*s FROM %.*s LIMIT %d, %d;",
+                    strf(arg->col), strf(arg->tbl), arg->off, arg->lim);
   }
   sqlite3_prepare_v2(con, sql.str, -1, &stmt, 0);
   while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -1087,18 +1092,23 @@ db_tbl_view_fltr_time_range_init(struct db_tbl_fltr *fltr, struct sys *sys,
   fltr->is_date = 1;
   return 1;
 }
+struct db_fltr_time_arg {
+  struct str tbl;
+  struct str col;
+  int off, lim;
+};
 static void
-db_tbl_view_fltr_time_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
-                            struct sys *sys, struct arena *mem, sqlite3 *con,
-                            struct str tbl, struct str col, int off, int lim) {
+db_tbl_view_fltr_tm_init(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
+                         struct sys *sys, struct arena *mem, sqlite3 *con,
+                         struct db_fltr_time_arg *p) {
   assert(con);
   assert(mem);
   assert(view);
   assert(fltr);
 
   view->row_cnt = 0;
-  view->row_begin = off;
-  view->row_end = off + lim;
+  view->row_begin = p->off;
+  view->row_end = p->off + p->lim;
   if (view->data) {
     scope_end(&view->scp, mem, sys);
     fltr->is_date = 1;
@@ -1111,8 +1121,9 @@ db_tbl_view_fltr_time_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *f
     fltr->tm.from_val = mktime(&fltr->tm.from);
     fltr->tm.to_val = mktime(&fltr->tm.to);
     struct str sql = arena_fmt(mem, sys, "SELECT COUNT(%.*s) FROM %.*s WHERE"
-      "strftime('%%s',%.*s) BETWEEN '%lld'" "AND '%lld';", strf(col), strf(tbl),
-      strf(tbl), strf(col), fltr->tm.from_val, fltr->tm.to_val);
+      "strftime('%%s',%.*s) BETWEEN '%lld'" "AND '%lld';",
+      strf(p->col), strf(p->tbl), strf(p->tbl), strf(p->col),
+      fltr->tm.from_val, fltr->tm.to_val);
     sqlite3_prepare_v2(con, sql.str, -1, &stmt, 0);
     sqlite3_step(stmt);
     view->row_cnt = sqlite3_column_int(stmt, 0);
@@ -1123,10 +1134,11 @@ db_tbl_view_fltr_time_setup(struct db_tbl_fltr_view *view, struct db_tbl_fltr *f
   /* retrieve data window */
   int i = 0;
   scope_begin(&view->scp, mem);
-  view->data = arena_arr(mem, sys, struct str, lim);
+  view->data = arena_arr(mem, sys, struct str, p->lim);
   struct str sql = arena_fmt(mem, sys, "SELECT %.*s FROM %.*s WHERE"
-    "strftime('%%s',%.*s) BETWEEN '%lld' AND '%lld' LIMIT %d, %d;", strf(col),
-    strf(tbl), strf(col), fltr->tm.from_val, fltr->tm.to_val, off, lim);
+    "strftime('%%s',%.*s) BETWEEN '%lld' AND '%lld' LIMIT %d, %d;",
+    strf(p->col), strf(p->tbl), strf(p->col), fltr->tm.from_val,
+    fltr->tm.to_val, p->off, p->lim);
 
   sqlite3_stmt *stmt = 0;
   sqlite3_prepare_v2(con, sql.str, -1, &stmt, 0);
@@ -1504,11 +1516,11 @@ ui_db_tbl_lst(struct db_ui_view *d, struct db_tbl_view *view,
       /* list */
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, dyn_cnt(lst->elms));
-      cfg.fltr.bitset = lst->fltr;
-      cfg.fltr.on = GUI_LST_FLTR_ON_ONE;
       cfg.sel.mode = GUI_LST_SEL_MULTI;
       cfg.sel.cnt = lst->sel_cnt;
       cfg.sel.bitset = lst->sel;
+      cfg.fltr.bitset = lst->fltr;
+      cfg.fltr.on = GUI_LST_FLTR_ON_ONE;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for_gui_tbl_lst(i,gui,&tbl) {
@@ -1767,10 +1779,11 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
 
       int idx = 0;
       for_gui_tbl_lst(i,gui,&tbl) {
-        struct gui_panel elm = {0};
         unsigned long long n = cast(unsigned long long, i);
         unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
         struct str *row_data = view->data + idx;
+
+        struct gui_panel elm = {0};
         ui_db_tbl_view_lst_elm(sql, view, ctx, &tbl, &elm, tbl_lay, row_data, id);
         idx += dyn_cnt(view->cols);
       }
@@ -1951,8 +1964,9 @@ ui_db_tbl_fltr_col_view(struct db_tbl_view *view, struct gui_ctx *ctx,
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for_gui_tbl_lst(i,gui,&tbl) {
-        struct gui_panel elm = {0};
         int sel = fltr->sel_col == i;
+
+        struct gui_panel elm = {0};
         const struct db_tbl_col *item = view->cols + i;
         gui.tbl.lst.elm.begin(ctx, &tbl, &elm, (uintptr_t)item, sel);
         {
@@ -1985,8 +1999,8 @@ ui_db_tbl_fltr_str_view(struct db_ui_view *d, struct db_tbl_view *view,
   gui.pan.begin(ctx, pan, parent);
   {
     /* search expression */
-    struct gui_edit_box edt = {.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1])};
-    edt.flags = GUI_EDIT_SEL_ON_ACT;
+    struct gui_edit_box edt = {.flags = GUI_EDIT_SEL_ON_ACT};
+    edt.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
     gui.edt.box(ctx, &edt, pan, &fltr->buf);
     if (edt.mod){
       fltr->row_cnt = 0;
@@ -2005,17 +2019,20 @@ ui_db_tbl_fltr_str_view(struct db_ui_view *d, struct db_tbl_view *view,
     mod |= edt.mod || !fltr->data;
 
     if (mod) {
-      struct str tbl_id = view->name;
-      struct str col_id = fltr->ini.col->name;
-      struct str fnd = str0(fltr->buf);
-      db_tbl_view_fltr_setup(fltr, &fltr->ini, ctx->sys, &view->mem, d->con,
-          tbl_id, col_id, fnd, reg.lst.begin, reg.lst.cnt);
+      struct db_fltr_arg arg = {0};
+      arg.tbl = view->name;
+      arg.col = fltr->ini.col->name;
+      arg.match = str0(fltr->buf);
+      arg.off = reg.lst.begin;
+      arg.lim = reg.lst.cnt;
+      db_tbl_view_fltr_init(fltr, &fltr->ini, ctx->sys, &view->mem, d->con, &arg);
     }
     int idx = 0;
     for_gui_reg_lst(i,gui,&reg) {
-      struct gui_panel elm = {0};
       unsigned long long n = cast(unsigned long long, i);
       unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
+
+      struct gui_panel elm = {0};
       gui.lst.reg.elm.begin(ctx, &reg, &elm, id, 0);
       if (fltr->data[idx].len) {
         struct gui_panel lbl = {.box = elm.box};
@@ -2084,10 +2101,12 @@ ui_db_tbl_fltr_time_view(struct db_ui_view *d, struct db_tbl_view *view,
     mod |= reg.lst.end != fltr->row_end;
     mod |= !fltr->data || !fltr->ini.date_init;
     if (mod) {
-      struct str tbl_id = view->name;
-      struct str col_id = fltr->ini.col->name;
-      db_tbl_view_fltr_time_setup(fltr, &fltr->ini, ctx->sys, &view->mem,
-          d->con, tbl_id, col_id, reg.lst.begin, reg.lst.cnt);
+      struct db_fltr_time_arg arg = {0};
+      arg.tbl = view->name;
+      arg.col = fltr->ini.col->name;
+      arg.off = reg.lst.begin;
+      arg.lim = reg.lst.cnt;
+      db_tbl_view_fltr_tm_init(fltr, &fltr->ini, ctx->sys, &view->mem, d->con, &arg);
     }
     int idx = 0;
     for_gui_reg_lst(i,gui,&reg) {
