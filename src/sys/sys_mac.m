@@ -571,6 +571,24 @@ sys__mac_on_frame(void) {
     _sys.mouse.btns[i].released = 0;
     _sys.mouse.btns[i].doubled = 0;
   }
+  if (_sys.cursor != _mac.cursor) {
+    switch (_sys.cursor) {
+    default: break;
+    case SYS_CUR_ARROW: [[NSCursor arrowCursor] set]; break;
+    case SYS_CUR_NO: [[NSCursor operationNotAllowedCursor] set]; break;
+    case SYS_CUR_CROSS: [[NSCursor crosshairCursor] set]; break;
+    case SYS_CUR_HAND: [[NSCursor openHandCursor] set]; break;
+    case SYS_CUR_IBEAM: [[NSCursor IBeamCursor] set]; break;
+    case SYS_CUR_MOVE: [[NSCursor closedHandCursor] set]; break;
+    case SYS_CUR_SIZE_NS: [[NSCursor resizeUpDownCursor] set]; break;
+    case SYS_CUR_SIZE_WE: [[NSCursor resizeLeftRightCursor] set]; break;
+    case SYS_CUR_UP_ARROW: [[NSCursor resizeUpCursor] set]; break;
+    case SYS_CUR_DOWN_ARROW: [[NSCursor resizeDownCursor] set]; break;
+    case SYS_CUR_LEFT_ARROW: [[NSCursor resizeLeftCursor] set]; break;
+    case SYS_CUR_RIGHT_ARROW: [[NSCursor resizeRightCursor] set]; break;
+    }
+    _mac.cursor = _sys.cursor;
+  }
   if (_mac.dbg.dlEnd) {
     _mac.dbg.dlEnd(&_sys);
   }

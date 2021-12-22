@@ -104,7 +104,6 @@ enum sys_cur_style {
   SYS_CUR_NO,
   SYS_CUR_CROSS,
   SYS_CUR_HAND,
-  SYS_CUR_HELP,
   SYS_CUR_IBEAM,
   SYS_CUR_MOVE,
   SYS_CUR_SIZE_NS,

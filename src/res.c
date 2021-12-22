@@ -1903,9 +1903,9 @@ res_fnt_run_fit(struct res_txt_bnd *bnd, struct res_fnt_run *run,
 static void
 res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt,
             int space, struct str txt) {
+  assert(r);
   assert(bnd);
   assert(fnt);
-  assert(r);
 
   memset(bnd, 0, sizeof(*bnd));
   bnd->end = txt.end;

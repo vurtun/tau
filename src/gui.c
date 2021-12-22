@@ -524,7 +524,6 @@ static enum gui_state
 gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *p) {
   assert(p);
   assert(ctx);
-
   enum gui_state ret;
   int clk = (ctx->sys->mouse.btn.left.down || ctx->sys->mouse.btn.right.down);
   const struct gui_box *b = &p->box;
