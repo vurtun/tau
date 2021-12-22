@@ -25,7 +25,6 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_SPIN_INC]           = {.key = {SYS_KEY_UP, 0}},
   [GUI_KEY_SPIN_DEC]           = {.key = {SYS_KEY_DOWN, 0}},
   [GUI_KEY_MENU_NXT]           = {.key = {SYS_KEY_RIGHT, 0}},
-
   /* list */
   [GUI_KEY_LST_LEFT]           = {.key = {SYS_KEY_LEFT, 0}},
   [GUI_KEY_LST_RIGHT]          = {.key = {SYS_KEY_RIGHT, 0}},
@@ -38,19 +37,16 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_LST_PASTE]          = {.key = {'v',SYS_KEYMOD_CTRL}},
   [GUI_KEY_LST_DEL]            = {.key = {SYS_KEY_DEL,0}},
   [GUI_KEY_LST_RET]            = {.key = {SYS_KEY_RETURN,0}},
-
   /* tree */
   [GUI_KEY_TREE_EXPAND]        = {.key = {SYS_KEY_PLUS, 0}},
   [GUI_KEY_TREE_COLLAPSE]      = {.key = {SYS_KEY_MINUS, 0}},
   [GUI_KEY_TREE_LEFT]          = {.key = {SYS_KEY_LEFT, 0}},
   [GUI_KEY_TREE_RIGHT]         = {.key = {SYS_KEY_RIGHT, 0}},
-
   /* scroll */
   [GUI_KEY_SCRL_PGDN]          = {.key = {SYS_KEY_PGDN,0}},
   [GUI_KEY_SCRL_PGUP]          = {.key = {SYS_KEY_PGUP,0}},
   [GUI_KEY_SCRL_BEGIN]         = {.key = {SYS_KEY_HOME,0}},
   [GUI_KEY_SCRL_END]           = {.key = {SYS_KEY_END,0}},
-
   /* edit */
   [GUI_KEY_EDIT_SEL_ALL]       = {.key = {'a',SYS_KEYMOD_CTRL}},
   [GUI_KEY_EDIT_CUR_LEFT]      = {.key = {SYS_KEY_LEFT,(unsigned)-1}},
@@ -83,7 +79,8 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 
 /* shortcut operations */
 static const struct app_op app_ops[APP_OP_CNT] = {
-  [APP_OP_QUIT] = {.key = {'q', SYS_KEYMOD_CTRL}, .handler = app_op_quit},
+  [APP_OP_QUIT]     = {.key = {'q', SYS_KEYMOD_CTRL}, .handler = app_op_quit},
+  [APP_OP_PROFILE]  = {.key = {SYS_KEY_F2,0},         .handler = app_op_profiler}
 };
 
 // clang-format on

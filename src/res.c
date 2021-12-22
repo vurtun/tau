@@ -1675,6 +1675,189 @@ res_fnt_glyph(struct res *r, struct res_fnt *fnt, long rune) {
   struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
   return &set->glyphs[rune & 0xFF];
 }
+static int*
+res__run_cache_slot(struct res_run_cache *c, aes128 h) {
+  int hidx = aes128_lane_int(h);
+  int slot = (hidx & c->hmsk);
+  assert(slot < c->hcnt);
+  return &c->htbl[slot];
+}
+static inline struct res_fnt_run*
+res__run_cache_get(struct res_run_cache *c, int i) {
+  assert(i < c->run_cnt);
+  return &c->runs[i];
+}
+static struct res_fnt_run*
+res__run_cache_sen(struct res_run_cache *c) {
+  return c->runs;
+}
+#ifdef DEBUG_MODE
+static void
+res__run_cache_val_lru(struct res_run_cache *c, int expct_cnt_chng) {
+  int run_cnt = 0;
+  struct res_fnt_run *sen = res__run_cache_sen(c);
+  int last_ordering = sen->ordering;
+  for(int i = sen->lru_nxt; i != 0; ) {
+    struct res_fnt_run *run = res__run_cache_get(c, i);
+    assert(run->ordering < last_ordering);
+    last_ordering = run->ordering;
+    i = run->lru_nxt;
+    run_cnt++;
+  }
+  if((c->last_lru_cnt + expct_cnt_chng) != run_cnt) {
+    assert(0);
+  }
+  c->last_lru_cnt = run_cnt;
+}
+#else
+#define res__run_cache_val_lru(...)
+#endif
+
+static void
+res__run_cache_recycle_lru(struct res_run_cache *c) {
+  struct res_fnt_run *sen = res__run_cache_sen(c);
+  assert(sen->lru_prv);
+
+  int idx = sen->lru_prv;
+  struct res_fnt_run *run = res__run_cache_get(c, idx);
+  struct res_fnt_run *prv = res__run_cache_get(c, run->lru_prv);
+  prv->lru_nxt = 0;
+  sen->lru_prv = run->lru_prv;
+  res__run_cache_val_lru(c, -1);
+
+  /* find location of entry in hash chain */
+  int *nxt_idx = res__run_cache_slot(c, run->hash);
+  while (*nxt_idx != idx) {
+    assert(*nxt_idx);
+    struct res_fnt_run *nxt_run = res__run_cache_get(c, *nxt_idx);
+    nxt_idx = &nxt_run->nxt;
+  }
+  /* remove lru run from hash chain and place into free chain */
+  assert(*nxt_idx == idx);
+  *nxt_idx = run->nxt;
+  run->nxt = sen->nxt;
+  sen->nxt = idx;
+  c->stats.recycle_cnt++;
+}
+static int
+res__run_cache_free_entry(struct res_run_cache *c) {
+  struct res_fnt_run *sen = res__run_cache_sen(c);
+  if (!sen->nxt) {
+    res__run_cache_recycle_lru(c);
+  }
+  int res = sen->nxt;
+  assert(res);
+
+  struct res_fnt_run *run = res__run_cache_get(c, res);
+  sen->nxt = run->nxt;
+  run->nxt = 0;
+
+  assert(run);
+  assert(run != sen);
+  assert(run->nxt == 0);
+  return res;
+}
+struct res_run_cache_tbl_fnd_res {
+  struct res_fnt_run *run;
+  int *slot;
+  int idx;
+};
+static struct res_run_cache_tbl_fnd_res
+res__run_cache_tbl_fnd(struct res_run_cache *c, aes128 hash) {
+  struct res_run_cache_tbl_fnd_res res = {0};
+  res.slot = res__run_cache_slot(c, hash);
+  res.idx = *res.slot;
+  while (res.idx) {
+    struct res_fnt_run *it = res__run_cache_get(c, res.idx);
+    if (aes128_eq(it->hash, hash)) {
+      res.run = it;
+      break;
+    }
+    res.idx = it->nxt;
+  }
+  return res;
+}
+struct res_run_cache_fnd_res {
+  int is_new;
+  struct res_fnt_run *run;
+};
+static struct res_run_cache_fnd_res
+res_run_cache_fnd(struct res_run_cache *c, aes128 h) {
+  struct res_run_cache_fnd_res res = {0};
+  struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(c, h);
+  if (fnd.run) {
+    struct res_fnt_run *prv = res__run_cache_get(c, fnd.run->lru_prv);
+    struct res_fnt_run *nxt = res__run_cache_get(c, fnd.run->lru_nxt);
+    prv->lru_nxt = fnd.run->lru_nxt;
+    nxt->lru_prv = fnd.run->lru_prv;
+    res__run_cache_val_lru(c, -1);
+    c->stats.hit_cnt++;
+  } else {
+    fnd.idx = res__run_cache_free_entry(c);
+    assert(fnd.idx);
+    fnd.run = res__run_cache_get(c, fnd.idx);
+    fnd.run->nxt = *fnd.slot;
+    fnd.run->hash = h;
+    *fnd.slot = fnd.idx;
+    c->stats.miss_cnt++;
+    res.is_new = 1;
+  }
+  struct res_fnt_run *sen = res__run_cache_sen(c);
+  assert(fnd.run != sen);
+  fnd.run->lru_nxt = sen->lru_nxt;
+  fnd.run->lru_prv = 0;
+
+  struct res_fnt_run *lru_nxt = res__run_cache_get(c, sen->lru_nxt);
+  lru_nxt->lru_prv = fnd.idx;
+  sen->lru_nxt = fnd.idx;
+#ifdef DEBUG_MODE
+  fnd.run->ordering = sen->ordering++;
+  res__run_cache_val_lru(c, 1);
+#endif
+  res.run = fnd.run;
+  return res;
+}
+static void
+res_run_cache_init(struct res_run_cache *c, struct sys *sys,
+                   const struct res_args *args) {
+  assert(ispow2(args->hash_cnt));
+  c->hcnt = args->hash_cnt;
+  c->hmsk = c->hcnt - 1;
+  c->run_cnt = args->run_cnt;
+  c->htbl = arena_arr(sys->mem.arena, sys, int, c->hcnt);
+  c->runs = arena_arr(sys->mem.arena, sys, struct res_fnt_run, c->run_cnt);
+  for_cnt(i, args->run_cnt) {
+    struct res_fnt_run *run = res__run_cache_get(c, i);
+    run->nxt = ((i + 1) < args->run_cnt) ? run->nxt = i + 1 : 0;
+  }
+}
+static void
+res_fnt_fill_run(struct res *r, struct res_fnt *fnt, struct res_fnt_run *run,
+                 struct str txt) {
+  run->len = 0;
+  int n = 0, ext = 0;
+  unsigned rune = 0;
+  for_utf(&rune, it, rest, txt) {
+    assert(run->len < RES_FNT_MAX_RUN);
+    struct fnt_baked_char *g = res_fnt_glyph(r, fnt, rune);
+
+    n += it.len;
+    run->off[run->len] = cast(unsigned char, n);
+    ext += ceili(g->xadvance);
+
+    if (rest.len) {
+      unsigned nxt = utf_get(rest);
+      int k = fnt_get_codepoint_kern_advance(&fnt->stbfont,
+        cast(int, rune), cast(int, nxt));
+      ext += ceili(fnt->scale * cast(float, k));
+    }
+    run->adv[run->len] = cast(unsigned short, ext);
+    run->len += 1;
+    if (run->len >= RES_FNT_MAX_RUN) {
+      break;
+    }
+  }
+}
 static void
 res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
   assert(ext);
@@ -1682,24 +1865,84 @@ res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
 
   ext[0] = 0;
   ext[1] = fnt->height;
+  if (!txt.len) {
+    return;
+  }
+  aes128 h = aes128_load(aes_seed);
+  int n = div_round_up(txt.len, 16);
+  for_cnt(i,n) {
+    struct str seg = str_lhs(txt, 16);
+    h = aes128_hash(seg.str, seg.len, h);
 
-  unsigned rune = 0;
-  for_utf(&rune, it, rest, txt) {
-    struct fnt_baked_char *g = res_fnt_glyph(r, fnt, rune);
-    ext[0] += ceili(g->xadvance);
-    if (rest.len ) {
-      unsigned nxt = utf_get(rest);
-      int k = fnt_get_codepoint_kern_advance(&fnt->stbfont,
-        cast(int, rune), cast(int, nxt));
-      ext[0] += ceili(fnt->scale * cast(float, k));
+    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = res.run;
+    if (res.is_new) {
+      res_fnt_fill_run(r, fnt, run, txt);
+    }
+    ext[0] += run->adv[run->len-1];
+    txt = str_cut_lhs(&txt, run->off[run->len-1]);
+  }
+}
+static void
+res_fnt_run_fit(struct res_txt_bnd *bnd, struct res_fnt_run *run,
+                int space, int ext) {
+  int width = 0, len = 0;
+  assert(run->len <= RES_FNT_MAX_RUN);
+  for_cnt(i, run->len) {
+    assert(i < RES_FNT_MAX_RUN);
+    if (ext + run->adv[i] > space){
+      break;
+    } else {
+      len = run->off[i];
+      width = run->adv[i];
     }
   }
+  bnd->len += len;
+  bnd->width += width;
+}
+static void
+res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt,
+            int space, struct str txt) {
+  assert(bnd);
+  assert(fnt);
+  assert(r);
+
+  memset(bnd, 0, sizeof(*bnd));
+  bnd->end = txt.end;
+  if (!space) {
+    return;
+  }
+  int ext = 0;
+  aes128 h = aes128_load(aes_seed);
+  int n = div_round_up(txt.len, 16);
+  for_cnt(i,n) {
+    struct str seg = str_lhs(txt, 16);
+    h = aes128_hash(seg.str, seg.len, h);
+
+    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = res.run;
+    if (res.is_new) {
+      res_fnt_fill_run(r, fnt, run, txt);
+    }
+    if (ext + run->adv[run->len-1] < space) {
+      bnd->len += run->off[run->len-1];
+      bnd->width += run->adv[run->len-1];
+      ext += run->adv[run->len-1];
+    } else {
+      if (ext + run->adv[0] < space) {
+        res_fnt_run_fit(bnd, run, space, ext);
+      }
+      break;
+    }
+    txt = str_cut_lhs(&txt, run->off[run->len-1]);
+  }
+  bnd->end = txt.str + bnd->len;
 }
 static struct fnt_baked_char *
 res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
            int x, int y, int rune) {
   struct sys *sys = r->sys;
-  struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
+  struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, rune);
   struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
 
   int sx = g->x0;
@@ -1716,11 +1959,9 @@ static void
 ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) {
   unsigned rune = 0;
   for_utf(&rune, _, rest, txt) {
-    struct fnt_baked_char *g;
-    g = res__glyph(buf, r, r->fnt, x, y, cast(int, rune));
+    struct fnt_baked_char *g = res__glyph(buf, r, r->fnt, x, y, cast(int, rune));
     x += roundi(g->xadvance);
-
-    if (rest.len ) {
+    if (rest.len) {
       unsigned nxt = utf_get(rest);
       int k = fnt_get_codepoint_kern_advance(&r->fnt->stbfont,
         cast(int, rune), cast(int, nxt));
@@ -1754,7 +1995,7 @@ ren_ico(struct ren_cmd_buf *buf, struct res *r, int x, int y, const char *ico) {
   }
 }
 static void
-res_init(struct res *r) {
+res_init(struct res *r, const struct res_args *args) {
   struct sys *sys = r->sys;
   struct scope scp;
   scope_begin(&scp, sys->mem.tmp);
@@ -1774,6 +2015,7 @@ res_init(struct res *r) {
     assert(r->ico);
   }
   scope_end(&scp, sys->mem.tmp, sys);
+  res_run_cache_init(&r->run_cache, sys, args);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1787,7 +2029,10 @@ static const struct res_api res_api = {
   .ico_siz = ren_ico_siz,
   .ico = ren_ico,
   .print = ren_print,
-  .fnt_ext = res_fnt_ext,
+  .fnt = {
+    .ext = res_fnt_ext,
+    .fit = res_fnt_fit,
+  }
 };
 static void
 res_get_api(void *export, void *import) {

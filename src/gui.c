@@ -955,16 +955,12 @@ gui_enable(struct gui_ctx *ctx, int cond) {
  *                                  Label
  * ---------------------------------------------------------------------------
  */
-struct gui_txt_bnd {
-  int len, width;
-  const char *end;
-};
 static void
 gui_txt_ext(int *ext, struct gui_ctx *ctx, struct str txt) {
   assert(ext);
   assert(ctx);
   struct res_fnt *fnt = ctx->res->fnt;
-  res.fnt_ext(ext, ctx->res, fnt, txt);
+  res.fnt.ext(ext, ctx->res, fnt, txt);
 }
 static int
 gui_txt_width(struct gui_ctx *ctx, struct str txt) {
@@ -975,23 +971,12 @@ gui_txt_width(struct gui_ctx *ctx, struct str txt) {
   return ext[0];
 }
 static void
-gui_txt_fit(struct gui_txt_bnd *bnd, int space, struct gui_ctx *ctx,
+gui_txt_fit(struct res_txt_bnd *bnd, int space, struct gui_ctx *ctx,
             struct str txt) {
-  memset(bnd, 0, sizeof(*bnd));
-  bnd->end = txt.str;
-  if (!space) {
-    return;
-  }
-  unsigned rune = 0;
-  for_utf(&rune, it, _, txt) {
-    int w = gui_txt_width(ctx, strp(txt.str, it.end));
-    if (w > space) {
-      return;
-    }
-    bnd->len += it.len;
-    bnd->end = it.end;
-    bnd->width = w;
-  }
+  assert(bnd);
+  assert(ctx);
+  struct res_fnt *fnt = ctx->res->fnt;
+  res.fnt.fit(bnd, ctx->res, fnt, space, txt);
 }
 static void
 gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -1069,7 +1054,7 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
 
   /* fit text into space */
   if (ext[0] > pan->box.x.ext) {
-    struct gui_txt_bnd bnd;
+    struct res_txt_bnd bnd;
     gui_txt_fit(&bnd, pan->box.x.ext, ctx, txt);
     ext[0] = bnd.width;
     txt = strp(txt.str, bnd.end);
@@ -1102,7 +1087,7 @@ gui_txtvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[2 * 1024];
+  char buf[1024];
   int n = fmtvsn(buf, cntof(buf), fmt, args);
   if (n < cntof(buf)) {
     gui_txt(ctx, pan, parent, str0(buf), align);
@@ -1140,7 +1125,7 @@ gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[2 * 1024];
+  char buf[1024];
   const int n = fmtvsn(buf, cntof(buf), fmt, args);
   if (n < cntof(buf)) {
     gui_lbl(ctx, pan, parent, cut, str0(buf));
@@ -1168,7 +1153,7 @@ gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[2 * 1024];
+  char buf[1024];
   strftime(buf, cntof(buf), fmt, tm);
   gui_txt(ctx, pan, parent, str0(buf), 0);
 }
@@ -1339,6 +1324,7 @@ gui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   assert(ctx);
   assert(btn);
   assert(parent);
+
   gui_btn_begin(ctx, btn, parent);
   {
     struct gui_icon ico = {0};
@@ -1348,6 +1334,30 @@ gui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   gui_btn_end(ctx, btn, parent);
   return btn->clk;
 }
+static int
+gui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
+                struct str txt, const char *icon, int uline) {
+  assert(ctx);
+  assert(btn);
+  assert(parent);
+  assert(icon);
+
+  static const struct gui_align align = {GUI_HALIGN_MID, GUI_VALIGN_MID};
+  gui_btn_begin(ctx, btn, parent);
+  {
+    struct gui_panel lbl = {.box = btn->pan.box};
+    lbl.box.x = gui_shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
+    gui_txt_uln(ctx, &lbl, &btn->pan, txt, &align, uline, 1);
+
+    struct gui_icon ico = {0};
+    ico.box.x = gui_max_ext(lbl.box.x.min - ctx->cfg.gap[0], ctx->cfg.ico);
+    ico.box.y = gui_mid_ext(btn->box.y.mid, ctx->cfg.ico);
+    gui_icon(ctx, &ico, &btn->pan, icon);
+  }
+  gui_btn_end(ctx, btn, parent);
+  return btn->clk;
+}
+
 /* ---------------------------------------------------------------------------
  *                                  Check
  * ---------------------------------------------------------------------------
@@ -1858,6 +1868,7 @@ gui__scrl_btn(struct gui_ctx *ctx, struct gui_btn *btn,
   assert(ctx);
   assert(btn);
   assert(parent);
+
   btn->pan.focusable = 0;
   gui_btn_begin(ctx, btn, parent);
   {
@@ -2226,7 +2237,7 @@ gui_txt_ed_ext(char *buf, int line_begin, int char_idx, struct res *r,
 
   int ext[2];
   struct str view = utf_at(0, dyn_str(buf), line_begin + char_idx);
-  res.fnt_ext(ext, r, fnt, view);
+  res.fnt.ext(ext, r, fnt, view);
   return ext[0];
 }
 struct gui_txt_row {
@@ -2256,7 +2267,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
   }
   int ext[2];
   struct str ln = strp(begin.str, end.end);
-  res.fnt_ext(ext, r, fnt, ln);
+  res.fnt.ext(ext, r, fnt, ln);
 
   row->char_cnt = cnt;
   row->baseline_y_dt = row_h;
@@ -2780,7 +2791,7 @@ gui_calc_edit_off(int *cur_ext, const struct gui_txt_ed *edt, const char *slc,
   assert(cur_ext);
   assert(txt_ext);
 
-  res.fnt_ext(cur_ext, r, fnt, str(slc, edt->cur));
+  res.fnt.ext(cur_ext, r, fnt, str(slc, edt->cur));
   int off = cur_ext[0] - (width >> 1);
   off = clamp(0, off, max(0, txt_ext[0] - width));
   return off;
@@ -2943,6 +2954,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   assert(box);
   assert(pan);
   assert(parent);
+
   pan->focusable = 1;
   gui_panel_begin(ctx, pan, parent);
   {
@@ -2952,7 +2964,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
     if (pan->id == ctx->focused) {
       gui_txt_ed_clamp(edt, *buf);
     }
-    res.fnt_ext(txt_ext, ctx->res, fnt, dyn_str(*buf));
+    res.fnt.ext(txt_ext, ctx->res, fnt, dyn_str(*buf));
     const int cur = gui_calc_edit_off(cur_ext, edt, *buf, ctx->res, fnt,
                                       txt_ext, pan->box.x.ext);
     if (pan->is_hot) {
@@ -2960,17 +2972,17 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
       sys->cursor = SYS_CUR_IBEAM;
     }
     switch (ctx->pass) {
-      case GUI_INPUT: {
-        struct gui_input in = {0};
-        gui_input(&in, ctx, pan, GUI_BTN_LEFT);
-        gui_edit_field_input(ctx, box, pan, edt, buf, &in, fnt, cur);
-      } break;
-      case GUI_RENDER: {
-        if (pan->state != GUI_HIDDEN)
-          gui_edit_field_drw(ctx, box, pan, edt, *buf, cur, cur_ext, txt_ext);
-      } break;
-      case GUI_FINISHED:
-        break;
+    case GUI_INPUT: {
+      struct gui_input in = {0};
+      gui_input(&in, ctx, pan, GUI_BTN_LEFT);
+      gui_edit_field_input(ctx, box, pan, edt, buf, &in, fnt, cur);
+    } break;
+    case GUI_RENDER: {
+      if (pan->state != GUI_HIDDEN)
+        gui_edit_field_drw(ctx, box, pan, edt, *buf, cur, cur_ext, txt_ext);
+    } break;
+    case GUI_FINISHED:
+      break;
     }
   }
   gui_panel_end(ctx, pan, parent);
@@ -3051,15 +3063,15 @@ gui_spin_cur_ratio(const struct gui_spin_val *spin){
   assert(spin);
   float ret = 0.0f;
   switch (spin->typ) {
-    case GUI_SPIN_INT:
-      ret = cast(float, spin->val.i - spin->min.i) / cast(float, spin->max.i);
-      break;
-    case GUI_SPIN_FLT:
-      ret = (spin->val.f - spin->min.f) / spin->max.f;
-      break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT:
+    ret = cast(float, spin->val.i - spin->min.i) / cast(float, spin->max.i);
+    break;
+  case GUI_SPIN_FLT:
+    ret = (spin->val.f - spin->min.f) / spin->max.f;
+    break;
+  default:
+    assert(0);
+    break;
   }
   return ret;
 }
@@ -3118,15 +3130,15 @@ gui_spin_focus(struct gui_ctx *ctx, struct gui_spin_val *spin,
 
   dyn_clr(ctx->txt_state.buf);
   switch (spin->typ) {
-    case GUI_SPIN_INT:
-      dyn_fmt(ctx->txt_state.buf, ctx->sys, "%d", spin->val.i);
-      break;
-    case GUI_SPIN_FLT:
-      dyn_fmt(ctx->txt_state.buf, ctx->sys, "%.2f", spin->val.f);
-      break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT:
+    dyn_fmt(ctx->txt_state.buf, ctx->sys, "%d", spin->val.i);
+    break;
+  case GUI_SPIN_FLT:
+    dyn_fmt(ctx->txt_state.buf, ctx->sys, "%.2f", spin->val.f);
+    break;
+  default:
+    assert(0);
+    break;
   }
   gui_txt_ed_init(ed);
   gui_txt_ed_sel_all(ed, ctx->txt_state.buf);
@@ -3139,29 +3151,29 @@ gui_spin_key(struct gui_ctx *ctx, struct gui_spin_val *spin) {
 
   if (bit_tst_clr(ctx->keys, GUI_KEY_SPIN_INC)) {
     switch (spin->typ) {
-      case GUI_SPIN_INT:
-        spin->val.i = min(spin->val.i + spin->inc.i, spin->max.i);
-        break;
-      case GUI_SPIN_FLT:
-        spin->val.f = min(spin->val.f + spin->inc.f, spin->max.f);
-        break;
-      default:
-        assert(0);
-        break;
+    case GUI_SPIN_INT:
+      spin->val.i = min(spin->val.i + spin->inc.i, spin->max.i);
+      break;
+    case GUI_SPIN_FLT:
+      spin->val.f = min(spin->val.f + spin->inc.f, spin->max.f);
+      break;
+    default:
+      assert(0);
+      break;
     }
     mod = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_SPIN_DEC)) {
     switch (spin->typ) {
-      case GUI_SPIN_INT:
-        spin->val.i = max(spin->val.i - spin->inc.i, spin->min.i);
-        break;
-      case GUI_SPIN_FLT:
-        spin->val.f = max(spin->val.f - spin->inc.f, spin->min.f);
-        break;
-      default:
-        assert(0);
-        break;
+    case GUI_SPIN_INT:
+      spin->val.i = max(spin->val.i - spin->inc.i, spin->min.i);
+      break;
+    case GUI_SPIN_FLT:
+      spin->val.f = max(spin->val.f - spin->inc.f, spin->min.f);
+      break;
+    default:
+      assert(0);
+      break;
     }
     mod = 1;
   }
@@ -3172,18 +3184,18 @@ gui_spin_scrl(struct sys *sys, struct gui_spin_val *spin) {
   assert(sys);
   assert(spin);
   switch (spin->typ) {
-    case GUI_SPIN_INT: {
-      int i = spin->val.i + spin->inc.i * sys->mouse.scrl[1];
-      spin->val.i = clamp(spin->min.i, i, spin->max.i);
-    } break;
-    case GUI_SPIN_FLT: {
-      float delta = cast(float, sys->mouse.scrl[1]);
-      float v = spin->val.f + spin->inc.f * delta;
-      spin->val.f = clamp(spin->min.f, v, spin->max.f);
-    } break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT: {
+    int i = spin->val.i + spin->inc.i * sys->mouse.scrl[1];
+    spin->val.i = clamp(spin->min.i, i, spin->max.i);
+  } break;
+  case GUI_SPIN_FLT: {
+    float delta = cast(float, sys->mouse.scrl[1]);
+    float v = spin->val.f + spin->inc.f * delta;
+    spin->val.f = clamp(spin->min.f, v, spin->max.f);
+  } break;
+  default:
+    assert(0);
+    break;
   }
   sys->mouse.scrl[1] = 0;
 }
@@ -3191,18 +3203,19 @@ static void
 gui_spin_rel_drag(struct sys *sys, struct gui_spin_val *spin) {
   assert(sys);
   assert(spin);
+
   switch (spin->typ) {
-    case GUI_SPIN_INT: {
-      int val = sys->mouse.pos_delta[0] * spin->inc.i;
-      spin->val.i = clamp(spin->min.i, spin->val.i + val, spin->max.i);
-    } break;
-    case GUI_SPIN_FLT: {
-      float val = cast(float, sys->mouse.pos_delta[0]) * spin->inc.f;
-      spin->val.f = clamp(spin->min.f, spin->val.f + val, spin->max.f);
-    } break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT: {
+    int val = sys->mouse.pos_delta[0] * spin->inc.i;
+    spin->val.i = clamp(spin->min.i, spin->val.i + val, spin->max.i);
+  } break;
+  case GUI_SPIN_FLT: {
+    float val = cast(float, sys->mouse.pos_delta[0]) * spin->inc.f;
+    spin->val.f = clamp(spin->min.f, spin->val.f + val, spin->max.f);
+  } break;
+  default:
+    assert(0);
+    break;
   }
 }
 static void
@@ -3216,35 +3229,37 @@ gui_spin_abs_drag(struct sys *sys, struct gui_spin_val *spin,
   gui_spin_cur(&cur, spin, s);
   int dt = sys->mouse.pos[0] - cur.x.min;
   float r = cast(float, dt) /cast(float, s->pan.box.x.ext - 4);
+
   switch (spin->typ) {
-    case GUI_SPIN_INT: {
-      float off = cast(float, spin->max.i - spin->min.i) * r;
-      int val = roundi(off) + spin->min.i;
-      spin->val.i = clamp(spin->min.i, val, spin->max.i);
-    } break;
-    case GUI_SPIN_FLT: {
-      float val = (r * (spin->max.f - spin->min.f)) + spin->min.f;
-      spin->val.f = clamp(spin->min.f, val, spin->max.f);
-    } break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT: {
+    float off = cast(float, spin->max.i - spin->min.i) * r;
+    int val = roundi(off) + spin->min.i;
+    spin->val.i = clamp(spin->min.i, val, spin->max.i);
+  } break;
+  case GUI_SPIN_FLT: {
+    float val = (r * (spin->max.f - spin->min.f)) + spin->min.f;
+    spin->val.f = clamp(spin->min.f, val, spin->max.f);
+  } break;
+  default:
+    assert(0);
+    break;
   }
 }
 static void
 gui_spin_str(char *buf, int cap, const struct gui_spin_val *spin) {
   assert(buf);
   assert(spin);
+
   switch (spin->typ) {
-    case GUI_SPIN_INT:
-      fmtsn(buf, cap, "%d", spin->val.i);
-      break;
-    case GUI_SPIN_FLT:
-      fmtsn(buf, cap, "%.2f", spin->val.f);
-      break;
-    default:
-      assert(0);
-      break;
+  case GUI_SPIN_INT:
+    fmtsn(buf, cap, "%d", spin->val.i);
+    break;
+  case GUI_SPIN_FLT:
+    fmtsn(buf, cap, "%.2f", spin->val.f);
+    break;
+  default:
+    assert(0);
+    break;
   }
 }
 static void
@@ -3556,8 +3571,7 @@ gui_reg_begin(struct gui_ctx *ctx, struct gui_reg *d,
   b->y = gui_min_max(d->space.y.min - off_y, d->space.y.max - off_y);
 }
 static void
-gui_reg_apply_lst(struct gui_reg *d, const struct gui_lst *lst,
-                   int row_mult) {
+gui_reg_apply_lst(struct gui_reg *d, const struct gui_lst *lst, int row_mult) {
   assert(d);
   assert(lst);
 
@@ -3621,6 +3635,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   if (d->vscrl.total > d->vscrl.size + ctx->cfg.scrl) {
     int top = pan->box.y.min + 2 + off_y;
     int right = pan->box.x.max + ctx->cfg.scrl + off_x;
+
     d->vscrl.box.x = gui_min_max(pan->box.x.max + off_x, right);
     d->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
 
@@ -3642,6 +3657,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   if (d->hscrl.total > d->hscrl.size) {
     int bot = pan->box.y.max + ctx->cfg.scrl + off_y;
     int left = pan->box.x.min + 2 + off_x;
+
     d->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
     d->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
 
@@ -4436,6 +4452,7 @@ gui_lst_reg_elm_txt(struct gui_ctx *ctx, struct gui_lst_reg *reg,
   assert(ctx);
   assert(reg);
   assert(elm);
+
   gui_lst_reg_elm_begin(ctx, reg, elm, id, is_sel);
   {
     struct gui_panel item = {.box = elm->box};
@@ -5359,11 +5376,12 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *b, unsigned flags,
               int off_x, int off_y) {
   assert(b);
   assert(ctx);
-  struct sys *sys = ctx->sys;
 
   int s = ctx->cfg.grid;
+  struct sys *sys = ctx->sys;
   sys->ren.drw.line_style(ctx->ren, 1);
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
+
   if (flags & GUI_GRID_X) {
     int x = (off_x < 0) ? (abs(off_x) % s) : (s - (off_x % s));
     for (; x < b->x.ext; x += s) {
@@ -5621,6 +5639,7 @@ static const struct gui_api gui_api = {
     .txt = gui_btn_txt,
     .lbl = gui_btn_lbl,
     .ico = gui_btn_ico,
+    .ico_txt = gui_btn_ico_txt
   },
   .chk = {
     .ico = gui_chk,

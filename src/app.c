@@ -45,6 +45,7 @@ enum app_key_id {
 };
 enum app_op_id {
   APP_OP_QUIT,
+  APP_OP_PROFILE,
   APP_OP_CNT
 };
 union app_param {
@@ -64,13 +65,16 @@ struct app_op {
 enum app_state {
   APP_STATE_FILE,
   APP_STATE_DB,
+  APP_STATE_PROFILER,
 };
 struct app {
   struct res res;
   struct gui_ctx gui;
+  struct sys *sys;
 
   int quit;
   enum app_state state;
+  enum app_state last_state;
   unsigned long ops[bits_to_long(APP_KEY_CNT)];
 
   dyn(char) file_path;
@@ -78,6 +82,7 @@ struct app {
   struct db_ui_view *db;
 };
 static void app_op_quit(struct app* app, const union app_param *arg);
+static void app_op_profiler(struct app* app, const union app_param *arg);
 
 #include "cfg.h"
 #include "lib/fmt.c"
@@ -125,6 +130,14 @@ app_op_quit(struct app *app, const union app_param *arg) {
   app->quit = 1;
 }
 static void
+app_op_profiler(struct app* app, const union app_param *arg) {
+  unused(arg);
+  struct sys *sys = app->sys;
+  sys->dbg.disable(sys);
+  app->last_state = app->state;
+  app->state = APP_STATE_PROFILER;
+}
+static void
 app_init(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
@@ -133,11 +146,16 @@ app_init(struct app *app, struct sys *sys) {
   app->gui.sys = sys;
   app->gui.res = &app->res;
 
-  res.init(&app->res);
+  struct res_args args;
+  args.run_cnt = 1024;
+  args.hash_cnt = 2 * 1024;
+
+  res.init(&app->res, &args);
   gui.init(&app->gui, sys->mem.arena, CFG_COLOR_SCHEME);
 
   app->fs = file.init(sys, &app->gui, sys->mem.arena, sys->mem.tmp);
   app->file_path = arena_dyn(sys->mem.arena, sys, char, 256);
+  sys->dbg.enable(sys);
 }
 static void
 app_shutdown(struct app *app, struct sys *sys) {
@@ -162,14 +180,21 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     case APP_STATE_FILE: {
       struct sys *sys = ctx->sys;
       if (file.ui(&app->file_path, app->fs, ctx, &bdy, pan)) {
-        app->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, dyn_str(app->file_path));
+        struct str file_path = dyn_str(app->file_path);
+        app->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
         app->state = APP_STATE_DB;
       }
     } break;
     case APP_STATE_DB:
       db.ui(app->db, ctx, &bdy, pan);
       break;
-    }
+    case APP_STATE_PROFILER: {
+      struct sys *sys = app->sys;
+      if (sys->dbg.ui(&gui, sys, ctx, &bdy, pan)) {
+        app->state = app->last_state;
+        sys->dbg.enable(sys);
+      }
+    } break;}
   }
   gui.pan.end(ctx, pan, parent);
 }
@@ -225,6 +250,8 @@ app_run(struct sys *sys) {
   }
 #endif
   memset(app->ops, 0, sizeof(app->ops));
+  app->sys = sys;
+
   const struct app_op *op = 0;
   for_arrv(op, app_ops) {
     /* handle app shortcuts */
@@ -245,6 +272,7 @@ app_run(struct sys *sys) {
   }
   /* update */
   switch (app->state) {
+  case APP_STATE_PROFILER: break;
   case APP_STATE_FILE:
     file.update(app->fs, sys);
     break;
@@ -263,7 +291,6 @@ app_run(struct sys *sys) {
   }
   dbg_blk_end(sys);
 }
-
 #ifdef DEBUG_MODE
 extern void
 dlRegister(struct sys *sys) {

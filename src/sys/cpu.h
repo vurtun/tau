@@ -233,6 +233,7 @@ struct cpu_info {
 #define aes128_eq(a, b) (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
 #define aes128_int(a) _mm_set1_epi32(a)
 #define aes128_zero() _mm_set1_epi32(0)
+#define aes128_lane_int(v) _mm_cvtsi128_si32(v);
 
 /* misc */
 #define yield() _mm_pause()
@@ -373,6 +374,7 @@ int4_set(int i3, int i2, int i1, int i0) {
 #define aes128_xor(a,b) veorq_u8(a, b)
 #define aes128_int(a) vreinterpretq_u8_u32(vdupq_n_u32(a))
 #define aes128_zero() aes128_int(0)
+#define aes128_lane_int(v) vgetq_lane_s32(vreinterpretq_s32_u8(v), 0);
 
 static inline int
 aes128__eq(aes128 a, aes128 b) {
@@ -399,6 +401,5 @@ cpu_info(struct cpu_info *cpu) {
   cpu->has_simd_128 = 1;
   cpu->has_simd_256 = 1;
 }
-
 #endif
 

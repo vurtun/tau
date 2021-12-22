@@ -1091,6 +1091,7 @@ ren_init(struct sys *sys) {
   for (int i = 0; i < REN_CEL_X * REN_CEL_Y; i++) {
     ren->cel[0][i] = FNV1A32_HASH_INITIAL;
   }
+  ren->mem.blksiz = KB(128);
   ren->hash = FNV1A32_HASH_INITIAL;
   ren->que.mem = &ren->mem;
   ren->que.sys = sys;
@@ -1101,12 +1102,11 @@ ren_init(struct sys *sys) {
 }
 static void
 ren_begin(struct sys *sys) {
-  struct ren *ren = sys->renderer;
-  scope_begin(&ren->scp, &ren->mem);
+  unused(sys);
 }
 static void
 ren__cleanup(struct ren *ren, struct sys *sys) {
-  scope_end(&ren->scp, &ren->mem, sys);
+  arena_reset(&ren->mem, sys);
   ren->que.cnt = 0;
 }
 static void

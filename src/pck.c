@@ -913,29 +913,6 @@ file_view_free(struct file_view *fs, struct sys *sys) {
  *                                  GUI
  * -----------------------------------------------------------------------------
  */
-static int
-ui_btn_menu(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
-            struct str txt, const char *icon, int uline) {
-  assert(ctx);
-  assert(btn);
-  assert(parent);
-  assert(icon);
-
-  static const struct gui_align align = {GUI_HALIGN_MID, GUI_VALIGN_MID};
-  gui.btn.begin(ctx, btn, parent);
-  {
-    struct gui_panel lbl = {.box = btn->pan.box};
-    lbl.box.x = gui.bnd.shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
-    gui.txt.uln(ctx, &lbl, &btn->pan, txt, &align, uline, 1);
-
-    struct gui_icon ico = {0};
-    ico.box.x = gui.bnd.max_ext(lbl.box.x.min - ctx->cfg.gap[0], ctx->cfg.ico);
-    ico.box.y = gui.bnd.mid_ext(btn->box.y.mid, ctx->cfg.ico);
-    gui.ico.icon(ctx, &ico, &btn->pan, icon);
-  }
-  gui.btn.end(ctx, btn, parent);
-  return btn->clk;
-}
 static void
 ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
                struct gui_panel *pan, struct gui_panel *parent,
@@ -1060,6 +1037,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
   assert(parent);
 
   int chdir = 0, dir = 0;
+  dbg_blk_begin(ctx->sys, "app:gui:file:table");
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_tbl tbl = {.box = pan->box};
@@ -1114,6 +1092,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
     gui.tbl.end(ctx, &tbl, pan, lst->off);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 
   if (chdir) {
     struct file_elm *fi = lst->elms + dir;
@@ -1222,6 +1201,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:file:tree");
   gui.pan.begin(ctx, pan, parent);
   {
     /* tree list */
@@ -1262,6 +1242,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_file_con_close(struct file_list_view *lst) {
@@ -1276,57 +1257,58 @@ ui_file_con_menu(struct file_list_view *lst, struct gui_ctx *ctx,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:file:contextual");
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_box lay = pan->box;
     switch (lst->con) {
     case FILE_CON_MENU_MAIN: {
       struct gui_btn open = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 0)};
-      if (ui_btn_menu(ctx, &open, pan, strv("Open"), ICO_FOLDER_OPEN, 0)) {
+      if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FOLDER_OPEN, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn edt = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 1)};
-      if (ui_btn_menu(ctx, &edt, pan, strv("Edit"), ICO_EDIT, 0)) {
+      if (gui.btn.ico_txt(ctx, &edt, pan, strv("Edit"), ICO_EDIT, 0)) {
         lst->con = FILE_CON_MENU_EDIT;
       }
       struct gui_btn view = {.box = gui.box.div_y(&lay, ctx->cfg.gap[0], 3, 2)};
-      if (ui_btn_menu(ctx, &view, pan, strv("View"), ICO_TABLE, 0)) {
+      if (gui.btn.ico_txt(ctx, &view, pan, strv("View"), ICO_TABLE, 0)) {
         lst->con = FILE_CON_MENU_VIEW;
       }
     } break;
     case FILE_CON_MENU_VIEW: {
       struct gui_btn icos = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 0)};
-      if (ui_btn_menu(ctx, &icos, pan, strv("Icons"), ICO_TH_LIST, 0)) {
+      if (gui.btn.ico_txt(ctx, &icos, pan, strv("Icons"), ICO_TH_LIST, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn list = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 0)};
-      if (ui_btn_menu(ctx, &list, pan, strv("List"), ICO_LIST, 0)) {
+      if (gui.btn.ico_txt(ctx, &list, pan, strv("List"), ICO_LIST, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn col = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 1)};
-      if (ui_btn_menu(ctx, &col, pan, strv("Columns"), ICO_COLUMNS, 0)) {
+      if (gui.btn.ico_txt(ctx, &col, pan, strv("Columns"), ICO_COLUMNS, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn gal = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 1)};
-      if (ui_btn_menu(ctx, &gal, pan, strv("Gallery"), ICO_TABLE, 0)) {
+      if (gui.btn.ico_txt(ctx, &gal, pan, strv("Gallery"), ICO_TABLE, 0)) {
         ui_file_con_close(lst);
       }
     } break;
     case FILE_CON_MENU_EDIT: {
       struct gui_btn cpy = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 0)};
-      if (ui_btn_menu(ctx, &cpy, pan, strv("Copy"), ICO_COPY, 0)) {
+      if (gui.btn.ico_txt(ctx, &cpy, pan, strv("Copy"), ICO_COPY, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn cut = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 0)};
-      if (ui_btn_menu(ctx, &cut, pan, strv("Cut"), ICO_CUT, 0)) {
+      if (gui.btn.ico_txt(ctx, &cut, pan, strv("Cut"), ICO_CUT, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn put = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 0, 1)};
-      if (ui_btn_menu(ctx, &put, pan, strv("Paste"), ICO_PASTE, 0)) {
+      if (gui.btn.ico_txt(ctx, &put, pan, strv("Paste"), ICO_PASTE, 0)) {
         ui_file_con_close(lst);
       }
       struct gui_btn del = {.box = gui.box.div(&lay, ctx->cfg.gap, 2, 2, 1, 1)};
-      if (ui_btn_menu(ctx, &del, pan, strv("Delete"), ICO_TRASH, 0)) {
+      if (gui.btn.ico_txt(ctx, &del, pan, strv("Delete"), ICO_TRASH, 0)) {
         ui_file_con_close(lst);
       }
     } break;}
@@ -1343,6 +1325,7 @@ ui_file_con_menu(struct file_list_view *lst, struct gui_ctx *ctx,
     }
     gui.in.consume(ctx);
   }
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
@@ -1354,6 +1337,7 @@ ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:file:content");
   gui.pan.begin(ctx, pan, parent);
   {
     switch (lst->state) {
@@ -1374,6 +1358,7 @@ ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_file_sel_split(struct file_view *fs, struct gui_ctx *ctx,
@@ -1382,6 +1367,7 @@ ui_file_sel_split(struct file_view *fs, struct gui_ctx *ctx,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:file:split");
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_split spt = {.box = pan->box};
@@ -1398,6 +1384,7 @@ ui_file_sel_split(struct file_view *fs, struct gui_ctx *ctx,
     gui.splt.end(ctx, &spt, pan);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static int
 ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
@@ -1409,6 +1396,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
 
   int ret = 0;
   int pan_gap = ctx->cfg.pan_gap[1];
+  dbg_blk_begin(ctx->sys, "app:gui:file:main");
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_box lay = pan->box;
@@ -1426,7 +1414,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       dis = elm->isdir || !elm->isvalid;
     }
     gui.disable(ctx, dis);
-    if (ui_btn_menu(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, 0)) {
+    if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, 0)) {
       const struct file_elm *elm = 0;
       elm = fs->lst.elms + fs->lst.sel_idx;
       dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
@@ -1435,6 +1423,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
     gui.enable(ctx, dis);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
   return ret;
 }
 

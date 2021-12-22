@@ -11,6 +11,7 @@ struct res_glyph_set {
   struct fnt_baked_char glyphs[256];
 };
 struct res_fnt {
+  unsigned long long id;
   void *data;
   float size;
   int height;
@@ -18,18 +19,57 @@ struct res_fnt {
   struct fnt_info stbfont;
   struct res_glyph_set *sets[RES_MAX_GLYPHSET];
 };
+struct res_args {
+  int hash_cnt;
+  int run_cnt;
+};
+struct res_txt_bnd {
+  int len, width;
+  const char *end;
+};
+#define RES_FNT_MAX_RUN 16
+struct res_fnt_run {
+  aes128 hash;
+  int nxt, len;
+  int lru_nxt, lru_prv;
+  unsigned char off[RES_FNT_MAX_RUN];
+  unsigned short adv[RES_FNT_MAX_RUN];
+#ifdef DEBUG_MODE
+  int ordering;
+#endif
+};
+struct res_fnt_tbl_stats {
+  unsigned hit_cnt;
+  unsigned miss_cnt;
+  unsigned recycle_cnt;
+};
+struct res_run_cache {
+  struct res_fnt_tbl_stats stats;
+  int run_cnt;
+  int hcnt, hmsk;
+  struct res_fnt_run *runs;
+  int *htbl;
+#ifdef DEBUG_MODE
+  int last_lru_cnt;
+#endif
+};
 struct res {
   struct sys *sys;
   struct res_fnt *fnt;
   struct res_fnt *ico;
+  struct res_run_cache run_cache;
+};
+struct res_fnt_api {
+  void (*ext)(int *ext, struct res *res, struct res_fnt *fnt, struct str txt);
+  void (*fit)(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt, int space, struct str txt);
 };
 struct res_api {
   int version;
-  void (*init)(struct res *res);
+  struct res_fnt_api fnt;
+  void (*init)(struct res *res, const struct res_args *args);
   void (*ico_siz)(int *siz, struct res *res, const char *ico);
   void (*ico)(struct ren_cmd_buf *buf, struct res *res, int x, int y, const char *ico);
   void (*print)(struct ren_cmd_buf *buf, struct res *res, int x, int y, struct str txt);
-  void (*fnt_ext)(int *ext, struct res *res, struct res_fnt *fnt, struct str txt);
 };
 static void res_get_api(void *export, void *import);
 

@@ -20,11 +20,16 @@ enum dbg_type {
 #define dbg_arena_name(sys, a, name) sys->dbg.rec(sys, DBG_TYPE_ARENA_NAME, (const char*)a, name);
 
 struct sys;
+struct gui_api;
+struct gui_ctx;
+struct gui_panel;
+
 struct dbg_api {
   void (*rec)(struct sys *sys, enum dbg_type type, const char *guid, const char *name);
+  void (*enable)(struct sys *sys);
+  void (*disable)(struct sys *sys);
+  int (*ui)(struct gui_api *gui, struct sys *sys, struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent);
 };
-
-
 static void dbg_init(struct sys *sys);
 static void dbg_begin(struct sys *sys);
 static void dbg_end(struct sys *sys);

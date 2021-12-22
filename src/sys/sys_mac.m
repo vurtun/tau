@@ -1038,8 +1038,8 @@ sys_mac_timestamp(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
   unsigned long long sec = cast(unsigned long long, ts.tv_sec) * 1000000llu;
-  unsigned long long nsec = cast(unsigned long long, ts.tv_nsec);
-  unsigned long long ret = sec + nsec;
+  unsigned long long usec = cast(unsigned long long, ts.tv_nsec) / 1000;
+  unsigned long long ret = sec + usec;
   return ret;
 }
 static int

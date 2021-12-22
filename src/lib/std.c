@@ -15,13 +15,14 @@ rng__mk(int lo, int hi, int s) {
   r.cnt = abs(r.hi - r.lo);
   return r;
 }
-#define arrv(b) (b), (sizeof((b))/sizeof((b)[0]))
+#define arrv(b) (b), cntof(b)
 #define arr(b) (b), dyn_cnt((b))
 #define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
 
 #define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
 #define for_cnt(i,n) for_nstep(i,n,1)
+#define fori_cnt(i,n) for (i = 0; i < (n); i += 1)
 #define for_rng(i,l,r)\
   for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
 
@@ -42,8 +43,7 @@ rng__mk(int lo, int hi, int s) {
  */
 #define FNV1A32_HASH_INITIAL 2166136261u
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
-
-static const unsigned char aes_seed[16] = {
+static const unsigned char sse_align aes_seed[16] = {
   178, 201, 95, 240, 40, 41, 143, 216,
   2, 209, 178, 114, 232, 4, 176, 188
 };
@@ -77,7 +77,7 @@ hash_ptr(const void *ptr) {
   return fnv1a64(&ptr, szof(void *), FNV1A64_HASH_INITIAL);
 }
 static aes128
-hash128(const void *src, int len, unsigned char *seedx16) {
+aes128_hash(const void *src, int len, aes128 seedx16) {
   static const char unsigned msk[32] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
@@ -85,7 +85,7 @@ hash128(const void *src, int len, unsigned char *seedx16) {
   };
   const unsigned char *at = src;
   aes128 h = aes128_int(cast(unsigned,len));
-  h = aes128_xor(h, aes128_load(seedx16));
+  h = aes128_xor(h, seedx16);
   int n = len >> 4;
   while (n--) {
     aes128 in = aes128_load(at);
@@ -928,7 +928,7 @@ lck_rel(struct lck *lck) {
 #define GB(n) (1024 * MB(n))
 
 #define ARENA_ALIGNMENT 8
-#define ARENA_BLOCK_SIZE MB(1)
+#define ARENA_BLOCK_SIZE KB(64)
 
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
 #define arena_tbl(a, s, n) arena_dyn(a, s, unsigned long long, (n << 1))
@@ -1032,11 +1032,22 @@ arena_free_last_blk(struct arena *a, struct sys *s) {
   s->mem.free(blk);
 }
 static void
+arena_reset(struct arena *a, struct sys *s) {
+  assert(a);
+  assert(s);
+  while (a->blk) {
+    if (a->blk->prv == 0) {
+      a->blk->used = 0;
+      break;
+    }
+    arena_free_last_blk(a, s);
+  }
+}
+static void
 arena_free(struct arena *a, struct sys *s) {
   assert(a);
   assert(s);
-
-  while(a->blk) {
+  while (a->blk) {
     int is_last = (a->blk->prv == 0);
     arena_free_last_blk(a, s);
     if(is_last) {
@@ -1068,10 +1079,10 @@ scope_end(struct scope *s, struct arena *a, struct sys *sys) {
   assert(s);
   assert(a);
   assert(sys);
-  while(a->blk != s->blk) {
+  while (a->blk != s->blk) {
     arena_free_last_blk(a, sys);
   }
-  if(a->blk) {
+  if (a->blk) {
     assert(a->blk->used >= s->used);
     a->blk->used = s->used;
   }
@@ -1332,8 +1343,8 @@ set__store(unsigned long long *keys, unsigned long long *vals,
   return cast(long long, i);
 }
 static long long
-set__slot(unsigned long long h, unsigned long long v,
-          unsigned long long *keys, unsigned long long *vals, int cap) {
+set__slot(unsigned long long *keys, unsigned long long *vals, int cap,
+          unsigned long long h, unsigned long long v) {
   unsigned long long n = cast(unsigned long long, cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
@@ -1354,7 +1365,7 @@ static intptr_t
 set__put(unsigned long long *set, unsigned long long key) {
   assert(set);
   unsigned long long h = set__hash(key);
-  long long i = set__slot(h, 0, set, 0, set_cap(set));
+  long long i = set__slot(set, 0, set_cap(set), h, 0);
   if (i < set_cap(set)) {
     dyn__hdr(set)->cnt++;
   }
@@ -1374,10 +1385,9 @@ set__grow(unsigned long long *old, struct sys *sys, int n) {
 static long long
 set__fnd(unsigned long long *set, unsigned long long key, int cap) {
   assert(set);
-  unsigned long long dist = 0;
   unsigned long long h = set__hash(key);
   unsigned long long n = cast(unsigned long long, cap);
-  unsigned long long i = h % n, b = i;
+  unsigned long long i = h % n, b = i, dist = 0;
   do {
     if (!set[i] || dist > set__dist(set[i],n,i)) {
       return cap;
@@ -1394,7 +1404,7 @@ set__del(unsigned long long* set, unsigned long long key, int cap) {
   if (!set_cnt(set)) {
     return cap;
   }
-  intptr_t i = set__fnd(set, key, cap);
+  long long i = set__fnd(set, key, cap);
   if (i < cap) {
     dyn__hdr(set)->cnt--;
     set[i] |= 0x8000000000000000llu;
@@ -1507,7 +1517,7 @@ tbl__put(unsigned long long *tbl, unsigned long long key, long long ival) {
   assert(tbl);
   unsigned long long h = set__hash(key);
   unsigned long long v = cast(unsigned long long, ival);
-  long long i = set__slot(h, v, tbl, tbl + tbl_cap(tbl), tbl_cap(tbl));
+  long long i = set__slot(tbl, tbl + tbl_cap(tbl), tbl_cap(tbl), h, v);
   if (i < tbl_cap(tbl)) {
     dyn__hdr(tbl)->cnt++;
   }
@@ -1527,7 +1537,7 @@ tbl__grow(unsigned long long *old, struct sys *s, int n) {
 static long long
 tbl__del(unsigned long long *tbl, unsigned long long key, intptr_t not_found) {
   assert(tbl);
-  intptr_t i = set__del(tbl, key, tbl_cap(tbl));
+  long long i = set__del(tbl, key, tbl_cap(tbl));
   if (i >= tbl_cap(tbl)) {
     return not_found;
   }
@@ -1539,8 +1549,8 @@ tbl_fnd(unsigned long long *tbl, unsigned long long key, long long not_found) {
   if (!tbl_cnt(tbl)) {
     return not_found;
   }
-  intptr_t i = set__fnd(tbl, key, tbl_cap(tbl));
-  return (i >= tbl_cap(tbl)) ? not_found : (intptr_t)tbl_val(tbl, i);
+  long long i = set__fnd(tbl, key, tbl_cap(tbl));
+  return (i >= tbl_cap(tbl)) ? not_found : (long long)tbl_val(tbl, i);
 }
 static void
 ut_tbl(struct sys *sys) {

@@ -1,3 +1,6 @@
+#ifndef GUI_H_INCL
+#define GUI_H_INCL
+
 #define GUI_VERSION 1
 
 /* input */
@@ -1007,6 +1010,7 @@ struct gui_btn_api {
   int (*txt)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, struct str s, const struct gui_align *align);
   int (*lbl)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, struct gui_box_cut *cut, struct str txt, const struct gui_align *align);
   int (*ico)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, const char *icon);
+  int (*ico_txt)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, struct str txt, const char *icon, int uline);
 };
 struct gui_chk_api {
   enum gui_chk_state (*ico)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, enum gui_chk_state chkd);
@@ -1231,4 +1235,6 @@ struct gui_api {
   struct gui_graph_api node;
 };
 static void gui_get_api(void *export, void *import);
+
+#endif
 

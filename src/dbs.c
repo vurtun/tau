@@ -2439,6 +2439,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:view:tree");
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_tbl tbl = {.box = pan->box};
@@ -2475,6 +2476,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
     gui.tbl.end(ctx, &tbl, pan, t->tbl.off);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static const char*
 ui_db_view_graph_node_attr_ico(const struct db_tbl_col *col) {
@@ -2518,6 +2520,7 @@ ui_db_view_graph_node(struct gui_ctx *ctx, struct db_graph_node *n,
   assert(ctx);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:view:graph:node");
   struct gui_graph_node node = {.box = n->box};
   gui.node.begin(ctx, &node, parent);
   {
@@ -2543,6 +2546,7 @@ ui_db_view_graph_node(struct gui_ctx *ctx, struct db_graph_node *n,
     }
   }
   gui.node.end(ctx, &node, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
@@ -2552,6 +2556,7 @@ ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:view:graph");
   gui.pan.begin(ctx, pan, parent);
   {
     struct db_graph_node *n = 0;
@@ -2563,6 +2568,7 @@ ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
     gui.grid.end(ctx, &grid, pan, g->off);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -2587,6 +2593,7 @@ ui_db_view(struct db_ui_view *d, struct db_tbl_view *view, struct gui_ctx *ctx,
   assert(view);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:view");
   gui.pan.begin(ctx, pan, parent);
   {
     /* tab control */
@@ -2622,6 +2629,7 @@ ui_db_view(struct db_ui_view *d, struct db_tbl_view *view, struct gui_ctx *ctx,
     gui.tab.end(ctx, &tab, pan);
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
@@ -2632,6 +2640,7 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
   assert(view);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:main");
   gui.pan.begin(ctx, pan, parent);
   {
     int gap = ctx->cfg.gap[1];
@@ -2769,6 +2778,7 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static int
 ui_db_explr_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -2844,6 +2854,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
   assert(pan);
   assert(parent);
 
+  dbg_blk_begin(ctx->sys, "app:gui:db:explr");
   gui.pan.begin(ctx, pan, parent);
   {
     /* tab control */
@@ -2896,6 +2907,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 
 /* ---------------------------------------------------------------------------
