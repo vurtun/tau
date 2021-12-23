@@ -688,6 +688,12 @@ sys__mac_load_col(void) {
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
   return YES;
 }
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+  return NO;
+}
+- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames {
+
+}
 - (void)applicationWillTerminate:(NSNotification*)notification {
   if (_mac.ren.dlShutdown) {
     _mac.ren.dlShutdown(&_sys);

@@ -67,19 +67,27 @@ enum app_state {
   APP_STATE_DB,
   APP_STATE_PROFILER,
 };
+struct app_view {
+  enum app_state state;
+  enum app_state last_state;
+  struct lst_elm hook;
+
+  dyn(char) file_path;
+  struct db_ui_view *db;
+};
 struct app {
   struct res res;
   struct gui_ctx gui;
   struct sys *sys;
 
   int quit;
-  enum app_state state;
-  enum app_state last_state;
   unsigned long ops[bits_to_long(APP_KEY_CNT)];
-
-  dyn(char) file_path;
   struct file_view *fs;
-  struct db_ui_view *db;
+
+  /* views */
+  dyn(struct app_view*) views;
+  struct lst_elm del_lst;
+  int sel_tab;
 };
 static void app_op_quit(struct app* app, const union app_param *arg);
 static void app_op_profiler(struct app* app, const union app_param *arg);
@@ -134,8 +142,44 @@ app_op_profiler(struct app* app, const union app_param *arg) {
   unused(arg);
   struct sys *sys = app->sys;
   sys->dbg.disable(sys);
-  app->last_state = app->state;
-  app->state = APP_STATE_PROFILER;
+
+  struct app_view *view = app->views[app->sel_tab];
+  view->last_state = view->state;
+  view->state = APP_STATE_PROFILER;
+}
+static struct app_view*
+app_view_new(struct app *app, struct sys *sys) {
+  assert(app);
+  struct app_view *s = 0;
+  if (lst_any(&app->del_lst)) {
+    s = lst_get(app->del_lst.nxt, struct app_view, hook);
+    lst_del(app->del_lst.nxt);
+  } else {
+    s = arena_alloc(sys->mem.arena, sys, szof(*s));
+  }
+  lst_init(&s->hook);
+  return s;
+}
+static void
+app_view_del(struct app *app, struct app_view *view, struct sys* sys) {
+  assert(app);
+  assert(sys);
+  assert(view);
+
+  dyn_clr(view->file_path);
+  lst_init(&view->hook);
+  lst_add(&app->del_lst, &view->hook);
+}
+static void
+app_view_setup(struct app_view *view, struct sys *sys) {
+  assert(sys);
+  assert(view);
+
+  view->state = APP_STATE_FILE;
+  view->last_state = view->state;
+  if (!view->file_path) {
+    view->file_path = arena_dyn(sys->mem.arena, sys, char, 256);
+  }
 }
 static void
 app_init(struct app *app, struct sys *sys) {
@@ -154,20 +198,96 @@ app_init(struct app *app, struct sys *sys) {
   gui.init(&app->gui, sys->mem.arena, CFG_COLOR_SCHEME);
 
   app->fs = file.init(sys, &app->gui, sys->mem.arena, sys->mem.tmp);
-  app->file_path = arena_dyn(sys->mem.arena, sys, char, 256);
+  app->views = arena_dyn(sys->mem.arena, sys, struct app_view*, 16);
+  lst_init(&app->del_lst);
+
+  struct app_view *view = app_view_new(app, sys);
+  app_view_setup(view, sys);
+  dyn_add(app->views, sys, view);
   sys->dbg.enable(sys);
 }
 static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
-
   file.shutdown(app->fs, sys);
-  db.shutdown(app->db, sys);
+
+  struct app_view **view = 0;
+  for_dyn(view, app->views) {
+    db.shutdown((*view)->db, sys);
+    dyn_free((*view)->file_path, sys);
+    app_view_del(app, *view, sys);
+  }
+}
+static int
+ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
+                           struct gui_panel *parent, struct str title,
+                           const char *ico) {
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+  assert(ico);
+
+  int ret = 0;
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_box lay = pan->box;
+    struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
+    gui.ico.icon(ctx, &close, pan, ICO_TIMES);
+    ret = close.clk;
+
+    struct gui_panel lbl = {.box = lay};
+    gui.ico.box(ctx, &lbl, pan, ico, title);
+  }
+  gui.pan.end(ctx, pan, parent);
+  return ret;
+}
+static int
+ui_app_view_tab_slot(struct app *app, struct app_view *view,
+                     struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                     struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+                     struct str title, const char *ico) {
+  assert(app);
+  assert(view);
+  assert(ctx);
+  assert(tab);
+  assert(hdr);
+  assert(slot);
+  assert(ico);
+
+  int ret = 0;
+  unsigned long long tab_id = hash_ptr(view);
+  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, tab_id);
+  if (dyn_cnt(app->views) > 1 && tab->idx == tab->sel.idx) {
+    ret = ui_app_view_tab_slot_close(ctx, slot, &hdr->pan, title, ico);
+  } else {
+    gui.ico.box(ctx, slot, &hdr->pan, ico, title);
+  }
+  gui.tab.hdr.slot.end(ctx, tab, hdr, slot, 0);
+  return ret;
+}
+static int
+ui_app_view_tab(struct app *app, struct app_view *view,
+                struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot) {
+  assert(app);
+  assert(ctx);
+  assert(tab);
+  assert(hdr);
+  assert(view);
+  assert(slot);
+
+  struct str title = strv("Open");
+  const char *ico = ICO_FOLDER_OPEN;
+  if (view->state != APP_STATE_FILE) {
+    ico = ICO_DATABASE;
+    title = path_file(dyn_str(view->file_path));
+  }
+  return ui_app_view_tab_slot(app, view, ctx, tab, hdr, slot, title, ico);
 }
 static void
-app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
-            struct gui_panel *parent) {
+ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
+            struct gui_panel *pan, struct gui_panel *parent) {
   assert(app);
   assert(ctx);
   assert(pan);
@@ -176,27 +296,84 @@ app_ui_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel bdy = {.box = pan->box};
-    switch (app->state) {
+    switch (view->state) {
     case APP_STATE_FILE: {
       struct sys *sys = ctx->sys;
-      if (file.ui(&app->file_path, app->fs, ctx, &bdy, pan)) {
-        struct str file_path = dyn_str(app->file_path);
-        app->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
-        app->state = APP_STATE_DB;
+      if (file.ui(&view->file_path, app->fs, ctx, &bdy, pan)) {
+        struct str file_path = dyn_str(view->file_path);
+        view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
+        view->state = APP_STATE_DB;
       }
     } break;
     case APP_STATE_DB:
-      db.ui(app->db, ctx, &bdy, pan);
+      db.ui(view->db, ctx, &bdy, pan);
       break;
     case APP_STATE_PROFILER: {
       struct sys *sys = app->sys;
       if (sys->dbg.ui(&gui, sys, ctx, &bdy, pan)) {
-        app->state = app->last_state;
+        view->state = view->last_state;
         sys->dbg.enable(sys);
       }
     } break;}
   }
   gui.pan.end(ctx, pan, parent);
+}
+static void
+ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
+            struct gui_panel *parent) {
+  dbg_blk_begin(ctx->sys, "app:gui:db:explr");
+  gui.pan.begin(ctx, pan, parent);
+  {
+    /* tab control */
+    struct gui_tab_ctl tab = {.box = pan->box, .show_btn = 1};
+    gui.tab.begin(ctx, &tab, pan, dyn_cnt(app->views), app->sel_tab);
+    {
+      /* tab header */
+      int del_tab = 0;
+      struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
+      gui.tab.hdr.begin(ctx, &tab, &hdr);
+      for_cnt(i, tab.cnt) {
+        /* tab header slots */
+        struct gui_panel slot = {0};
+        struct app_view *view = app->views[i];
+        if (ui_app_view_tab(app, view, ctx, &tab, &hdr, &slot)) {
+          del_tab = 1;
+        }
+      }
+      gui.tab.hdr.end(ctx, &tab, &hdr);
+      if (tab.sort.mod) {
+        /* resort tab */
+        struct app_view *dst = app->views[tab.sort.dst];
+        struct app_view *src = app->views[tab.sort.src];
+        app->views[tab.sort.dst] = src;
+        app->views[tab.sort.src] = dst;
+      }
+      if (del_tab) {
+        /* close table view tab */
+        struct app_view *view = app->views[app->sel_tab];
+        dyn_rm(app->views, app->sel_tab);
+        app_view_del(app, view, ctx->sys);
+        app->sel_tab = clamp(0, tab.sel.idx, dyn_cnt(app->views)-1);
+      }
+      struct gui_btn add = {.box = hdr.pan.box};
+      add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
+      if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
+        /* open new table view tab */
+        struct app_view *view = app_view_new(app, ctx->sys);
+        app->sel_tab = dyn_cnt(app->views);
+        dyn_add(app->views, ctx->sys, view);
+      }
+      /* tab body */
+      struct gui_panel bdy = {.box = tab.bdy};
+      ui_app_view(app, app->views[app->sel_tab], ctx, &bdy, pan);
+    }
+    gui.tab.end(ctx, &tab, pan);
+    if (tab.sel.mod) {
+      app->sel_tab = tab.sel.idx;
+    }
+  }
+  gui.pan.end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 extern void
 app_on_api(struct sys *sys) {
@@ -271,21 +448,25 @@ app_run(struct sys *sys) {
     }
   }
   /* update */
-  switch (app->state) {
-  case APP_STATE_PROFILER: break;
-  case APP_STATE_FILE:
-    file.update(app->fs, sys);
-    break;
-  case APP_STATE_DB:
-    db.update(app->db, sys);
-    break;
+  struct app_view **view = 0;
+  for_dyn(view, app->views) {
+    struct app_view *ini = *view;
+    switch (ini->state) {
+    case APP_STATE_FILE: break;
+    case APP_STATE_PROFILER: break;
+    case APP_STATE_DB:
+      db.update(ini->db, sys);
+      break;
+    }
   }
+  file.update(app->fs, sys);
+
   /* gui */
   dbg_blk_begin(sys, "app:gui");
   while (gui.begin(&app->gui)) {
     dbg_blk_begin(sys, "app:gui:pass");
     struct gui_panel pan = {.box = app->gui.box};
-    app_ui_main(app, &app->gui, &pan, &app->gui.root);
+    ui_app_main(app, &app->gui, &pan, &app->gui.root);
     gui.end(&app->gui);
     dbg_blk_end(sys);
   }

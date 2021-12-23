@@ -830,6 +830,47 @@ gui_input_consume(struct gui_ctx *ctx) {
   }
   memset(ctx->keys, 0, sizeof(ctx->keys));
 }
+static void
+gui_sys_dnd_begin(struct gui_ctx *ctx, struct sys *sys) {
+  ctx->dnd_act = 1;
+  ctx->dnd_set = 1;
+  ctx->dnd_clr = 1;
+  ctx->dnd_btn = GUI_MOUSE_LEFT;
+
+  switch (sys->dnd.state) {
+  case SYS_DND_PREVIEW:
+  case SYS_DND_ENTER:
+  case SYS_DND_LEFT: break;
+  case SYS_DND_DELIVERY:
+    ctx->dnd_paq.state = GUI_DND_DELIVERY;
+    sys->mouse.btn.left.released = 1;
+    break;
+  }
+  ctx->dnd_paq.src = GUI_DND_EXTERN;
+  ctx->dnd_paq.response = GUI_DND_REJECT;
+  ctx->dnd_paq.src_id = ctx->root.id;
+
+  switch (sys->dnd.type) {
+  case SYS_DND_FILE: {
+    ctx->dnd_paq.type = STR_HASH8("[files]");
+    ctx->dnd_paq.data = sys->dnd.files;
+    ctx->dnd_paq.size = sys->dnd.file_cnt;
+  } break;
+  case SYS_DND_STR: {
+    ctx->dnd_paq.type = STR_HASH8("[str]");
+    ctx->dnd_paq.data = &sys->dnd.str;
+    ctx->dnd_paq.size = sys->dnd.str.len;
+  } break;}
+}
+static void
+gui_sys_dnd_end(struct gui_ctx *ctx, struct sys *sys) {
+  switch (ctx->dnd_paq.response) {
+  case GUI_DND_REJECT:
+    sys->dnd.response = SYS_DND_REJECT; break;
+  case GUI_DND_ACCEPT:
+    sys->dnd.response = SYS_DND_ACCEPT; break;
+  }
+}
 static struct gui_panel *
 gui_begin(struct gui_ctx *ctx) {
   assert(ctx);
@@ -865,35 +906,7 @@ gui_begin(struct gui_ctx *ctx) {
 
       /* drag & drop */
       if (sys->dnd.state != SYS_DND_NONE) {
-        ctx->dnd_act = 1;
-        ctx->dnd_set = 1;
-        ctx->dnd_clr = 1;
-        ctx->dnd_btn = GUI_MOUSE_LEFT;
-
-        switch (sys->dnd.state) {
-        case SYS_DND_PREVIEW:
-        case SYS_DND_ENTER:
-        case SYS_DND_LEFT: break;
-        case SYS_DND_DELIVERY:
-          ctx->dnd_paq.state = GUI_DND_DELIVERY;
-          sys->mouse.btn.left.released = 1;
-          break;
-        }
-        ctx->dnd_paq.src = GUI_DND_EXTERN;
-        ctx->dnd_paq.response = GUI_DND_REJECT;
-        ctx->dnd_paq.src_id = ctx->root.id;
-
-        switch (sys->dnd.type) {
-        case SYS_DND_FILE: {
-          ctx->dnd_paq.type = STR_HASH8("[files]");
-          ctx->dnd_paq.data = sys->dnd.files;
-          ctx->dnd_paq.size = sys->dnd.file_cnt;
-        } break;
-        case SYS_DND_STR: {
-          ctx->dnd_paq.type = STR_HASH8("[str]");
-          ctx->dnd_paq.data = &sys->dnd.str;
-          ctx->dnd_paq.size = sys->dnd.str.len;
-        } break;}
+        gui_sys_dnd_begin(ctx, sys);
       }
     } break;
     case GUI_RENDER: {
@@ -911,6 +924,13 @@ gui_begin(struct gui_ctx *ctx) {
   gui_panel_hot(ctx, pan, 0);
   ctx->box = gui_padv(&pan->box, ctx->cfg.pan_pad);
   return &ctx->root;
+}
+static void
+gui_dnd_clr(struct gui_ctx *ctx) {
+  memset(&ctx->dnd_paq, 0, sizeof(ctx->dnd_paq));
+  ctx->dnd_act = 0;
+  ctx->dnd_set = 0;
+  ctx->dnd_in = 0;
 }
 static void
 gui_end(struct gui_ctx *ctx) {
@@ -933,18 +953,10 @@ gui_end(struct gui_ctx *ctx) {
 
       struct sys *sys = ctx->sys;
       if (sys->dnd.state != SYS_DND_NONE) {
-        switch (ctx->dnd_paq.response) {
-        case GUI_DND_REJECT:
-          sys->dnd.response = SYS_DND_REJECT; break;
-        case GUI_DND_ACCEPT:
-          sys->dnd.response = SYS_DND_ACCEPT; break;
-        }
+        gui_sys_dnd_end(ctx, sys);
       }
       if (ctx->dnd_clr) {
-        memset(&ctx->dnd_paq, 0, sizeof(ctx->dnd_paq));
-        ctx->dnd_act = 0;
-        ctx->dnd_set = 0;
-        ctx->dnd_in = 0;
+        gui_dnd_clr(ctx);
       }
       gui_input_end(ctx, &ctx->sys->mouse);
       memset(ctx->keys, 0, sizeof(ctx->keys));
@@ -1104,7 +1116,6 @@ gui_dnd_dst_end(struct gui_ctx *ctx) {
   assert(ctx->dnd_set);
   ctx->dnd_in = 0;
 }
-
 /* ---------------------------------------------------------------------------
  *                                  Label
  * ---------------------------------------------------------------------------

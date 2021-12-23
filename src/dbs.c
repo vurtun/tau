@@ -1474,7 +1474,7 @@ ui_db_tbl_lst_fnd(struct db_tbl_lst *lst, struct gui_ctx *ctx,
 static const char*
 ui_db_tbl_lst_elm_ico(enum db_tbl_lst_elm_type type) {
   switch (type) {
-  case DB_TBL_LST_ELM_TBL: return ICO_LIST;
+  case DB_TBL_LST_ELM_TBL: return ICO_TABLE;
   case DB_TBL_LST_ELM_VIEW: return ICO_IMAGE;
   case DB_TBL_LST_ELM_IDX: return ICO_TAG;
   case DB_TBL_LST_ELM_TRIGGER: return ICO_BOLT;
@@ -2604,8 +2604,8 @@ ui_db_view(struct db_ui_view *d, struct db_tbl_view *view, struct gui_ctx *ctx,
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       {
-        ui_db_view_tab(ctx, &tab, &hdr, strv("Table"), ICO_LIST);
-        ui_db_view_tab(ctx, &tab, &hdr, strv("Detail"), ICO_BOOK);
+        ui_db_view_tab(ctx, &tab, &hdr, strv("Tables"), ICO_LIST);
+        ui_db_view_tab(ctx, &tab, &hdr, strv("Details"), ICO_BOOK);
         ui_db_view_tab(ctx, &tab, &hdr, strv("Graph"), ICO_PROJECT_DIAGRAM);
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
@@ -2838,8 +2838,8 @@ ui_db_explr_tab(struct db_ui_view *d, struct db_tbl_view *tbl,
   assert(hdr);
   assert(slot);
 
-  struct str title = strv("Tables");
-  const char *ico = ICO_DATABASE;
+  struct str title = strv("Info");
+  const char *ico = ICO_INFO_CIRCLE;
   if (tbl->state != TBL_VIEW_SELECT) {
     ico = ui_db_tbl_lst_elm_ico(tbl->kind);
     title = tbl->name;
