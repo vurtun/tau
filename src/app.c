@@ -134,12 +134,15 @@ app_on_mod(unsigned mod, unsigned keymod) {
 }
 static void
 app_op_quit(struct app *app, const union app_param *arg) {
+  assert(app);
   unused(arg);
   app->quit = 1;
 }
 static void
 app_op_profiler(struct app* app, const union app_param *arg) {
+  assert(app);
   unused(arg);
+
   struct sys *sys = app->sys;
   sys->dbg.disable(sys);
 
@@ -150,6 +153,8 @@ app_op_profiler(struct app* app, const union app_param *arg) {
 static struct app_view*
 app_view_new(struct app *app, struct sys *sys) {
   assert(app);
+  assert(sys);
+
   struct app_view *s = 0;
   if (lst_any(&app->del_lst)) {
     s = lst_get(app->del_lst.nxt, struct app_view, hook);
@@ -179,6 +184,37 @@ app_view_setup(struct app_view *view, struct sys *sys) {
   view->last_state = view->state;
   if (!view->file_path) {
     view->file_path = arena_dyn(sys->mem.arena, sys, char, 256);
+  }
+}
+static void
+app_open_files(struct app *app, struct sys *sys, const struct str *files, int cnt) {
+  assert(app);
+  assert(sys);
+  assert(files);
+
+  int i = 0;
+  if (cnt && app->views[app->sel_tab]->state == APP_STATE_FILE) {
+    /* open first database in place */
+    struct app_view *view = app->views[app->sel_tab];
+    for (; i < cnt && !view->db; ++i) {
+      view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
+    }
+    if (!view->db) {
+      return;
+    }
+    view->state = APP_STATE_DB;
+  }
+  for (; i < cnt; ++i) {
+    /* open each database in new tab */
+    struct app_view *view = app_view_new(app, sys);
+    view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
+    if (!view->db) {
+      app_view_del(app, view, sys);
+      continue;
+    }
+    view->state = APP_STATE_DB;
+    app->sel_tab = dyn_cnt(app->views);
+    dyn_add(app->views, sys, view);
   }
 }
 static void
@@ -319,8 +355,38 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   gui.pan.end(ctx, pan, parent);
 }
 static void
+ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
+  assert(app);
+  assert(ctx);
+  assert(pan);
+
+  if (gui.dnd.dst.begin(ctx, pan)) {
+    struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH8("[files]"));
+    if (paq) { /* file drag & drop */
+      const struct str *file_urls = paq->data;
+      switch (paq->state) {
+      case GUI_DND_DELIVERY: {
+        int file_cnt = paq->size;
+        app_open_files(app, ctx->sys, file_urls, file_cnt);
+        paq->response = GUI_DND_ACCEPT;
+      } break;
+      case GUI_DND_LEFT: break;
+      case GUI_DND_ENTER:
+      case GUI_DND_PREVIEW: {
+        paq->response = GUI_DND_ACCEPT;
+      } break;}
+    }
+    gui.dnd.dst.end(ctx);
+  }
+}
+static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
+  assert(app);
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+
   dbg_blk_begin(ctx->sys, "app:gui:db:explr");
   gui.pan.begin(ctx, pan, parent);
   {
@@ -343,13 +409,18 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
         /* resort tab */
+        assert(tab.sort.dst < dyn_cnt(app->views));
+        assert(tab.sort.src < dyn_cnt(app->views));
         struct app_view *dst = app->views[tab.sort.dst];
         struct app_view *src = app->views[tab.sort.src];
         app->views[tab.sort.dst] = src;
         app->views[tab.sort.src] = dst;
       }
       if (del_tab) {
-        /* close table view tab */
+        /* close database view tab */
+        assert(dyn_any(app->views));
+        assert(app->sel_tab < dyn_cnt(app->views));
+
         struct app_view *view = app->views[app->sel_tab];
         dyn_rm(app->views, app->sel_tab);
         app_view_del(app, view, ctx->sys);
@@ -358,7 +429,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       struct gui_btn add = {.box = hdr.pan.box};
       add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
       if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
-        /* open new table view tab */
+        /* new open file view tab */
         struct app_view *view = app_view_new(app, ctx->sys);
         app->sel_tab = dyn_cnt(app->views);
         dyn_add(app->views, ctx->sys, view);
@@ -373,6 +444,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  ui_app_dnd_files(app, ctx, pan);
   dbg_blk_end(ctx->sys);
 }
 extern void

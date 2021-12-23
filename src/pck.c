@@ -1422,32 +1422,6 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
     gui.enable(ctx, dis);
   }
   gui.pan.end(ctx, pan, parent);
-
-  if (gui.dnd.dst.begin(ctx, pan)) {
-    struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH8("[files]"));
-    if (paq) { /* file drag & drop */
-      const struct str *file_urls = paq->data;
-      switch (paq->state) {
-      case GUI_DND_DELIVERY: {
-        if (paq->size == 1) {
-          dyn_asn_str(*filepath, ctx->sys, file_urls[0]);
-          paq->response = GUI_DND_ACCEPT;
-          ret = 1;
-        }
-      } break;
-      case GUI_DND_LEFT: break;
-      case GUI_DND_ENTER:
-      case GUI_DND_PREVIEW: {
-        if (paq->size != 1) {
-          paq->response = GUI_DND_REJECT;
-        } else {
-          paq->response = GUI_DND_ACCEPT;
-        }
-      } break;}
-      paq->response = GUI_DND_ACCEPT;
-    }
-    gui.dnd.dst.end(ctx);
-  }
   dbg_blk_end(ctx->sys);
   return ret;
 }

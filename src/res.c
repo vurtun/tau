@@ -1868,6 +1868,7 @@ res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
   if (!txt.len) {
     return;
   }
+  dbg_blk_begin(r->sys, "res:fnt:ext");
   aes128 h = aes128_load(aes_seed);
   int n = div_round_up(txt.len, 16);
   for_cnt(i,n) {
@@ -1882,6 +1883,7 @@ res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
     ext[0] += run->adv[run->len-1];
     txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
+  dbg_blk_end(r->sys);
 }
 static void
 res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run,
@@ -1913,6 +1915,7 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt,
     return;
   }
   int ext = 0;
+  dbg_blk_begin(r->sys, "res:fnt:fit");
   aes128 h = aes128_load(aes_seed);
   int n = div_round_up(txt.len, 16);
   for_cnt(i,n) {
@@ -1937,6 +1940,7 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt,
     txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
   bnd->end = txt.str + bnd->len;
+  dbg_blk_end(r->sys);
 }
 static struct fnt_baked_char *
 res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
@@ -1957,6 +1961,7 @@ res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
 }
 static void
 ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) {
+  dbg_blk_begin(r->sys, "res:fnt:fit");
   unsigned rune = 0;
   for_utf(&rune, _, rest, txt) {
     struct fnt_baked_char *g = res__glyph(buf, r, r->fnt, x, y, cast(int, rune));
@@ -1968,6 +1973,7 @@ ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) 
       x += ceili(r->fnt->scale * cast(float, k));
     }
   }
+  dbg_blk_end(r->sys);
 }
 static void
 ren_ico_siz(int *siz, struct res *r, const char *ico) {

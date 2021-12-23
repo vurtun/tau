@@ -439,6 +439,7 @@ gui_input(struct gui_input *in, struct gui_ctx *ctx,
   assert(ctx && p);
   assert(ctx->sys);
 
+  dbg_blk_begin(ctx->sys, "gui:input");
   struct sys *sys = ctx->sys;
   memset(in, 0, sizeof(*in));
 
@@ -461,6 +462,7 @@ gui_input(struct gui_input *in, struct gui_ctx *ctx,
   in->mouse.pos_rel[0] = in->mouse.pos[0] - p->box.x.min;
   in->mouse.pos_rel[1] = in->mouse.pos[1] - p->box.y.min;
   if (ctx->pass != GUI_INPUT || ctx->disabled) {
+    dbg_blk_end(ctx->sys);
     return;
   }
   /* keyboard */
@@ -519,6 +521,7 @@ gui_input(struct gui_input *in, struct gui_ctx *ctx,
       }
     }
   }
+  dbg_blk_end(ctx->sys);
 }
 static enum gui_state
 gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *p) {
@@ -878,6 +881,7 @@ gui_begin(struct gui_ctx *ctx) {
     ctx->pass = GUI_INPUT;
     return 0;
   }
+  dbg_blk_begin(ctx->sys, "gui:begin");
   struct sys *sys = ctx->sys;
   ctx->disabled = 0;
 
@@ -966,6 +970,7 @@ gui_end(struct gui_ctx *ctx) {
       ctx->ren = 0;
     } break;
   }
+  dbg_blk_end(ctx->sys);
 }
 static void
 gui_scissor(struct gui_ctx *ctx, int lhs, int top, int rhs, int bot) {
@@ -1212,6 +1217,7 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   assert(parent);
+  dbg_blk_begin(ctx->sys, "gui:txt:uln");
 
   /* calculate text extend */
   int ext[2] = {0};
@@ -1235,6 +1241,7 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
     gui_txt_drw(ctx, pan, txt, uln_pos, uln_cnt);
   }
   gui_panel_end(ctx, pan, parent);
+  dbg_blk_end(ctx->sys);
 }
 static void
 gui_txt(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
@@ -1427,6 +1434,7 @@ gui_btn_begin(struct gui_ctx *ctx, struct gui_btn *btn,
   assert(btn);
   assert(ctx);
   assert(parent);
+  dbg_blk_begin(ctx->sys, "gui:btn");
 
   btn->pan.box = btn->box;
   gui_panel_begin(ctx, &btn->pan, parent);
@@ -1451,6 +1459,7 @@ gui_btn_end(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent) 
   if (pan->state == GUI_FOCUSED) {
     btn->clk = bit_tst_clr(ctx->keys, GUI_KEY_ACT) ? 1 : btn->clk;
   }
+  dbg_blk_end(ctx->sys);
 }
 static int
 gui_btn_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
@@ -1878,6 +1887,18 @@ gui__scrl_jmp(double *off, const struct gui_scrl *s,
   off[1] = clamp(0, ry * s->total[1], s->total[1] - s->size[1]);
 }
 static void
+gui__scrl_drw(struct gui_ctx *ctx, struct gui_scrl *s) {
+  const struct gui_box *b = &s->pan.box;
+  struct color c = col_get(ctx->cfg.col[GUI_COL_CONTENT]);
+  c.a = 0x7f;
+
+  struct sys *sys = ctx->sys;
+  sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_BG]);
+  sys->ren.drw.box(ctx->ren, gui_unbox(b));
+  sys->ren.drw.col(ctx->ren, col_paq(&c));
+  sys->ren.drw.box(ctx->ren, gui_unbox(b));
+}
+static void
 gui_scrl(struct gui_ctx *ctx, struct gui_scrl *s, struct gui_panel *parent) {
   assert(s);
   assert(ctx);
@@ -1889,17 +1910,9 @@ gui_scrl(struct gui_ctx *ctx, struct gui_scrl *s, struct gui_panel *parent) {
   gui_panel_begin(ctx, &s->pan, parent);
   {
     gui__scrl_chk(s);
-    if (ctx->pass == GUI_RENDER && s->pan.state != GUI_HIDDEN) {
-      /* draw background */
-      const struct gui_box *b = &s->pan.box;
-      struct color c = col_get(ctx->cfg.col[GUI_COL_CONTENT]);
-      c.a = 0x7f;
-
-      struct sys *sys = ctx->sys;
-      sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_BG]);
-      sys->ren.drw.box(ctx->ren, gui_unbox(b));
-      sys->ren.drw.col(ctx->ren, col_paq(&c));
-      sys->ren.drw.box(ctx->ren, gui_unbox(b));
+    if (ctx->pass == GUI_RENDER &&
+        s->pan.state != GUI_HIDDEN) {
+      gui__scrl_drw(ctx, s);
     }
     gui__scrl_cur(ctx, s, &cur, &s->pan, &cur_in);
   }
@@ -3151,6 +3164,22 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
     }
   }
   gui_panel_end(ctx, pan, parent);
+
+  if (gui_dnd_dst_begin(ctx, pan)) {
+    struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, STR_HASH8("[str]"));
+    if (paq) { /* string drag & drop */
+      const struct str *str = paq->data;
+      switch (paq->state) {
+      case GUI_DND_LEFT:
+      case GUI_DND_ENTER:
+      case GUI_DND_PREVIEW: break;
+      case GUI_DND_DELIVERY: {
+        dyn_asn_str(*buf, ctx->sys, *str);
+      } break;}
+      paq->response = GUI_DND_ACCEPT;
+    }
+    gui_dnd_dst_end(ctx);
+  }
 }
 static void
 gui_edit_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
