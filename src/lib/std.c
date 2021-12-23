@@ -605,6 +605,7 @@ str__match_hash(struct str s) {
 #define str_inv (struct str){0,0,-1}
 #define str_nil (struct str){0,0,0}
 #define str_eq(a,b) (str_cmp(a,b) == 0)
+#define str_neq(a,b) (str_cmp(a,b) != 0)
 #define str_sub(s,b,e) str((s).str + (b), (e) - (b))
 #define str_rhs(s, n) str_sub(s, min((s).len, n), (s).len)
 #define str_lhs(s, n) str_sub(s, 0, min((s).len, n))

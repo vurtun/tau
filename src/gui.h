@@ -174,7 +174,6 @@ enum gui_state {
 };
 struct gui_panel {
   struct gui_box box;
-
   unsigned long long id;
   enum gui_state state;
 
@@ -844,19 +843,6 @@ struct gui_cfg_stk {
   int val;
   int *ptr;
 };
-enum gui_dnd_paq_state {
-  GUI_DND_ENTER,
-  GUI_DND_PREVIEW,
-  GUI_DND_DELIVERY,
-  GUI_DND_LEFT
-};
-struct gui_dnd_paq {
-  enum gui_dnd_paq_state state;
-  unsigned long long src_id;
-  const char *type;
-  void *data;
-  int size;
-};
 struct gui_btn_state {
   unsigned long long active;
   unsigned long long prev_active;
@@ -876,6 +862,47 @@ enum gui_img_id {
   GUI_IMG_CHEVRONL,
   GUI_IMG_CHEVRONR,
   GUI_IMG_MAX,
+};
+enum gui_dnd_paq_state {
+  GUI_DND_ENTER,
+  GUI_DND_PREVIEW,
+  GUI_DND_DELIVERY,
+  GUI_DND_LEFT
+};
+enum gui_dnd_paq_response {
+  GUI_DND_REJECT,
+  GUI_DND_ACCEPT,
+};
+enum gui_dnd_paq_src {
+  GUI_DND_INTERN,
+  GUI_DND_EXTERN,
+};
+struct gui_dnd_paq {
+  enum gui_dnd_paq_state state;
+  enum gui_dnd_paq_src src;
+  enum gui_dnd_paq_response response;
+  unsigned long long src_id;
+  unsigned long long type;
+  const void *data;
+  int size;
+};
+struct gui_dnd_src {
+  unsigned active:1;
+  unsigned activated:1;
+
+  unsigned drag_begin:1;
+  unsigned dragged:1;
+  unsigned drag_end:1;
+};
+enum gui_dnd_src_flags {
+  GUI_DND_SRC_FLAG_NONE,
+  GUI_DND_SRC_DRAG_THRESHOLD
+};
+struct gui_dnd_src_arg {
+  unsigned long long flags;
+  struct gui_input *in;
+  int drag_threshold[2];
+  enum gui_mouse_btn_id drag_btn;
 };
 struct gui_ctx {
   /* sys */
@@ -910,6 +937,7 @@ struct gui_ctx {
   unsigned dnd_clr : 1;
   unsigned dnd_in : 1;
   struct gui_dnd_paq dnd_paq;
+  enum gui_mouse_btn_id dnd_btn;
 
   /* state */
   struct ren_cmd_buf *ren;
@@ -975,6 +1003,20 @@ struct gui_panel_api {
   void (*end)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *p);
   void (*open)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, unsigned long long id);
   void (*close)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *p);
+};
+struct gui_dnd_src_api {
+  int (*begin)(struct gui_dnd_src *ret, struct gui_ctx *ctx, struct gui_panel *pan, struct gui_dnd_src_arg *arg);
+  void (*set)(struct gui_ctx *ctx, unsigned long long type, const void *data, int len, int cond);
+  void (*end)(struct gui_ctx *ctx);
+};
+struct gui_dnd_dst_api {
+  int (*begin)(struct gui_ctx *ctx, struct gui_panel *pan);
+  struct gui_dnd_paq* (*get)(struct gui_ctx *ctx, unsigned long long type);
+  void (*end)(struct gui_ctx *ctx);
+};
+struct gui_dnd_api {
+  struct gui_dnd_src_api src;
+  struct gui_dnd_dst_api dst;
 };
 struct gui_cfg_api {
   void (*pushi)(struct gui_cfg_stk *stk, void *ptr, int val);
@@ -1213,6 +1255,7 @@ struct gui_api {
   struct gui_cut_api cut;
   struct gui_lay_api lay;
   struct gui_panel_api pan;
+  struct gui_dnd_api dnd;
   struct gui_cfg_api cfg;
   struct gui_input_api in;
   struct gui_txt_api txt;

@@ -847,7 +847,8 @@ gui_begin(struct gui_ctx *ctx) {
     /* skip input pass if no drag mouse movement */
     struct sys *s = ctx->sys;
     int no_move = !s->mouse_mod || (s->mouse_mod && !s->mouse_grap);
-    if (!s->key_mod && !s->btn_mod && !s->txt_mod && !s->scrl_mod && no_move) {
+    if (!s->key_mod && !s->btn_mod && !s->dnd_mod &&
+        !s->txt_mod && !s->scrl_mod && no_move) {
       ctx->pass = GUI_RENDER;
     }
   }
@@ -861,6 +862,39 @@ gui_begin(struct gui_ctx *ctx) {
       ctx->first_id = pan->id;
       gui_input_begin(ctx, &sys->mouse);
       ctx->focusable = ctx->root.id;
+
+      /* drag & drop */
+      if (sys->dnd.state != SYS_DND_NONE) {
+        ctx->dnd_act = 1;
+        ctx->dnd_set = 1;
+        ctx->dnd_clr = 1;
+        ctx->dnd_btn = GUI_MOUSE_LEFT;
+
+        switch (sys->dnd.state) {
+        case SYS_DND_PREVIEW:
+        case SYS_DND_ENTER:
+        case SYS_DND_LEFT: break;
+        case SYS_DND_DELIVERY:
+          ctx->dnd_paq.state = GUI_DND_DELIVERY;
+          sys->mouse.btn.left.released = 1;
+          break;
+        }
+        ctx->dnd_paq.src = GUI_DND_EXTERN;
+        ctx->dnd_paq.response = GUI_DND_REJECT;
+        ctx->dnd_paq.src_id = ctx->root.id;
+
+        switch (sys->dnd.type) {
+        case SYS_DND_FILE: {
+          ctx->dnd_paq.type = STR_HASH8("[files]");
+          ctx->dnd_paq.data = sys->dnd.files;
+          ctx->dnd_paq.size = sys->dnd.file_cnt;
+        } break;
+        case SYS_DND_STR: {
+          ctx->dnd_paq.type = STR_HASH8("[str]");
+          ctx->dnd_paq.data = &sys->dnd.str;
+          ctx->dnd_paq.size = sys->dnd.str.len;
+        } break;}
+      }
     } break;
     case GUI_RENDER: {
       sys->cursor = SYS_CUR_ARROW;
@@ -897,6 +931,21 @@ gui_end(struct gui_ctx *ctx) {
       ctx->focus_last = 0;
       ctx->focus_next = 0;
 
+      struct sys *sys = ctx->sys;
+      if (sys->dnd.state != SYS_DND_NONE) {
+        switch (ctx->dnd_paq.response) {
+        case GUI_DND_REJECT:
+          sys->dnd.response = SYS_DND_REJECT; break;
+        case GUI_DND_ACCEPT:
+          sys->dnd.response = SYS_DND_ACCEPT; break;
+        }
+      }
+      if (ctx->dnd_clr) {
+        memset(&ctx->dnd_paq, 0, sizeof(ctx->dnd_paq));
+        ctx->dnd_act = 0;
+        ctx->dnd_set = 0;
+        ctx->dnd_in = 0;
+      }
       gui_input_end(ctx, &ctx->sys->mouse);
       memset(ctx->keys, 0, sizeof(ctx->keys));
     } break;
@@ -948,6 +997,112 @@ gui_enable(struct gui_ctx *ctx, int cond) {
     assert(ctx->disabled > 0);
     ctx->disabled--;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  Drag & Drop
+ * ---------------------------------------------------------------------------
+ */
+static int
+gui_dnd_src_begin(struct gui_dnd_src *ret, struct gui_ctx *ctx,
+                  struct gui_panel *pan, struct gui_dnd_src_arg *arg) {
+  assert(ret);
+  assert(ctx);
+  assert(pan);
+  assert(arg);
+
+  struct gui_input dummy = {0};
+  struct gui_input *in = arg->in;
+  if (!arg->in) {
+    in = &dummy;
+    gui_input(in, ctx, pan, (1u << arg->drag_btn));
+  }
+  ret->activated = in->mouse.btns[arg->drag_btn].drag_begin;
+  ret->drag_begin = in->mouse.btns[arg->drag_btn].drag_begin;
+  ret->dragged = in->mouse.btns[arg->drag_btn].dragged;
+  ret->drag_end = in->mouse.btns[arg->drag_btn].drag_end;
+  if (ret->drag_end) {
+    ctx->dnd_clr = 1;
+  }
+  ret->active = ret->drag_begin|| ret->dragged || ret->drag_end;
+  if (!ret->active) {
+    return 0;
+  }
+  ctx->dnd_paq.src_id = pan->id;
+  ctx->dnd_paq.src = GUI_DND_INTERN;
+  ctx->dnd_btn = arg->drag_btn;
+  ctx->dnd_act = 1;
+  ctx->dnd_in = 1;
+  return 1;
+}
+static void
+gui_dnd_src_set(struct gui_ctx *ctx, unsigned long long type, const void *data,
+                int len, int cond) {
+  assert(ctx);
+  assert(ctx->dnd_in);
+  assert(ctx->dnd_act);
+  if (!cond) {
+    return;
+  }
+  ctx->dnd_set = 1;
+  ctx->dnd_paq.type = type;
+  ctx->dnd_paq.data = data;
+  ctx->dnd_paq.size = len;
+}
+static void
+gui_dnd_src_end(struct gui_ctx *ctx) {
+  assert(ctx);
+  assert(ctx->dnd_in);
+  assert(ctx->dnd_act);
+  if (!ctx->dnd_set) {
+    ctx->dnd_act = 0;
+  }
+}
+static int
+gui_dnd_dst_begin(struct gui_ctx *ctx, struct gui_panel *pan) {
+  assert(ctx);
+  assert(pan);
+  if (!ctx->dnd_act || !pan->is_hov) {
+    return 0;
+  }
+  assert(ctx->dnd_act);
+  assert(ctx->dnd_set);
+
+  struct gui_input in;
+  gui_input(&in, ctx, pan, 0);
+  if (in.entered) {
+    ctx->dnd_paq.state = GUI_DND_ENTER;
+  } else if (in.exited) {
+    ctx->dnd_paq.state = GUI_DND_LEFT;
+  } else {
+    struct sys *sys = ctx->sys;
+    if (sys->mouse.btns[ctx->dnd_btn].released) {
+      ctx->dnd_paq.state = GUI_DND_DELIVERY;
+    } else {
+      ctx->dnd_paq.state = GUI_DND_PREVIEW;
+    }
+  }
+  ctx->dnd_in = 1;
+  return 1;
+}
+static struct gui_dnd_paq*
+gui_dnd_dst_get(struct gui_ctx *ctx, unsigned long long type) {
+  assert(ctx);
+  assert(ctx->dnd_in);
+  assert(ctx->dnd_act);
+  assert(ctx->dnd_set);
+  if (ctx->dnd_paq.type != type) {
+    return 0;
+  }
+  return &ctx->dnd_paq;
+}
+static void
+gui_dnd_dst_end(struct gui_ctx *ctx) {
+  assert(ctx);
+  assert(ctx->dnd_in);
+  assert(ctx->dnd_act);
+  assert(ctx->dnd_set);
+  ctx->dnd_in = 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -5591,6 +5746,18 @@ static const struct gui_api gui_api = {
     .item = gui_lay_item,
     .vlay = gui__vlay,
     .hlay = gui__hlay,
+  },
+  .dnd = {
+    .src = {
+      .begin = gui_dnd_src_begin,
+      .set = gui_dnd_src_set,
+      .end = gui_dnd_src_end,
+    },
+    .dst = {
+      .begin = gui_dnd_dst_begin,
+      .get = gui_dnd_dst_get,
+      .end = gui_dnd_dst_end,
+    },
   },
   .pan = {
     .hot = gui_panel_hot,

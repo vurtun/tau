@@ -148,6 +148,31 @@ struct sys_win {
   int w, h;
 };
 
+/* drag & drop */
+enum sys_dnd_response {
+  SYS_DND_REJECT,
+  SYS_DND_ACCEPT,
+};
+enum sys_dnd_state {
+  SYS_DND_NONE,
+  SYS_DND_ENTER,
+  SYS_DND_PREVIEW,
+  SYS_DND_DELIVERY,
+  SYS_DND_LEFT
+};
+enum sys_dnd_data_type {
+  SYS_DND_FILE,
+  SYS_DND_STR,
+};
+struct sys_dnd {
+  enum sys_dnd_state state;
+  enum sys_dnd_data_type type;
+  enum sys_dnd_response response;
+  struct str *files;
+  int file_cnt;
+  struct str str;
+};
+
 /* api */
 struct sys_mem_api {
   long page_siz;
@@ -211,6 +236,7 @@ struct sys {
   struct cpu_info cpu;
   enum sys_cur_style cursor;
   struct sys_win win;
+  struct sys_dnd dnd;
 
   /* colors */
   unsigned col_mod:1;
@@ -234,6 +260,7 @@ struct sys {
 
   /* input */
   unsigned key_mod:1;
+  unsigned dnd_mod:1;
   unsigned btn_mod:1;
   unsigned txt_mod:1;
   unsigned mouse_mod:1;

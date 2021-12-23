@@ -727,19 +727,141 @@ sys__mac_load_col(void) {
   self = [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:flag];
   if (self) {
     #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-      [self registerForDraggedTypes:[NSArray arrayWithObject:NSPasteboardTypeFileURL]];
+      [self registerForDraggedTypes:[NSArray arrayWithObjects:NSPasteboardTypeFileURL,NSPasteboardTypeString,nil]];
     #endif
   }
   return self;
 }
+static BOOL
+sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
+  BOOL ret = NO;
+  int file_cnt = cast(int, [files count]);
+
+  struct scope scp;
+  scope_begin(&scp, _sys.mem.tmp);
+
+  _sys.dnd.state = SYS_DND_DELIVERY;
+  _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
+  for (int i = 0; i < file_cnt; i++) {
+    NSUInteger idx = cast(NSUInteger, i);
+    NSURL *fileUrl = [NSURL fileURLWithPath:[[files objectAtIndex:idx] stringForType:NSPasteboardTypeFileURL]];
+    struct str path = str0(fileUrl.standardizedURL.path.UTF8String);
+    _sys.dnd.files[i] = arena_str(_sys.mem.tmp, &_sys, path);
+  }
+  _sys.dnd.file_cnt = file_cnt;
+  _sys.dnd_mod = 1;
+  _sys.dnd.state = state;
+
+  sys__mac_on_frame();
+  scope_end(&scp, _sys.mem.tmp, &_sys);
+  ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
+
+  _sys.dnd.state = SYS_DND_NONE;
+  _sys.dnd.response = SYS_DND_REJECT;
+  _sys.dnd.files = 0;
+  _sys.dnd_mod = 0;
+  return ret;
+}
+static BOOL
+sys__mac_dnd_str(NSArray *strs, enum sys_dnd_state state) {
+  BOOL ret = NO;
+
+  struct scope scp;
+  scope_begin(&scp, _sys.mem.tmp);
+  _sys.dnd.state = SYS_DND_DELIVERY;
+
+  NSString *str = [strs objectAtIndex:0];
+  NSData *utf8Data = [str dataUsingEncoding:NSUTF8StringEncoding];
+  int len = cast(int, [utf8Data length]);
+  struct str raw_str = str(cast(const char*, [utf8Data bytes]), len);
+
+  _sys.dnd.str = arena_str(_sys.mem.tmp, &_sys, raw_str);
+  _sys.dnd.state = state;
+  _sys.dnd_mod = 1;
+
+  sys__mac_on_frame();
+  scope_end(&scp, _sys.mem.tmp, &_sys);
+  ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
+
+  _sys.dnd.state = SYS_DND_NONE;
+  _sys.dnd.response = SYS_DND_REJECT;
+  _sys.dnd.str = str_nil;
+  _sys.dnd_mod = 0;
+  return ret;
+}
+static BOOL
+sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
+  BOOL ret = NO;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+  if ([pboard.types containsObject:NSPasteboardTypeFileURL]) {
+    NSArray *files = pboard.pasteboardItems;
+    ret = sys__mac_dnd_files(files, state);
+  }
+  if ([pboard.types containsObject:NSPasteboardTypeString]) {
+    NSArray *strs = pboard.pasteboardItems;
+    ret = sys__mac_dnd_str(strs, state);
+  }
+#endif
+  return ret;
+}
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  BOOL ret = sys__mac_dnd(pboard, SYS_DND_ENTER);
+  if (ret) {
+    return NSDragOperationCopy;
+  } else {
+    return NSDragOperationNone;
+  }
+#else
   return NSDragOperationCopy;
+#endif
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+  NSPoint pos = [_mac.win mouseLocationOutsideOfEventStream];
+  float new_x = cast(float, pos.x) * _sys.dpi_scale[0];
+  float new_y = cast(float, pos.y) * _sys.dpi_scale[1];
+
+  _sys.mouse.pos[0] = cast(int, new_x);
+  _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
+
+  _sys.mouse.pos_delta[0] = _sys.mouse.pos[0] - _sys.mouse.pos_last[0];
+  _sys.mouse.pos_delta[1] = _sys.mouse.pos[1] - _sys.mouse.pos_last[1];
+
+  _sys.mouse_mod = 1;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  BOOL ret = sys__mac_dnd(pboard, SYS_DND_PREVIEW);
+  if (!ret) printf("rejected!\n");
+  if (ret) {
+    return NSDragOperationCopy;
+  } else {
+    return NSDragOperationNone;
+  }
+#else
   return NSDragOperationCopy;
+#endif
+}
+- (NSDragOperation)draggingExited:(id<NSDraggingInfo>)sender {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  BOOL ret = sys__mac_dnd(pboard, SYS_DND_LEFT);
+  if (ret) {
+    return NSDragOperationCopy;
+  } else {
+    return NSDragOperationNone;
+  }
+#else
+  return NSDragOperationCopy;
+#endif
 }
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  return sys__mac_dnd(pboard, SYS_DND_DELIVERY);
+#else
   return NO;
+#endif
 }
 @end
 

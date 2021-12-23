@@ -1884,7 +1884,7 @@ res_fnt_ext(int *ext, struct res *r, struct res_fnt *fnt, struct str txt) {
   }
 }
 static void
-res_fnt_run_fit(struct res_txt_bnd *bnd, struct res_fnt_run *run,
+res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run,
                 int space, int ext) {
   int width = 0, len = 0;
   assert(run->len <= RES_FNT_MAX_RUN);
@@ -1930,7 +1930,7 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt,
       ext += run->adv[run->len-1];
     } else {
       if (ext + run->adv[0] < space) {
-        res_fnt_run_fit(bnd, run, space, ext);
+        res_fnt_fit_run(bnd, run, space, ext);
       }
       break;
     }
