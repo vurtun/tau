@@ -388,6 +388,9 @@ transformqI(float *o3, const float *v3, const float *q, const float *t3) {
  *                                  Bitset
  * ---------------------------------------------------------------------------
  */
+#define for_bitset(i,x,s,n) \
+  for (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
+
 static int
 bit_set(unsigned long *addr, int nr) {
   unsigned long m = bit_mask(nr);
@@ -707,44 +710,6 @@ str_split_cut(struct str *s, struct str delim) {
     struct str res = *s;
     *s = str_nil;
     return res;
-  }
-}
-static int
-str_int(int *val, struct str *s, int nan, int inval) {
-  int neg = 0;
-  long long n = 0;
-  if (!s->len) {
-    *val = nan;
-    return 0;
-  }
-  if (s->str[0] == '-') {
-    *s = str_rhs(*s, 1);
-    neg = 1;
-  }
-  const char *p = s->str;
-  for (; p < s->end && is_digit(*p); ++p) {
-    int c = p[0] - '0';
-    if (c > INT_MAX - n) {
-      *val = inval;
-      return 0;
-    }
-    n = n * 10 + c;
-  }
-  if (p == s->str) {
-    *val = nan;
-    return 0;
-  }
-  *s = strp(p, s->end);
-  if (neg) {
-    if (n > 0x800000000) {
-      *val = inval;
-      return 0;
-    }
-    *val = cast(int, -n);
-    return 1;
-  } else {
-    *val = cast(int, n);
-    return 1;
   }
 }
 static int
@@ -1106,11 +1071,11 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 #define lst_del(n) lst__del((n)->prv, (n)->nxt)
 #define lst_empty(lst) ((lst)->nxt == (lst))
 #define lst_any(lst) (!lst_empty(lst))
-#define for_lst(e, l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
-#define for_lst_safe(a, b, l) \
+#define for_lst(e,l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
+#define for_lst_safe(a,b,l) \
     for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
-#define for_lst_rev(e, l) for((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
-#define for_lst_rev_safe(a, b, l) \
+#define for_lst_rev(e,l) for((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
+#define for_lst_rev_safe(a,b,l) \
     for((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
 // clang-format on
 
@@ -1148,6 +1113,7 @@ struct dyn_hdr {
 #define dyn_str(b) str(dyn_begin(b), dyn_cnt(b))
 #define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
 #define dyn_asn_str(b,sys, s) dyn_asn(b,sys,(s).str,(s).len)
+#define dyn_val(b,i) assert(i < dyn_cnt(b))
 
 #define fori_dyn(i,c)\
   for (int i = 0; i < dyn_cnt(c); ++i)
@@ -1322,7 +1288,8 @@ static void set__swap(unsigned long long *a, unsigned long long *b) {unsigned lo
 #define set_put(t,s,k) ((!(t) || !set_fnd(t, k)) ? set__add(t, s, k) : set_cap(t))
 #define set_del(s,k) set__del(s, k, set_cap(s))
 #define set_free(s,sys) dyn_free(s, sys)
-#define set_clr(s) ((s) ? memset(s, 0, sizeof(unsigned long long) * (size_t)dyn_cap(s)) : 0)
+#define set_clr(s) \
+  do {((s) ? memset(s, 0, sizeof(unsigned long long) * (size_t)dyn_cap(s)) : 0); dyn_clr(s); } while(0)
 // clang-format on
 
 static inline unsigned long long
@@ -1349,6 +1316,7 @@ set__slot(unsigned long long *keys, unsigned long long *vals, int cap,
   unsigned long long n = cast(unsigned long long, cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
+    assert(cast(int, i) < set_cap(keys));
     unsigned long long k = keys[i];
     if (!k) return set__store(keys, vals, i, h, v);
     unsigned long long d = set__dist(k, n, i);
@@ -1368,6 +1336,7 @@ set__put(unsigned long long *set, unsigned long long key) {
   unsigned long long h = set__hash(key);
   long long i = set__slot(set, 0, set_cap(set), h, 0);
   if (i < set_cap(set)) {
+    assert(i < set_cap(set));
     dyn__hdr(set)->cnt++;
   }
   return cast(intptr_t, i);
@@ -1376,6 +1345,7 @@ static unsigned long long*
 set__grow(unsigned long long *old, struct sys *sys, int n) {
   unsigned long long *set = set_new(set_cap(old), n, sys);
   for (int i = 0; i < set_cap(old); ++i) {
+    assert(i < set_cap(old));
     if (set__key(old[i])) {
       set__put(set, old[i]);
     }
@@ -1390,6 +1360,7 @@ set__fnd(unsigned long long *set, unsigned long long key, int cap) {
   unsigned long long n = cast(unsigned long long, cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
+    assert(cast(int, i) < set_cap(set));
     if (!set[i] || dist > set__dist(set[i],n,i)) {
       return cap;
     } else if(set[i] == h) {
@@ -1407,6 +1378,7 @@ set__del(unsigned long long* set, unsigned long long key, int cap) {
   }
   long long i = set__fnd(set, key, cap);
   if (i < cap) {
+    assert(i < set_cap(set));
     dyn__hdr(set)->cnt--;
     set[i] |= 0x8000000000000000llu;
   }
@@ -1504,15 +1476,32 @@ ut_set(struct sys *sys) {
 #define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put(t, k, v))
 #define tbl__key(k) set__key(k)
 
+#define tbl_free(t,s) set_free(t,s)
+#define tbl_clr(t) set_clr(t)
 #define tbl_cnt(t) set_cnt(t)
 #define tbl_cap(t) (set_cap(t) >> 1)
 #define tbl_val(t,i) cast(long long,((t)[tbl_cap(t) + i]))
 #define tbl_del(t,k) tbl__del(t, k, 0)
-#define tbl_free(t,s) set_free(t,s)
+#define tbl_has(t,k,e) (tbl_fnd(t, k, e) != (e))
+#define tbl_any(t) (tbl_cnt(t) > 0)
+#define tbl_empty(t) (tbl_cnt(t) == 0)
 #define tbl_put(t,s,k,v)                                                  \
   ((!(t) || set__fnd(t,k,tbl_cap(t)) >= tbl_cap(t)) ? tbl__add(t,s,k,v) : tbl_cap(t))
+#define for_tbl(i,n,v,t)\
+  for (int i = tbl__nxt_idx(t,v,0), n = 0; i < tbl_cap(t); i = tbl__nxt_idx(t,v,i+1), n = n + 1)
 // clang-format on
 
+static int
+tbl__nxt_idx(unsigned long long *tbl, long long *val, int i) {
+  int cnt = tbl_cap(tbl);
+  for (; i < cnt; ++i) {
+    if (tbl__key(tbl[i])) {
+      *val = tbl_val(tbl,i);
+      return i;
+    }
+  }
+  return cnt;
+}
 static long long
 tbl__put(unsigned long long *tbl, unsigned long long key, long long ival) {
   assert(tbl);
@@ -1520,6 +1509,7 @@ tbl__put(unsigned long long *tbl, unsigned long long key, long long ival) {
   unsigned long long v = cast(unsigned long long, ival);
   long long i = set__slot(tbl, tbl + tbl_cap(tbl), tbl_cap(tbl), h, v);
   if (i < tbl_cap(tbl)) {
+    assert(i < tbl_cap(tbl));
     dyn__hdr(tbl)->cnt++;
   }
   return i;
@@ -1529,6 +1519,7 @@ tbl__grow(unsigned long long *old, struct sys *s, int n) {
   unsigned long long *tbl = set_new(set_cap(old), n << 1, s);
   for (int i = 0; i < tbl_cap(old); ++i) {
     if (tbl__key(old[i])) {
+      assert(i < tbl_cap(old));
       tbl__put(tbl, old[i], tbl_val(old, i));
     }
   }

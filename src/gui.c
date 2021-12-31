@@ -4315,7 +4315,7 @@ gui_lst_sel_proc(struct gui_ctx *ctx, struct gui_lst_sel *sel,
       int item = clamp(0, ctl->item_idx, total);
       sel->begin_idx = min(s->sel_idx, item);
       sel->end_idx = max(s->sel_idx, item) + 1;
-      sel->op = (enum gui_lst_sel_op)s->sel_op;
+      sel->op = cast(enum gui_lst_sel_op, s->sel_op);
       sel->mod = 1;
     }
     if (!(sys->keymod & SYS_KEYMOD_CTRL) && ctl->cur_mod) {
@@ -4344,23 +4344,25 @@ gui_lst_sel_proc(struct gui_ctx *ctx, struct gui_lst_sel *sel,
   sel->end_idx = clamp(0, sel->end_idx, total);
 
   /* modify bitset by selection set */
-  if (sel->bitset && sel->mod) {
-    if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
-      bit_fill(sel->bitset, 0, total);
-      sel->cnt = 0;
-    }
-    for (int i = sel->begin_idx; i < sel->end_idx; ++i) {
-      switch (sel->op) {
-        case GUI_LST_SEL_OP_SET:
-          if (!bit_set(sel->bitset, i)) {
-            sel->cnt++;
-          }
-          break;
-        case GUI_LST_SEL_OP_CLR:
-          if (bit_clr(sel->bitset, i)) {
-            sel->cnt--;
-          }
-          break;
+  if (sel->mod) {
+    if (sel->bitset) {
+      if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
+        bit_fill(sel->bitset, 0, total);
+        sel->cnt = 0;
+      }
+      for (int i = sel->begin_idx; i < sel->end_idx; ++i) {
+        switch (sel->op) {
+          case GUI_LST_SEL_OP_SET:
+            if (!bit_set(sel->bitset, i)) {
+              sel->cnt++;
+            }
+            break;
+          case GUI_LST_SEL_OP_CLR:
+            if (bit_clr(sel->bitset, i)) {
+              sel->cnt--;
+            }
+            break;
+        }
       }
     }
   }

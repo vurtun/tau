@@ -503,7 +503,6 @@ struct gui_lst_sel {
   enum gui_lst_sel_hov hov;
   enum gui_lst_sel_behavior bhv;
   unsigned long *bitset;
-  unsigned long long *set;
   int cnt;
   /* out: */
   enum gui_lst_sel_mod mut;

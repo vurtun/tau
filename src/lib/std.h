@@ -29,6 +29,7 @@
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
 #define between(x, a, b) ((a) <= (x) && (x) < (b))
 #define inbox(px, py, x, y, w, h)(between(px, x, x + w) && between(py, y, y + h))
+#define ptr(p,v) cast(p,cast(uintptr_t,v))
 
 #define alignof(t)((int)((char *)(&((struct {char c;t _h;}*)0)->_h)-(char *)0))
 #define isaligned(x, mask) (!((uintptr_t)(x) & (uintptr_t)(mask - 1)))

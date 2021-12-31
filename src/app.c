@@ -187,6 +187,12 @@ app_view_setup(struct app_view *view, struct sys *sys) {
   }
 }
 static void
+app_view_init(struct app_view *view, struct sys *sys, struct str path) {
+  app_view_setup(view, sys);
+  dyn_asn_str(view->file_path, sys, path);
+  view->state = APP_STATE_DB;
+}
+static void
 app_open_files(struct app *app, struct sys *sys, const struct str *files, int cnt) {
   assert(app);
   assert(sys);
@@ -198,11 +204,12 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
     struct app_view *view = app->views[app->sel_tab];
     for (; i < cnt && !view->db; ++i) {
       view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
+      if (view->db) {
+        app_view_init(view, sys, files[i]);
+        i++;
+        break;
+      }
     }
-    if (!view->db) {
-      return;
-    }
-    view->state = APP_STATE_DB;
   }
   for (; i < cnt; ++i) {
     /* open each database in new tab */
@@ -212,7 +219,7 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
       app_view_del(app, view, sys);
       continue;
     }
-    view->state = APP_STATE_DB;
+    app_view_init(view, sys, files[i]);
     app->sel_tab = dyn_cnt(app->views);
     dyn_add(app->views, sys, view);
   }

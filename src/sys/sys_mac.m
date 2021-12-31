@@ -838,7 +838,6 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
   NSPasteboard *pboard = [sender draggingPasteboard];
   BOOL ret = sys__mac_dnd(pboard, SYS_DND_PREVIEW);
-  if (!ret) printf("rejected!\n");
   if (ret) {
     return NSDragOperationCopy;
   } else {
@@ -884,7 +883,7 @@ static unsigned
 sys__mac_mods(NSEvent* ev) {
   unsigned res = 0u;
   const NSEventModifierFlags flg = ev.modifierFlags;
-  if (flg & NSEventModifierFlagCommand) {
+  if (flg & NSEventModifierFlagControl) {
     res |= SYS_KEYMOD_CTRL;
   }
   if (flg & NSEventModifierFlagShift) {

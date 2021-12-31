@@ -800,6 +800,7 @@ file_list_view_fltr(struct file_list_view *lst, struct str fltr) {
   struct str_fnd_tbl tbl;
   str_fnd_tbl(&tbl, fltr);
   fori_dyn(i, lst->elms) {
+    assert(i < dyn_cnt(lst->elms));
     int has = str_fnd_tbl_has(lst->elms[i].name, fltr, &tbl);
     bit_set_on(lst->fltr, i, has);
   }
@@ -1047,6 +1048,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, lst->tbl.state);
       for_cnt(i, tbl.cnt) {
+        assert(i < cntof(file_tbl_def));
         struct str title = file_tbl_def[i].title;
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_lay, lst->tbl.state, title);
       }
@@ -1221,6 +1223,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
     if (tree->jmp) {
       /* jump to element */
       fori_dyn(i, tree->lst) {
+        assert(i < dyn_cnt(tree->lst));
         struct file_tree_node *n = tree->lst[i];
         if (n->id != tree->jmp_to) continue;
         gui.lst.reg.center(&reg, i);
