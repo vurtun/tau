@@ -1670,11 +1670,6 @@ fail:
   scope_end(&scp, a, sys);
   return 0;
 }
-static struct fnt_baked_char *
-res_fnt_glyph(struct res *r, struct res_fnt *fnt, long rune) {
-  struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
-  return &set->glyphs[rune & 0xFF];
-}
 static int*
 res__run_cache_slot(struct res_run_cache *c, aes128 h) {
   int hidx = aes128_lane_int(h);
@@ -1839,11 +1834,24 @@ res_fnt_fill_run(struct res *r, struct res_fnt *fnt, struct res_fnt_run *run,
   unsigned rune = 0;
   for_utf(&rune, it, rest, txt) {
     assert(run->len < RES_FNT_MAX_RUN);
-    struct fnt_baked_char *g = res_fnt_glyph(r, fnt, rune);
-
+    struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
+    struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
     n += it.len;
+
+    assert(g->x1 >= g->x0 && g->x1 - g->x0 < 256);
+    assert(g->y1 >= g->y0 && g->y1 - g->y0 < 256);
+    assert(g->xoff >= -128 && g->xoff <= 127);
+    assert(g->yoff >= -128 && g->yoff <= 127);
+
     run->off[run->len] = cast(unsigned char, n);
     ext += ceili(g->xadvance);
+    run->ext[run->len * 2 + 0] = cast(unsigned char, g->x1 - g->x0);
+    run->ext[run->len * 2 + 1] = cast(unsigned char, g->y1 - g->y0);
+    run->coord[run->len * 2 + 0] = g->x0;
+    run->coord[run->len * 2 + 1] = g->y0;
+    run->pad[run->len * 2 + 0] = cast(signed char, roundi(g->xoff));
+    run->pad[run->len * 2 + 1] = cast(signed char, roundi(g->yoff));
+    run->tex_id[run->len] = set->texid;
 
     if (rest.len) {
       unsigned nxt = utf_get(rest);
@@ -1851,8 +1859,7 @@ res_fnt_fill_run(struct res *r, struct res_fnt *fnt, struct res_fnt_run *run,
         cast(int, rune), cast(int, nxt));
       ext += ceili(fnt->scale * cast(float, k));
     }
-    run->adv[run->len] = cast(unsigned short, ext);
-    run->len += 1;
+    run->adv[run->len++] = cast(unsigned short, ext);
     if (run->len >= RES_FNT_MAX_RUN) {
       break;
     }
@@ -1959,19 +1966,38 @@ res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
   sys->ren.drw.img(buf, at_x, at_y, sx, sy, w, h, set->texid);
   return g;
 }
+static int
+res__ren_run(struct sys *sys, struct ren_cmd_buf *buf, struct res_fnt_run *run,
+             int dx, int y) {
+  int x = dx;
+  for_cnt(i, run->len) {
+    int sx = run->coord[i * 2 + 0];
+    int sy = run->coord[i * 2 + 1];
+    int w = run->ext[i * 2 + 0];
+    int h = run->ext[i * 2 + 1];
+    int at_x = x + run->pad[i * 2 + 0];
+    int at_y = y + run->pad[i * 2 + 1];
+    sys->ren.drw.img(buf, at_x, at_y, sx, sy, w, h, run->tex_id[i]);
+    x = dx + run->adv[i];
+  }
+  return dx + run->adv[run->len-1];
+}
 static void
 ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) {
-  dbg_blk_begin(r->sys, "res:fnt:fit");
-  unsigned rune = 0;
-  for_utf(&rune, _, rest, txt) {
-    struct fnt_baked_char *g = res__glyph(buf, r, r->fnt, x, y, cast(int, rune));
-    x += roundi(g->xadvance);
-    if (rest.len) {
-      unsigned nxt = utf_get(rest);
-      int k = fnt_get_codepoint_kern_advance(&r->fnt->stbfont,
-        cast(int, rune), cast(int, nxt));
-      x += ceili(r->fnt->scale * cast(float, k));
+  dbg_blk_begin(r->sys, "res:fnt:print");
+  aes128 h = aes128_load(aes_seed);
+  int n = div_round_up(txt.len, 16);
+  for_cnt(i,n) {
+    struct str seg = str_lhs(txt, 16);
+    h = aes128_hash(seg.str, seg.len, h);
+
+    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = res.run;
+    if (res.is_new) {
+      res_fnt_fill_run(r, r->fnt, run, txt);
     }
+    x = res__ren_run(r->sys, buf, run, x, y);
+    txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
   dbg_blk_end(r->sys);
 }

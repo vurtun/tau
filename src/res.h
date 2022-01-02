@@ -32,11 +32,15 @@ struct res_fnt_run {
   aes128 hash;
   int nxt, len;
   int lru_nxt, lru_prv;
-  unsigned char off[RES_FNT_MAX_RUN];
-  unsigned short adv[RES_FNT_MAX_RUN];
 #ifdef DEBUG_MODE
   int ordering;
 #endif
+  unsigned short adv[RES_FNT_MAX_RUN];
+  unsigned char off[RES_FNT_MAX_RUN];
+  unsigned char ext[RES_FNT_MAX_RUN*2];
+  signed char pad[RES_FNT_MAX_RUN*2];
+  unsigned short coord[RES_FNT_MAX_RUN*2];
+  int tex_id[RES_FNT_MAX_RUN];
 };
 struct res_fnt_tbl_stats {
   unsigned hit_cnt;

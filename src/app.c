@@ -368,7 +368,7 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
   assert(pan);
 
   if (gui.dnd.dst.begin(ctx, pan)) {
-    struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH8("[files]"));
+    struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH16("[sys:files]"));
     if (paq) { /* file drag & drop */
       const struct str *file_urls = paq->data;
       switch (paq->state) {

@@ -855,12 +855,12 @@ gui_sys_dnd_begin(struct gui_ctx *ctx, struct sys *sys) {
 
   switch (sys->dnd.type) {
   case SYS_DND_FILE: {
-    ctx->dnd_paq.type = STR_HASH8("[files]");
+    ctx->dnd_paq.type = STR_HASH16("[sys:files]");
     ctx->dnd_paq.data = sys->dnd.files;
     ctx->dnd_paq.size = sys->dnd.file_cnt;
   } break;
   case SYS_DND_STR: {
-    ctx->dnd_paq.type = STR_HASH8("[str]");
+    ctx->dnd_paq.type = STR_HASH16("[sys:str]");
     ctx->dnd_paq.data = &sys->dnd.str;
     ctx->dnd_paq.size = sys->dnd.str.len;
   } break;}
@@ -907,7 +907,6 @@ gui_begin(struct gui_ctx *ctx) {
       ctx->first_id = pan->id;
       gui_input_begin(ctx, &sys->mouse);
       ctx->focusable = ctx->root.id;
-
       /* drag & drop */
       if (sys->dnd.state != SYS_DND_NONE) {
         gui_sys_dnd_begin(ctx, sys);

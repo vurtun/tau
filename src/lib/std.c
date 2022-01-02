@@ -43,6 +43,8 @@ rng__mk(int lo, int hi, int s) {
  */
 #define FNV1A32_HASH_INITIAL 2166136261u
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
+#define SPLIT_MIX_GAMMA 0x9E3779B97F4A7C15llu
+
 static const unsigned char sse_align aes_seed[16] = {
   178, 201, 95, 240, 40, 41, 143, 216,
   2, 209, 178, 114, 232, 4, 176, 188
@@ -105,6 +107,25 @@ aes128_hash(const void *src, int len, aes128 seedx16) {
   h = aes128_dec(h, aes128_zero());
   h = aes128_dec(h, aes128_zero());
   return h;
+}
+static unsigned long long
+split_mix_step(unsigned long long x, int n) {
+  return x + cast(unsigned long long, n) * SPLIT_MIX_GAMMA;
+}
+static unsigned long long
+split_mix_nxt(unsigned long long z) {
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9llu;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBllu;
+  return z ^ (z >> 31llu);
+}
+static unsigned long long
+split__mix(unsigned long long *x, int i) {
+  *x = split_mix_step(*x, i);
+  return split_mix_nxt(*x);
+}
+static unsigned long long
+split_mix(unsigned long long *x) {
+  return split__mix(x, 1);
 }
 
 /* ---------------------------------------------------------------------------
