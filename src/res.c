@@ -1838,10 +1838,10 @@ res_fnt_fill_run(struct res *r, struct res_fnt *fnt, struct res_fnt_run *run,
     struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
     n += it.len;
 
-    assert(g->x1 >= g->x0 && g->x1 - g->x0 < 256);
-    assert(g->y1 >= g->y0 && g->y1 - g->y0 < 256);
-    assert(g->xoff >= -128 && g->xoff <= 127);
-    assert(g->yoff >= -128 && g->yoff <= 127);
+    assert(g->x1 >= g->x0 && g->x1 - g->x0 < UCHAR_MAX);
+    assert(g->y1 >= g->y0 && g->y1 - g->y0 < UCHAR_MAX);
+    assert(g->xoff >= SCHAR_MIN && g->xoff <= SCHAR_MAX);
+    assert(g->yoff >= SCHAR_MIN && g->yoff <= SCHAR_MAX);
 
     run->off[run->len] = cast(unsigned char, n);
     ext += ceili(g->xadvance);
