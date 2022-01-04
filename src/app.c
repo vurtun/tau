@@ -157,7 +157,7 @@ app_view_new(struct app *app, struct sys *sys) {
 
   struct app_view *s = 0;
   if (lst_any(&app->del_lst)) {
-    s = lst_get(app->del_lst.nxt, struct app_view, hook);
+    s = lst_get(lst_first(&app->del_lst), struct app_view, hook);
     lst_del(app->del_lst.nxt);
   } else {
     s = arena_alloc(sys->mem.arena, sys, szof(*s));
@@ -415,19 +415,18 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
-        /* resort tab */
         assert(tab.sort.dst < dyn_cnt(app->views));
         assert(tab.sort.src < dyn_cnt(app->views));
+        /* resort tab */
         struct app_view *dst = app->views[tab.sort.dst];
         struct app_view *src = app->views[tab.sort.src];
         app->views[tab.sort.dst] = src;
         app->views[tab.sort.src] = dst;
       }
       if (del_tab) {
-        /* close database view tab */
         assert(dyn_any(app->views));
         assert(app->sel_tab < dyn_cnt(app->views));
-
+        /* close database view tab */
         struct app_view *view = app->views[app->sel_tab];
         dyn_rm(app->views, app->sel_tab);
         app_view_del(app, view, ctx->sys);

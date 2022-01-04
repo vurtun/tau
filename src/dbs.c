@@ -2312,7 +2312,7 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
 
     long long val = 0;
-    for_tbl(_, i, &val, ui->tree.sel) {
+    for_tbl(i, _, &val, ui->tree.sel) {
       lst[i] = ptr(struct db_tree_node*, val);
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
@@ -2559,6 +2559,8 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
+        assert(tab.sort.dst < dyn_cnt(d->tbls));
+        assert(tab.sort.src < dyn_cnt(d->tbls));
         /* resort tab */
         struct db_tbl_view *dst = d->tbls[tab.sort.dst];
         struct db_tbl_view *src = d->tbls[tab.sort.src];
@@ -2567,6 +2569,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       }
       if (del_tab) {
         /* close table view tab */
+        assert(d->sel_tbl < dyn_cnt(d->tbls));
         struct db_tbl_view *view = d->tbls[d->sel_tbl];
         dyn_rm(d->tbls, d->sel_tbl);
         db_tbl_view_del(d, view, ctx->sys);
@@ -2576,8 +2579,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
       if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
         /* open new table view tab */
-        struct db_tbl_view *view = 0;
-        view = db_tbl_view_new(d, ctx->sys);
+        struct db_tbl_view *view = db_tbl_view_new(d, ctx->sys);
         d->sel_tbl = dyn_cnt(d->tbls);
         dyn_add(d->tbls, ctx->sys, view);
       }

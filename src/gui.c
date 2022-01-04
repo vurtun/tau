@@ -559,7 +559,7 @@ gui_panel_drw(struct gui_ctx *ctx, const struct gui_box *b) {
   sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_LIGHT]);
-  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min + 1, b->x.max - 1);
+  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min, b->x.max - 1);
   sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min + 1, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
@@ -1150,11 +1150,11 @@ gui_txt_fit(struct res_txt_bnd *bnd, int space, struct gui_ctx *ctx,
 static void
 gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
                 struct str txt, int uln_pos, int uln_cnt) {
-  struct sys *sys = ctx->sys;
   int n = txt.len;
   uln_pos = clamp(0, uln_pos, n);
   uln_cnt = min(uln_cnt, max(0, n - uln_pos));
 
+  struct sys *sys = ctx->sys;
   struct str uln_min = utf_at(0, txt, uln_pos);
   struct str uln_max = utf_at(0, strp(uln_min.end, txt.end), uln_cnt);
 
@@ -1558,6 +1558,7 @@ gui__chk_cur(struct gui_ctx *ctx, const struct gui_panel *pan,
              enum gui_chk_state chkd) {
   assert(ctx);
   assert(pan);
+
   struct sys *sys = ctx->sys;
   int cur_siz = gui_img_def[GUI_IMG_CHECK].w;
   struct gui_box cur = gui_box_mid_ext(&pan->box, cur_siz, cur_siz);
@@ -3732,7 +3733,7 @@ gui_reg_drw(struct gui_ctx *ctx, const struct gui_box *b) {
   /* border */
   sys->ren.drw.line_style(ctx->ren, 1);
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
-  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min, b->x.max);
+  sys->ren.drw.hln(ctx->ren, b->y.min, b->x.min, b->x.max-1);
   sys->ren.drw.vln(ctx->ren, b->x.min, b->y.min, b->y.max);
 }
 static void
@@ -3793,7 +3794,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   int off_x = floori(d->off[0]);
   int off_y = floori(d->off[1]);
 
-  /* do mouse wheel scrolling */
+  /* mouse wheel scrolling */
   if (sys->mouse.scrl[1]) {
     if (ctx->pass == GUI_INPUT && pan->is_hov) {
       d->scrl_wheel = !d->scrl_wheel ? 1 : d->scrl_wheel;
@@ -3824,9 +3825,9 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   }
   d->vscrl.off = d->off[1];
 
-  /* do vertical scrollbar */
+  /* vertical scrollbar */
   if (d->vscrl.total > d->vscrl.size + ctx->cfg.scrl) {
-    int top = pan->box.y.min + 2 + off_y;
+    int top = pan->box.y.min + off_y;
     int right = pan->box.x.max + ctx->cfg.scrl + off_x;
 
     d->vscrl.box.x = gui_min_max(pan->box.x.max + off_x, right);
@@ -3846,10 +3847,10 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   d->hscrl.total = cast(double, pan->max[0] - pan->box.x.min);
   d->hscrl.size = cast(double, pan->box.x.max - pan->box.x.min + ctx->cfg.scrl);
 
-  /* do horizontal scrollbar */
+  /* horizontal scrollbar */
   if (d->hscrl.total > d->hscrl.size) {
     int bot = pan->box.y.max + ctx->cfg.scrl + off_y;
-    int left = pan->box.x.min + 2 + off_x;
+    int left = pan->box.x.min + off_x;
 
     d->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
     d->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
@@ -5426,7 +5427,7 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   }
   if (tab->sel.idx != (tab->idx + 1)) {
     sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
-    sys->ren.drw.vln(ctx->ren, p->x.max - 2, top, p->y.max - 1);
+    sys->ren.drw.vln(ctx->ren, p->x.max - 1, top, p->y.max);
   }
 }
 static void
@@ -5543,12 +5544,12 @@ gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   sys->ren.drw.line_style(ctx->ren, 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_LIGHT]);
-  sys->ren.drw.hln(ctx->ren, tab->at, tab->off, b->x.max - 1);
+  sys->ren.drw.hln(ctx->ren, tab->at, tab->off, b->x.max - 2);
   sys->ren.drw.vln(ctx->ren, b->x.min, tab->at, b->y.max - 1);
 
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_SHADOW]);
-  sys->ren.drw.hln(ctx->ren, b->y.max - 2, b->x.min + 1, b->x.max - 2);
-  sys->ren.drw.vln(ctx->ren, b->x.max - 2, tab->at + 1, b->y.max - 2);
+  sys->ren.drw.hln(ctx->ren, b->y.max - 1, b->x.min + 1, b->x.max - 2);
+  sys->ren.drw.vln(ctx->ren, b->x.max - 2, tab->at, b->y.max - 1);
 }
 static void
 gui_tab_ctl_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,

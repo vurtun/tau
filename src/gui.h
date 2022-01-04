@@ -938,7 +938,7 @@ struct gui_ctx {
   struct gui_dnd_paq dnd_paq;
   enum gui_mouse_btn_id dnd_btn;
 
-  /* state */
+  /* persistent state */
   struct ren_cmd_buf *ren;
   int ico[GUI_IMG_MAX];
   struct gui_box clip;

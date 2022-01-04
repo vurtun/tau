@@ -20,6 +20,7 @@ rng__mk(int lo, int hi, int s) {
 #define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
 
+#define forever while(1)
 #define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
 #define for_cnt(i,n) for_nstep(i,n,1)
 #define fori_cnt(i,n) for (i = 0; i < (n); i += 1)
@@ -656,7 +657,7 @@ str_hash(struct str s) {
 static int
 str_cmp(struct str a, struct str b) {
   int n = min(a.len, b.len);
-  for (int i = 0; i < n; ++i) {
+  for_cnt(i, n) {
     if (a.str[i] < b.str[i]) {
       return -1;
     } else if (a.str[i] > b.str[i]) {
@@ -886,6 +887,7 @@ utf_len(struct str s) {
   }
   return i;
 }
+
 /* ---------------------------------------------------------------------------
  *                              Ticket Mutex
  * ---------------------------------------------------------------------------
@@ -949,7 +951,7 @@ arena_alloc(struct arena *a, struct sys *sys, int size_init) {
   if (a->blk) {
     siz = arena_size_for(a, size_init);
   }
-  if(!a->blk || ((a->blk->used + siz) > a->blk->size)) {
+  if (!a->blk || ((a->blk->used + siz) > a->blk->size)) {
     siz = size_init; /* allocate new block */
     int blksiz = max(!a->blksiz ? ARENA_BLOCK_SIZE : a->blksiz, siz);
     struct mem_blk *blk = sys->mem.alloc(0, blksiz, 0, 0);
@@ -1092,6 +1094,8 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 #define lst_del(n) lst__del((n)->prv, (n)->nxt)
 #define lst_empty(lst) ((lst)->nxt == (lst))
 #define lst_any(lst) (!lst_empty(lst))
+#define lst_first(lst) ((lst)->nxt)
+#define lst_last(lst) ((lst)->prv)
 #define for_lst(e,l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
 #define for_lst_safe(a,b,l) \
     for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
@@ -1509,7 +1513,7 @@ ut_set(struct sys *sys) {
 #define tbl_put(t,s,k,v)                                                  \
   ((!(t) || set__fnd(t,k,tbl_cap(t)) >= tbl_cap(t)) ? tbl__add(t,s,k,v) : tbl_cap(t))
 #define for_tbl(i,n,v,t)\
-  for (int i = tbl__nxt_idx(t,v,0), n = 0; i < tbl_cap(t); i = tbl__nxt_idx(t,v,i+1), n = n + 1)
+  for (int n = tbl__nxt_idx(t,v,0), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,v,n+1), i = i + 1)
 // clang-format on
 
 static int

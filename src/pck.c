@@ -785,8 +785,6 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *sys,
     elm.type = file_fifo_defs;
     elm.file_type = FILE_FIFO;
   } break;}
-
-  /* select icon  */
   elm.ico = file_icon(elm.type);
 
   /* add new file info */
@@ -1056,6 +1054,8 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
 
       /* sorting */
       if (tbl.resort && lst->elms) {
+        assert(tbl.sort.col < cntof(file_tbl_def));
+        assert(tbl.sort.order < cntof(file_tbl_def[tbl.sort.col].sort));
         dyn_sort(lst->elms, file_tbl_def[tbl.sort.col].sort[tbl.sort.order]);
         lst->tbl.sort = tbl.sort;
       }
@@ -1398,13 +1398,13 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
   assert(filepath);
 
   int ret = 0;
-  int pan_gap = ctx->cfg.pan_gap[1];
   dbg_blk_begin(ctx->sys, "app:gui:file:main");
   gui.pan.begin(ctx, pan, parent);
   {
+    int gap = ctx->cfg.pan_gap[1];
     struct gui_box lay = pan->box;
-    struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, pan_gap)};
-    struct gui_panel nav = {.box = gui.cut.top(&lay, ctx->cfg.item, pan_gap)};
+    struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
+    struct gui_panel nav = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
     struct gui_panel tbl = {.box = lay};
     ui_file_lst_view_nav_bar(fs, &fs->lst, ctx, &nav, pan);
     ui_file_sel_split(fs, ctx, &tbl, pan);
