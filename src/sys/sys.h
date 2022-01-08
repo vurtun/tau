@@ -131,7 +131,7 @@ enum sys_color {
   SYS_COL_CNT
 };
 
-/* ren */
+/* renderer */
 #define sys_rect(x, y, w, h) (struct sys_rect) { x, y, w, h }
 struct sys_rect {
   int x,y,w,h;
@@ -232,15 +232,16 @@ struct sys {
   int argc;
   char **argv;
 
-  float dpi_scale[2];
   struct cpu_info cpu;
   enum sys_cur_style cursor;
   struct sys_win win;
   struct sys_dnd dnd;
 
-  /* colors */
-  unsigned col_mod:1;
+  /* style */
+  unsigned style_mod:1;
   unsigned col[SYS_COL_CNT];
+  float fnt_pnt_size;
+  float ui_scale;
 
   /* modules */
   void *platform;

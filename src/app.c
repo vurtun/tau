@@ -234,8 +234,8 @@ app_init(struct app *app, struct sys *sys) {
   app->gui.res = &app->res;
 
   struct res_args args;
-  args.run_cnt = 1024;
-  args.hash_cnt = 2 * 1024;
+  args.run_cnt = 2 * 1024;
+  args.hash_cnt = 4 * 1024;
 
   res.init(&app->res, &args);
   gui.init(&app->gui, sys->mem.arena, CFG_COLOR_SCHEME);
@@ -255,12 +255,13 @@ app_shutdown(struct app *app, struct sys *sys) {
   assert(sys);
   file.shutdown(app->fs, sys);
 
-  struct app_view **view = 0;
-  for_dyn(view, app->views) {
-    db.shutdown((*view)->db, sys);
-    dyn_free((*view)->file_path, sys);
-    app_view_del(app, *view, sys);
+  fori_dyn(i, app->views) {
+    struct app_view *view = app->views[i];
+    db.shutdown(view->db, sys);
+    dyn_free(view->file_path, sys);
+    app_view_del(app, view, sys);
   }
+  dyn_clr(app->views);
 }
 static int
 ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -500,7 +501,7 @@ app_run(struct sys *sys) {
 #ifdef SYS_LINUX
   gui.color_scheme(&app->gui, GUI_COL_SCHEME_DARK);
 #else
-  if (sys->col_mod) {
+  if (sys->style_mod) {
     gui.color_scheme(&app->gui, CFG_COLOR_SCHEME);
   }
 #endif
@@ -526,14 +527,13 @@ app_run(struct sys *sys) {
     }
   }
   /* update */
-  struct app_view **view = 0;
-  for_dyn(view, app->views) {
-    struct app_view *ini = *view;
-    switch (ini->state) {
+  fori_dyn(i, app->views) {
+    struct app_view *view = app->views[i];
+    switch (view->state) {
     case APP_STATE_FILE: break;
     case APP_STATE_PROFILER: break;
     case APP_STATE_DB:
-      db.update(ini->db, sys);
+      db.update(view->db, sys);
       break;
     }
   }

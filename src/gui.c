@@ -1128,8 +1128,7 @@ static void
 gui_txt_ext(int *ext, struct gui_ctx *ctx, struct str txt) {
   assert(ext);
   assert(ctx);
-  struct res_fnt *fnt = ctx->res->fnt;
-  res.fnt.ext(ext, ctx->res, fnt, txt);
+  res.fnt.ext(ext, ctx->res, txt);
 }
 static int
 gui_txt_width(struct gui_ctx *ctx, struct str txt) {
@@ -1144,8 +1143,7 @@ gui_txt_fit(struct res_txt_bnd *bnd, int space, struct gui_ctx *ctx,
             struct str txt) {
   assert(bnd);
   assert(ctx);
-  struct res_fnt *fnt = ctx->res->fnt;
-  res.fnt.fit(bnd, ctx->res, fnt, space, txt);
+  res.fnt.fit(bnd, ctx->res, space, txt);
 }
 static void
 gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -2407,15 +2405,13 @@ gui_txt_ed_undo_repl(struct gui_txt_ed *edt, char **buf, int where,
   }
 }
 static int
-gui_txt_ed_ext(char *buf, int line_begin, int char_idx, struct res *r,
-               struct res_fnt *fnt) {
+gui_txt_ed_ext(char *buf, int line_begin, int char_idx, struct res *r) {
   assert(buf);
-  assert(fnt);
   assert(r);
 
   int ext[2];
   struct str view = utf_at(0, dyn_str(buf), line_begin + char_idx);
-  res.fnt.ext(ext, r, fnt, view);
+  res.fnt.ext(ext, r, view);
   return ext[0];
 }
 struct gui_txt_row {
@@ -2425,9 +2421,8 @@ struct gui_txt_row {
 };
 static void
 gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
-                   int row_h, struct res *r, struct res_fnt *fnt) {
+                   int row_h, struct res *r) {
   assert(buf);
-  assert(fnt);
   assert(row);
 
   struct str begin = utf_at(0, dyn_str(buf), line_begin);
@@ -2445,7 +2440,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
   }
   int ext[2];
   struct str ln = strp(begin.str, end.end);
-  res.fnt.ext(ext, r, fnt, ln);
+  res.fnt.ext(ext, r, ln);
 
   row->char_cnt = cnt;
   row->baseline_y_dt = row_h;
@@ -2454,17 +2449,15 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
   row->y[1] = row_h;
 }
 static int
-gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r,
-                     struct res_fnt *fnt) {
+gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r) {
   assert(buf);
-  assert(fnt);
   assert(r);
 
   int i = 0;
   int base_y = 0;
   struct gui_txt_row row = {0};
   while (i < dyn_cnt(buf)) {
-    gui_txt_ed_lay_row(&row, buf, i, row_h, r, fnt);
+    gui_txt_ed_lay_row(&row, buf, i, row_h, r);
     if (row.char_cnt <= 0) {
       return dyn_cnt(buf);
     } else if (i == 0 && y < base_y + row.y[0]) {
@@ -2482,7 +2475,7 @@ gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r,
   } else if (x < row.x[1]) {
     int k = i, prev_x = row.x[0];
     for (i = 0; i < row.char_cnt; ++i) {
-      int w = gui_txt_ed_ext(buf, k, i, r, fnt);
+      int w = gui_txt_ed_ext(buf, k, i, r);
       if (x < prev_x + w) {
         if (x < prev_x + w / 2) {
           return k + i;
@@ -2504,18 +2497,16 @@ gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r,
 }
 static void
 gui_txt_ed_clk(struct gui_txt_ed *edt, char *buf, int x, int y, int row_h,
-               struct res *r, struct res_fnt *fnt) {
+               struct res *r) {
   assert(edt);
-  assert(fnt);
-  edt->cur = gui_txt_ed_loc_coord(buf, x, y, row_h, r, fnt);
+  edt->cur = gui_txt_ed_loc_coord(buf, x, y, row_h, r);
   edt->sel[0] = edt->sel[1] = edt->cur;
 }
 static void
 gui_txt_ed_drag(struct gui_txt_ed *edt, char *buf, int x, int y, int row_h,
-                struct res *r, struct res_fnt *fnt) {
+                struct res *r) {
   assert(edt);
-  assert(fnt);
-  int p = gui_txt_ed_loc_coord(buf, x, y, row_h, r, fnt);
+  int p = gui_txt_ed_loc_coord(buf, x, y, row_h, r);
   if (edt->sel[0] == edt->sel[1]) {
     edt->sel[0] = edt->cur;
   }
@@ -2602,45 +2593,10 @@ gui_txt_ed_move_sel_last(struct gui_txt_ed *edt, char *buf) {
 }
 static inline int
 gui_rune_is_word_boundary(long c) {
-  switch (c) {
-    default:
-      return 0;
-    case '\t':
-    case ',':
-    case ' ':
-    case '.':
-    case ';':
-    case '(':
-    case ')':
-    case '{':
-    case '}':
-    case '[':
-    case ']':
-    case '<':
-    case '>':
-    case '|':
-    case '/':
-    case '?':
-    case '#':
-    case '~':
-    case '@':
-    case '\'':
-    case '=':
-    case '+':
-    case '-':
-    case '_':
-    case '*':
-    case '&':
-    case '^':
-    case '%':
-    case '$':
-    case '\"':
-    case '!':
-    case '`':
-    case '\\':
-    case ':':
-      return 1;
+  if (is_space(c) || is_punct(c)) {
+    return 1;
   }
+  return 0;
 }
 static int
 gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
@@ -2961,15 +2917,13 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
  */
 static int
 gui_calc_edit_off(int *cur_ext, const struct gui_txt_ed *edt, const char *slc,
-                  struct res *r, struct res_fnt *fnt, const int *txt_ext,
-                  int width) {
+                  struct res *r, const int *txt_ext, int width) {
   assert(edt);
-  assert(fnt);
   assert(slc);
   assert(cur_ext);
   assert(txt_ext);
 
-  res.fnt.ext(cur_ext, r, fnt, str(slc, edt->cur));
+  res.fnt.ext(cur_ext, r, str(slc, edt->cur));
   int off = cur_ext[0] - (width >> 1);
   off = clamp(0, off, max(0, txt_ext[0] - width));
   return off;
@@ -3069,13 +3023,12 @@ gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
 static void
 gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
                      struct gui_panel *pan, struct gui_txt_ed *edt, char **buf,
-                     struct gui_input *in, struct res_fnt *fnt, int cur_off) {
+                     struct gui_input *in, int cur_off) {
   assert(in);
   assert(ctx);
   assert(box);
   assert(pan);
   assert(edt);
-  assert(fnt);
   struct sys *sys = ctx->sys;
 
   /* focus change handling */
@@ -3118,9 +3071,9 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
   }
   int mouse_pos = sys->mouse.pos[0] - pan->box.x.min + cur_off;
   if (in->mouse.btn.left.pressed) {
-    gui_txt_ed_clk(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res, fnt);
+    gui_txt_ed_clk(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res);
   } else if (in->mouse.btn.left.dragged) {
-    gui_txt_ed_drag(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res, fnt);
+    gui_txt_ed_drag(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res);
   }
 }
 static void
@@ -3138,13 +3091,11 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   {
     /* calculate cursor offset  */
     int cur_ext[2], txt_ext[2];
-    struct res_fnt *fnt = ctx->res->fnt;
     if (pan->id == ctx->focused) {
       gui_txt_ed_clamp(edt, *buf);
     }
-    res.fnt.ext(txt_ext, ctx->res, fnt, dyn_str(*buf));
-    const int cur = gui_calc_edit_off(cur_ext, edt, *buf, ctx->res, fnt,
-                                      txt_ext, pan->box.x.ext);
+    res.fnt.ext(txt_ext, ctx->res, dyn_str(*buf));
+    const int cur = gui_calc_edit_off(cur_ext, edt, *buf, ctx->res, txt_ext, pan->box.x.ext);
     if (pan->is_hot) {
       struct sys *sys = ctx->sys;
       sys->cursor = SYS_CUR_IBEAM;
@@ -3153,7 +3104,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
     case GUI_INPUT: {
       struct gui_input in = {0};
       gui_input(&in, ctx, pan, GUI_BTN_LEFT);
-      gui_edit_field_input(ctx, box, pan, edt, buf, &in, fnt, cur);
+      gui_edit_field_input(ctx, box, pan, edt, buf, &in, cur);
     } break;
     case GUI_RENDER: {
       if (pan->state != GUI_HIDDEN)
@@ -3166,7 +3117,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   gui_panel_end(ctx, pan, parent);
 
   if (gui_dnd_dst_begin(ctx, pan)) {
-    struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, STR_HASH8("[str]"));
+    struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, STR_HASH16("[sys:str]"));
     if (paq) { /* string drag & drop */
       const struct str *str = paq->data;
       switch (paq->state) {

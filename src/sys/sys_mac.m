@@ -114,6 +114,7 @@ struct sys_mac {
   sys__mac_window_delegate* win_dlg;
   sys__mac_view *view;
 
+  float dpi_scale[2];
   int win_w, win_h;
   unsigned *backbuf;
   CGColorSpaceRef col_space;
@@ -552,7 +553,7 @@ sys__mac_on_frame(void) {
     }
   }
   _sys.seq++;
-  _sys.col_mod = 0;
+  _sys.style_mod = 0;
   _sys.keymod = 0;
   _sys.txt_len = 0;
   _sys.focus = 0;
@@ -634,7 +635,7 @@ sys__mac_col(NSColor *col) {
 }
 static void
 sys__mac_load_col(void) {
-  _sys.col_mod = 1;
+  _sys.style_mod = 1;
   _sys.col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
   _sys.col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
   _sys.col[SYS_COL_BG] = sys__mac_col([NSColor controlBackgroundColor]);
@@ -646,11 +647,19 @@ sys__mac_load_col(void) {
   _sys.col[SYS_COL_ICO] = sys__mac_col([NSColor controlTextColor]);
   _sys.col[SYS_COL_LIGHT] = sys__mac_col([NSColor unemphasizedSelectedContentBackgroundColor]);
   _sys.col[SYS_COL_SHADOW] = sys__mac_col([NSColor underPageBackgroundColor]);
+  _sys.fnt_pnt_size = cast(float, [NSFont systemFontSize]);
 }
 @implementation sys__mac_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
   _mac.col_space = CGColorSpaceCreateDeviceRGB();
   sys__mac_load_col();
+
+  NSScreen *scrn = [NSScreen mainScreen];
+  NSDictionary *desc = [scrn deviceDescription];
+  NSSize dpy_pix_size = [[desc objectForKey:NSDeviceSize] sizeValue];
+  CGSize dpy_phy_size = CGDisplayScreenSize([[desc objectForKey:@"NSScreenNumber"] unsignedIntValue]);
+  _sys.ui_scale = cast(float, (dpy_pix_size.width / dpy_phy_size.width) * 25.4f);
+  _sys.ui_scale /= 96.0f;
 
   /* create window */
   const NSUInteger style =
@@ -825,8 +834,8 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
   NSPoint pos = [_mac.win mouseLocationOutsideOfEventStream];
-  float new_x = cast(float, pos.x) * _sys.dpi_scale[0];
-  float new_y = cast(float, pos.y) * _sys.dpi_scale[1];
+  float new_x = cast(float, pos.x) * _mac.dpi_scale[0];
+  float new_y = cast(float, pos.y) * _mac.dpi_scale[1];
 
   _sys.mouse.pos[0] = cast(int, new_x);
   _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
@@ -1044,8 +1053,8 @@ sys__macos_on_key(unsigned long *keys, int scan) {
 static void
 sys_mac__mouse_pos(NSEvent *e) {
   NSPoint pos = e.locationInWindow;
-  float new_x = cast(float, pos.x) * _sys.dpi_scale[0];
-  float new_y = cast(float, pos.y) * _sys.dpi_scale[1];
+  float new_x = cast(float, pos.x) * _mac.dpi_scale[0];
+  float new_y = cast(float, pos.y) * _mac.dpi_scale[1];
 
   _sys.mouse.pos[0] = cast(int, new_x);
   _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
@@ -1238,8 +1247,8 @@ main(int argc, char* argv[]) {
   _sys.file.info = sys_file_info;
 
   /* constants */
-  _sys.dpi_scale[0] = 1.0f;
-  _sys.dpi_scale[1] = 1.0f;
+  _mac.dpi_scale[1] = 1.0f;
+  _mac.dpi_scale[0] = 1.0f;
 
 #ifdef RELEASE_MODE
   _mac.dbg.dlInit = dbg_init;

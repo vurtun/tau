@@ -43,6 +43,12 @@ release: OBJCFLAGS += -DRELEASE_MODE
 release: CC = clang
 release: $(BIN)
 
+.PHONY: clean
+clean:
+	rm bin/tau src/sys/dbg.o src/sys/ren.o src/app.o src/res.o
+	rm src/gui.o src/pck.o src/dbs.o
+	rm bin/dbg.so bin/ren.so bin/app.so bin/res.so bin/gui.so bin/pck.so bin/dbs.so
+
 bin/tau: src/sys/sys_mac.o
 	@mkdir -p bin
 	$(CC) $(OBJCFLAGS) -o bin/tau src/sys/sys_mac.m -framework Cocoa

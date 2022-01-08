@@ -1120,7 +1120,8 @@ ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
     {
       struct gui_panel lbl = {.box = node->box};
       struct str txt = path_file(n->fullpath);
-      gui.ico.box(ctx, &lbl, &node->pan, ICO_FOLDER_OPEN, txt);
+      const char *ico = node->open ? ICO_FOLDER_OPEN : ICO_FOLDER;
+      gui.ico.box(ctx, &lbl, &node->pan, ico, txt);
     }
     gui.cfg.pop(stk);
   }
@@ -1417,7 +1418,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       dis = elm->isdir || !elm->isvalid;
     }
     gui.disable(ctx, dis);
-    if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, 0)) {
+    if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, -1)) {
       const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
       dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
       ret = 1;

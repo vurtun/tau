@@ -58,14 +58,15 @@ struct res_run_cache {
 #endif
 };
 struct res {
+  float fnt_pnt_size;
   struct sys *sys;
-  struct res_fnt *fnt;
   struct res_fnt *ico;
+  struct res_fnt *fnt;
   struct res_run_cache run_cache;
 };
 struct res_fnt_api {
-  void (*ext)(int *ext, struct res *res, struct res_fnt *fnt, struct str txt);
-  void (*fit)(struct res_txt_bnd *bnd, struct res *r, struct res_fnt *fnt, int space, struct str txt);
+  void (*ext)(int *ext, struct res *res, struct str txt);
+  void (*fit)(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt);
 };
 struct res_api {
   int version;

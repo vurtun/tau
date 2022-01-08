@@ -381,6 +381,7 @@ static struct db_tree_node*
 db_tree_root_node_new(struct db_tree_view *t, struct sys *sys, struct arena *mem,
                       struct str name) {
   assert(t);
+  assert(sys);
   assert(mem);
 
   struct db_tree_node_arg arg = {0};
@@ -453,6 +454,7 @@ db_tree_node_icon(const struct db_tree_node *n) {
 static void
 db_tree_begin(struct db_tree_view *t, struct sys *sys, struct arena *mem) {
   assert(t);
+  assert(sys);
   assert(mem);
 
   t->rev = (unsigned)-1;
@@ -699,6 +701,7 @@ db_tbl_sql(struct db_tbl_view *view, struct sys *sys, struct arena *mem,
 static int
 db_tbl_row_cnt(struct db_tbl_view *view, struct sys *sys, sqlite3 *con) {
   assert(con);
+  assert(sys);
   assert(view);
 
   int ret = 0;
@@ -1236,6 +1239,8 @@ fail:
 static void
 db_update(struct db_ui_view *d, struct sys *sys) {
   assert(d);
+  assert(sys);
+
   if (d->tree_rev != d->tree.rev) {
     db_tree_update(&d->tree, sys);
     d->tree.rev = d->tree_rev;
@@ -1244,13 +1249,16 @@ db_update(struct db_ui_view *d, struct sys *sys) {
 static void
 db_tbl_view_free(struct db_tbl_view *tbl, struct sys *sys) {
   assert(tbl);
+  assert(sys);
+
   dyn_free(tbl->fltr.lst, sys);
   dyn_free(tbl->cols, sys);
   arena_free(&tbl->mem, sys);
 }
 static void
 db_free(struct db_ui_view *d, struct sys *sys) {
-  assert(db);
+  assert(d);
+  assert(sys);
 
   /* cleanup view list */
   struct db_tbl_view **tbl = 0;
@@ -1465,6 +1473,13 @@ static void
 ui_db_tbl_view_lst_elm_blob(struct db_ui_view *sql, struct db_tbl_view *view,
                             struct gui_ctx *ctx, struct gui_panel *col,
                             struct db_tbl_col *meta, const struct str *data) {
+  assert(sql);
+  assert(ctx);
+  assert(col);
+  assert(meta);
+  assert(view);
+  assert(data);
+
   if (col->is_hot && !view->blob.disabled) {
     /* show icon to open hex view on column hover */
     struct gui_icon btn;
@@ -2211,7 +2226,6 @@ ui_db_view_tree_elm(struct gui_ctx *ctx, struct db_tree_view *t,
     struct gui_panel node = {0};
     gui.tbl.lst.elm.col.slot(&node.box, ctx, tbl, lay);
     ret = ui_db_view_tree_elm_node_col(ctx, t, n, &node, elm);
-
     gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, n->type, 0, 0);
     gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, n->sql, 0, 0);
   }
@@ -2221,6 +2235,9 @@ ui_db_view_tree_elm(struct gui_ctx *ctx, struct db_tree_view *t,
 static void
 ui_db_view_tree_sel(struct db_tree_view *t, struct gui_tbl *tbl,
                     struct gui_ctx *ctx) {
+  assert(t);
+  assert(tbl);
+  assert(ctx);
   if (tbl->lst.sel.mut == GUI_LST_SEL_MOD_REPLACE) {
     tbl_clr(t->sel);
   }
