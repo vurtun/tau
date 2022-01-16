@@ -2564,7 +2564,8 @@ ui_db_tab_view_lst(struct db_ui_view *db, struct gui_ctx *ctx,
   {
     struct gui_lst_cfg cfg = {0};
     gui.lst.cfg(&cfg, dyn_cnt(db->tbls), db->tbl_lst_off[1]);
-    cfg.sel.src = GUI_LST_SEL_SRC_EXT;
+    cfg.ctl.focus = GUI_LST_FOCUS_ON_HOV;
+    cfg.sel.on = GUI_LST_SEL_ON_HOV;
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, db->tbl_lst_off);
@@ -2579,13 +2580,13 @@ ui_db_tab_view_lst(struct db_ui_view *db, struct gui_ctx *ctx,
       struct gui_panel elm = {0};
       unsigned long long n = cast(unsigned long long, i);
       unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
-
       gui.lst.reg.elm.txt(ctx, &reg, &elm, id, 0, title, ico, 0);
+
+      struct gui_input in = {0};
+      gui.pan.input(&in, ctx, &elm, GUI_BTN_LEFT);
+      ret = in.mouse.btn.left.clk ? i : ret;
     }
     gui.lst.reg.end(ctx, &reg, pan, db->tbl_lst_off);
-    if (reg.lst.sel.mod) {
-      ret = reg.lst.sel.idx;
-    }
   }
   gui.pan.end(ctx, pan, parent);
   return ret;
