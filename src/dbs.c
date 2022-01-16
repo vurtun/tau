@@ -239,6 +239,8 @@ struct db_ui_view {
   unsigned tree_rev;
 
   /* views */
+  int show_tab_lst;
+  double tbl_lst_off[2];
   dyn(struct db_tbl_view*) tbls;
   struct lst_elm del_lst;
   int sel_tbl;
@@ -2547,6 +2549,58 @@ ui_db_explr_tab(struct db_ui_view *d, struct db_tbl_view *tbl,
   }
   return ui_db_explr_tab_slot(d, tbl, ctx, tab, hdr, slot, title, ico);
 }
+static int
+ui_db_tab_view_lst(struct db_ui_view *db, struct gui_ctx *ctx,
+                   struct gui_panel *pan, struct gui_panel *parent) {
+
+  assert(app);
+  assert(ctx);
+  assert(tab);
+  assert(pan);
+  assert(parent);
+
+  int ret = -1;
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_lst_cfg cfg = {0};
+    gui.lst.cfg(&cfg, dyn_cnt(db->tbls), db->tbl_lst_off[1]);
+    cfg.sel.src = GUI_LST_SEL_SRC_EXT;
+
+    struct gui_lst_reg reg = {.box = pan->box};
+    gui.lst.reg.begin(ctx, &reg, pan, &cfg, db->tbl_lst_off);
+    for_gui_reg_lst(i,gui,&reg) {
+      struct db_tbl_view *tbl = db->tbls[i];
+      struct str title = strv("Info");
+      const char *ico = ICO_INFO_CIRCLE;
+      if (tbl->state != TBL_VIEW_SELECT) {
+        ico = ui_db_tbl_lst_elm_ico(tbl->kind);
+        title = tbl->name;
+      }
+      struct gui_panel elm = {0};
+      unsigned long long n = cast(unsigned long long, i);
+      unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
+
+      gui.lst.reg.elm.txt(ctx, &reg, &elm, id, 0, title, ico, 0);
+    }
+    gui.lst.reg.end(ctx, &reg, pan, db->tbl_lst_off);
+    if (reg.lst.sel.mod) {
+      ret = reg.lst.sel.idx;
+    }
+  }
+  gui.pan.end(ctx, pan, parent);
+  return ret;
+}
+static void
+ui_db_resort_tbls(struct db_ui_view *d, int dst_idx, int src_idx) {
+  assert(db);
+  assert(dst_idx < dyn_cnt(d->tbls));
+  assert(src_idx < dyn_cnt(d->tbls));
+
+  struct db_tbl_view *dst = d->tbls[dst_idx];
+  struct db_tbl_view *src = d->tbls[src_idx];
+  d->tbls[dst_idx] = src;
+  d->tbls[src_idx] = dst;
+}
 static void
 ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent) {
@@ -2576,13 +2630,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
-        assert(tab.sort.dst < dyn_cnt(d->tbls));
-        assert(tab.sort.src < dyn_cnt(d->tbls));
-        /* resort tab */
-        struct db_tbl_view *dst = d->tbls[tab.sort.dst];
-        struct db_tbl_view *src = d->tbls[tab.sort.src];
-        d->tbls[tab.sort.dst] = src;
-        d->tbls[tab.sort.src] = dst;
+        ui_db_resort_tbls(d, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
         /* close table view tab */
@@ -2602,7 +2650,18 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       }
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};
-      ui_db_main(d, d->tbls[d->sel_tbl], ctx, &bdy, pan);
+      d->show_tab_lst = tab.btn.clk ? !d->show_tab_lst : d->show_tab_lst;
+      if (d->show_tab_lst) {
+        /* overflow tab selection */
+        int ret = ui_db_tab_view_lst(d, ctx, &bdy, pan);
+        if (ret >= 0) {
+          ui_db_resort_tbls(d, 0, ret);
+          d->show_tab_lst = 0;
+          d->sel_tbl = 0;
+        }
+      } else {
+        ui_db_main(d, d->tbls[d->sel_tbl], ctx, &bdy, pan);
+      }
     }
     gui.tab.end(ctx, &tab, pan);
     if (tab.sel.mod) {

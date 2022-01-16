@@ -450,8 +450,9 @@ static void
 res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
   run->len = 0;
   int n = 0, ext = 0;
-  unsigned rune = 0;
   struct res_fnt *fnt = r->fnt;
+
+  unsigned rune = 0;
   for_utf(&rune, it, rest, txt) {
     assert(run->len < RES_FNT_MAX_RUN);
     struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, cast(int, rune));
@@ -621,14 +622,12 @@ ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) 
 static void
 ren_ico_siz(int *siz, struct res *r, const char *ico) {
   siz[0] = siz[1] = 0;
-
   unsigned rune = 0;
   struct str utf8 = str0(ico);
   utf_dec(&rune, &utf8);
   if (rune != UTF_INVALID) {
     struct res_glyph_set *set = res_fnt_get_glyphset(r, r->ico, cast(int, rune));
     struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
-
     siz[0] = g->x1 - g->x0;
     siz[1] = g->y1 - g->y0;
   }

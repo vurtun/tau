@@ -85,6 +85,8 @@ struct app {
   struct file_view *fs;
 
   /* views */
+  int show_tab_lst;
+  double tab_lst_off[2];
   dyn(struct app_view*) views;
   struct lst_elm del_lst;
   int sel_tab;
@@ -387,6 +389,56 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
     gui.dnd.dst.end(ctx);
   }
 }
+static int
+ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx,
+                    struct gui_panel *pan, struct gui_panel *parent) {
+
+  assert(app);
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+
+  int ret = -1;
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_lst_cfg cfg = {0};
+    gui.lst.cfg(&cfg, dyn_cnt(app->views), app->tab_lst_off[1]);
+    cfg.sel.src = GUI_LST_SEL_SRC_EXT;
+
+    struct gui_lst_reg reg = {.box = pan->box};
+    gui.lst.reg.begin(ctx, &reg, pan, &cfg, app->tab_lst_off);
+    for_gui_reg_lst(i,gui,&reg) {
+      struct app_view *view = app->views[i];
+      struct str title = strv("Open");
+      const char *ico = ICO_FOLDER_OPEN;
+      if (view->state != APP_STATE_FILE) {
+        ico = ICO_DATABASE;
+        title = path_file(dyn_str(view->file_path));
+      }
+      struct gui_panel elm = {0};
+      unsigned long long n = cast(unsigned long long, i);
+      unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
+      gui.lst.reg.elm.txt(ctx, &reg, &elm, id, 0, title, ico, 0);
+    }
+    gui.lst.reg.end(ctx, &reg, pan, app->tab_lst_off);
+    if (reg.lst.sel.mod) {
+      ret = reg.lst.sel.idx;
+    }
+  }
+  gui.pan.end(ctx, pan, parent);
+  return ret;
+}
+static void
+ui_app_swap(struct app *app, int dst_idx, int src_idx) {
+  assert(app);
+  assert(dst_idx < dyn_cnt(app->views));
+  assert(src_idx < dyn_cnt(app->views));
+
+  struct app_view *dst = app->views[dst_idx];
+  struct app_view *src = app->views[src_idx];
+  app->views[dst_idx] = src;
+  app->views[src_idx] = dst;
+}
 static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
@@ -416,13 +468,8 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
-        assert(tab.sort.dst < dyn_cnt(app->views));
-        assert(tab.sort.src < dyn_cnt(app->views));
-        /* resort tab */
-        struct app_view *dst = app->views[tab.sort.dst];
-        struct app_view *src = app->views[tab.sort.src];
-        app->views[tab.sort.dst] = src;
-        app->views[tab.sort.src] = dst;
+        /* resort views */
+        ui_app_swap(app, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
         assert(dyn_any(app->views));
@@ -443,7 +490,18 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};
-      ui_app_view(app, app->views[app->sel_tab], ctx, &bdy, pan);
+      app->show_tab_lst = tab.btn.clk ? !app->show_tab_lst : app->show_tab_lst;
+      if (app->show_tab_lst) {
+        /* overflow tab selection */
+        int ret = ui_app_tab_view_lst(app, ctx, &bdy, pan);
+        if (ret >= 0) {
+          ui_app_swap(app, 0, ret);
+          app->show_tab_lst = 0;
+          app->sel_tab = 0;
+        }
+      } else {
+        ui_app_view(app, app->views[app->sel_tab], ctx, &bdy, pan);
+      }
     }
     gui.tab.end(ctx, &tab, pan);
     if (tab.sel.mod) {
