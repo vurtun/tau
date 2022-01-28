@@ -144,6 +144,85 @@ rndn(unsigned long long *x) {
   return cast(double,n) / cast(double,UINT_MAX);
 }
 
+
+/* ---------------------------------------------------------------------------
+ *                              Half-Float
+ * ---------------------------------------------------------------------------
+ */
+static unsigned short
+hflt(float in) {
+  union flt f = {.f = in};
+  union flt f32infty = { 255 << 23 };
+  union flt f16max   = { (127 + 16) << 23 };
+  union flt denorm_magic = { ((127 - 15) + (23 - 10) + 1) << 23 };
+  uint sign_mask = 0x80000000u;
+  union hflt o = { 0u };
+  unsigned sign = f.u & sign_mask;
+  f.u ^= sign;
+  // NOTE all the integer compares in this function can be safely
+  // compiled into signed compares since all operands are below
+  // 0x80000000. Important if you want fast straight SSE2 code
+  // (since there's no unsigned PCMPGTD).
+  if (f.u >= f16max.u) { // result is Inf or NaN (all exponent bits set)
+      o.u = (f.u > f32infty.u) ? 0x7e00 : 0x7c00; // NaN->qNaN and Inf->Inf
+  } else { // (De)normalized number or zero
+    if (f.u < (113u << 23u)) { // resulting FP16 is subnormal or zero
+      // use a magic value to align our 10 mantissa bits at the bottom of
+      // the float. as long as FP addition is round-to-nearest-even this just works.
+      f.f += denorm_magic.f;
+      // and one integer subtract of the bias later, we have our final float!
+      o.u = cast(unsigned short, f.u - denorm_magic.u);
+    } else {
+      unsigned mant_odd = (f.u >> 13u) & 1u; // resulting mantissa is odd
+      // update exponent, rounding bias part 1
+      f.u += ((15 - 127) << 23) + 0xfff; // rounding bias part 2
+      f.u += mant_odd;
+      o.u = cast(unsigned short, f.u >> 13u); // take the bits!
+    }
+  }
+  o.u |= sign >> 16;
+  return o.u;
+}
+static int4
+hflt4(flt4 f) {
+  int4 mask_sign = int4_uint(0x80000000u);
+  int4 c_f16max = int4_int((127 + 16) << 23);
+  int4 c_nanbit = int4_int(0x200);
+  int4 c_infty_as_fp16 = int4_int(0x7c00);
+  int4 c_min_normal = int4_int((127 - 14) << 23); // smallest FP32 that yields a normalized FP16
+  int4 c_subnorm_magic = int4_int(((127 - 15) + (23 - 10) + 1) << 23);
+  int4 c_normal_bias = int4_int(0xfff - ((127 - 15) << 23)); // adjust exponent and add mantissa rounding
+
+  flt4 msign = flt4_int4(mask_sign);
+  flt4 justsign = flt4_and(msign, f);
+  flt4 absf = flt4_xor(f, justsign);
+  int4 absf_int = int4_flt4(absf);// the cast is "free" (extra bypass latency, but no thruput hit)
+  int4 f16max = c_f16max;
+  flt4 b_isnan = flt4_cmpu(absf, absf);
+  int4 b_isregular = int4_cmp_gt(f16max, absf_int);
+  int4 nanbit = int4_and(int4_flt4(b_isnan), c_nanbit);
+  int4 inf_or_nan = int4_or(nanbit, c_infty_as_fp16);
+
+  int4 min_normal = c_min_normal;
+  int4 b_issub = int4_cmp_gt(min_normal, absf_int);
+  // "result is subnormal" path
+  flt4 subnorm1 = flt4_add(absf, flt4_int4(c_subnorm_magic)); // magic value to round output mantissa
+  int4 subnorm2 = int4_sub(int4_flt4(subnorm1), c_subnorm_magic); // subtract out bias
+  // "result is normal" path
+  int4 mantoddbit = int4_sll(absf_int, 31 - 13);
+  int4 mantodd = int4_sra(mantoddbit, 31);
+
+  int4 round1 = int4_add(absf_int, c_normal_bias);
+  int4 round2 = int4_sub(round1, mantodd); // if mantissa LSB odd, bias towards rounding up (RTNE)
+  int4 normal = int4_srl(round2, 13); // rounded result
+  // combine the two non-specials
+  int4 nonspecial = int4_or(int4_and(subnorm2, b_issub), int4_andnot(b_issub, normal));
+  // merge in specials as well
+  int4 joined = int4_or(int4_and(nonspecial, b_isregular), int4_andnot(b_isregular, inf_or_nan));
+  int4 sign_shift = int4_srl(int4_flt4(justsign), 16);
+  int4 final = int4_or(joined, sign_shift);
+  return final;
+}
 /* ---------------------------------------------------------------------------
  *                                  Math
  * ---------------------------------------------------------------------------
@@ -380,7 +459,7 @@ qrot3(float *out, const float *q, const float *v) {
   add3(out, e, d);
 }
 static void
-qrotv3(float *q, const float *u, const float *v) {
+qalign3(float *q, const float *u, const float *v) {
   float w[3] = {0};
   float norm_u_norm_v = sqrta(dot3(u,u) * dot3(v,v));
   float real_part = norm_u_norm_v + dot3(u,v);
@@ -409,13 +488,13 @@ qeuler(float *qout, float yaw, float pitch, float roll) {
   qout[3] = cy * cp * cr + sy * sp * sr;
 }
 static void
-transformq(float *o3, const float *v3, const float *q, const float *t3) {
+qtransform(float *o3, const float *v3, const float *q, const float *t3) {
   float tmp[3];
   qrot3(tmp, q, v3);
   add3(o3, tmp, t3);
 }
 static void
-transformqI(float *o3, const float *v3, const float *q, const float *t3) {
+qtransformq(float *o3, const float *v3, const float *q, const float *t3) {
   float tmp[3]; sub3(tmp, v3, t3);
   float inv[4]; qconj(inv, q);
   qrot3(o3, inv, tmp);
@@ -447,7 +526,7 @@ bit_clr(unsigned long *addr, int nr) {
   assert(addr);
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
-  int ret = cast(int, *p &m);
+  int ret = cast(int, (*p & m));
   *p &= ~m;
   return ret;
 }
@@ -790,6 +869,9 @@ is_punct(long c) {
  *                                  String
  * ---------------------------------------------------------------------------
  */
+static int str__match_here(struct str reg, struct str txt);
+static int str__match_star(int c, struct str reg, struct str txt);
+
 // clang-format off
 #define H1(s,i,x)   (x*65599u+(unsigned char)s[((i)<(cntof(s)-1))?cntof(s)-2-(i):(cntof(s)-1)])
 #define H4(s,i,x)   H1(s,i,H1(s,i+1,H1(s,i+2,H1(s,i+3,x))))
@@ -871,7 +953,7 @@ str_cmp(struct str a, struct str b) {
 }
 static void
 str_fnd_tbl(struct str_fnd_tbl *fnd, struct str s) {
-  if (s.len < 2) return;
+  if (s.len <= 1) return;
   for (int i = 0; i < UCHAR_MAX + 1; ++i) {
     fnd->tbl[i] = s.len;
   }
@@ -910,10 +992,36 @@ str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
   return str_fnd_tbl_str(hay, needle, fnd) >= hay.len;
 }
 static int
+str__fnd_sse(struct str hay, struct str needle) {
+  static const char unsigned msk[32] = {
+    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+  };
+  chr16 n = chr16_ld(needle.str);
+  chr16 o = chr16_ld(msk + 16 - (needle.len & 15));
+  for (int i = 0; i + needle.len <= hay.len; i++) {
+    chr16 h = chr16_ld(hay.str + i);
+    chr16 q = chr16_eq(n, h);
+    chr16 m = chr16_or(q,o);
+    if (chr16_tst_all_ones(m)) {
+      return i;
+    }
+  }
+  return hay.len;
+}
+static int
 str_fnd(struct str hay, struct str needle) {
-  struct str_fnd_tbl fnd;
-  str_fnd_tbl(&fnd, needle);
-  return str_fnd_tbl_str(hay, needle, &fnd);
+  if (needle.len == 1) {
+    char *res = memchr(hay.str, needle.str[0], cast(size_t, hay.len));
+    return res ? cast(int, res - hay.str) : hay.len;
+  } else if (needle.len <= 16) {
+    return str__fnd_sse(hay, needle);
+  } else {
+    struct str_fnd_tbl fnd;
+    str_fnd_tbl(&fnd, needle);
+    return str_fnd_tbl_str(hay, needle, &fnd);
+  }
 }
 static int
 str_has(struct str hay, struct str needle) {
@@ -955,6 +1063,64 @@ str_fzy(struct str s, struct str p) {
   int val = score + remain + cast(int, s.str - str);
   int left = cast(int, p.end - pat);
   return cast(int, val *left - remain);
+}
+static int
+str__match_here(struct str reg, struct str txt) {
+  if (!reg.len) return 1;
+  if (reg.len > 1 && reg.str[1] == '*')
+    return str__match_star(reg.str[0], str_rhs(reg,2), txt);
+  if (reg.str[0] == '$' && reg.len == 2)
+    return txt.len == 0;
+  if (reg.str[0] == '?' || reg.str[0] == txt.str[0])
+    return str__match_here(str_rhs(reg,1), str_rhs(txt,1));
+  return 0;
+}
+static int
+str__match_star(int c, struct str reg, struct str txt) {
+  do {/* a '* matches zero or more instances */
+    if (str__match_here(reg, txt))
+      return 1;
+    txt = str_rhs(txt,1);
+  } while (txt.len && (txt.str[0] == c || c == '?'));
+  return 0;
+}
+static int
+str_regex(struct str txt, struct str reg) {
+  /*
+  c    matches any literal character c
+  ?    matches any single character
+  ^    matches the beginning of the input string
+  $    matches the end of the input string
+  *    matches zero or more occurrences of the previous character */
+  if (reg.len && reg.str[0] == '^') {
+    return str__match_here(str_rhs(reg,1), txt);
+  }
+  do {/* must look even if string is empty */
+    if (str__match_here(reg, txt)) {
+      return 1;
+    }
+    txt = str_rhs(txt,1);
+  } while (txt.len);
+  return 0;
+}
+static void
+ut_str(struct sys *sys) {
+  unused(sys);
+  static const struct str hay = strv("cmd[stk?utf/boot/usr/str_bootbany.exe");
+  int dot_pos = str_fnd(hay, strv("["));
+  assert(dot_pos == 3);
+  int cmd_pos = str_fnd(hay, strv("cmd"));
+  assert(cmd_pos == 0);
+  int str_pos = str_fnd(hay, strv("?utf"));
+  assert(str_pos == 7);
+  int long_pos = str_fnd(hay, strv("boot/usr/str_bootbany"));
+  assert(long_pos == 12);
+  int close_no = str_fnd(hay, strv("str/"));
+  assert(close_no == hay.len);
+  int no = str_fnd(hay, strv("rock"));
+  assert(no == hay.len);
+  int end = str_fnd(strv("test.exe"), strv(".exe"));
+  assert(end == 4);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1346,16 +1512,14 @@ struct dyn_hdr {
        (it) != (a) + rng(b,e,s,dyn_cnt(a)).hi;  \
        (it) += rng(b,e,s,dyn_cnt(a)).step)
 
-#define dyn_asn(b, s, x, n)                       \
-  do {                                            \
+#define dyn_asn(b, s, x, n) do {                  \
     dyn_clr(b);                                   \
     dyn_fit(b, s, n);                             \
     memcpy(b, x, sizeof((b)[0]) * cast(size_t, (n))); \
     dyn__hdr(b)->cnt = (n);                       \
   } while (0)
 
-#define dyn_put(b, s, i, x, n)                                            \
-  do {                                                                    \
+#define dyn_put(b, s, i, x, n) do {                                       \
     dyn_fit(b, s, n);                                                     \
     assert((i) <= dyn_cnt(b));                                            \
     assert((i) < dyn_cap(b));                                             \
@@ -1364,8 +1528,7 @@ struct dyn_hdr {
     dyn__hdr(b)->cnt += (n);                                              \
   } while (0)
 
-#define dyn_cut(b, i, n)                                                  \
-  do {                                                                    \
+#define dyn_cut(b, i, n) do {                                             \
     assert((i) < dyn_cnt(b));                                             \
     assert((i) + (n) <= dyn_cnt(b));                                      \
     memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \

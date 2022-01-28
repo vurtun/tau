@@ -2458,6 +2458,7 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
 
         db_tbl_fltr_clr(view, &view->fltr, ctx->sys);
         db_tbl_view_clr(view);
+
         view->state = TBL_VIEW_DISPLAY;
         view->fltr.rev++;
       }
@@ -2599,6 +2600,7 @@ ui_db_resort_tbls(struct db_ui_view *d, int dst_idx, int src_idx) {
 
   struct db_tbl_view *dst = d->tbls[dst_idx];
   struct db_tbl_view *src = d->tbls[src_idx];
+
   d->tbls[dst_idx] = src;
   d->tbls[src_idx] = dst;
 }
@@ -2646,8 +2648,8 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
         /* open new table view tab */
         struct db_tbl_view *view = db_tbl_view_new(d, ctx->sys);
-        d->sel_tbl = dyn_cnt(d->tbls);
-        dyn_add(d->tbls, ctx->sys, view);
+        dyn_put(d->tbls, ctx->sys, 0, &view, 1);
+        d->sel_tbl = 0;
       }
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};

@@ -671,6 +671,7 @@ file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
   assert(tree);
   assert(sys);
   assert(fs);
+
   int off = fs->home.len + 1;
   if (p.len < off) {
     return;
@@ -683,11 +684,9 @@ file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
       break;
     }
     /* create or find node to dig deeper */
-    struct file_tree_node *s = 0;
-    s = file_tree_node_fnd(n, it);
+    struct file_tree_node *s = file_tree_node_fnd(n, it);
     if (!s) {
-      unsigned long long id = 0;
-      id = str_hash(strp(p.str, it.end));
+      unsigned long long id = str_hash(strp(p.str, it.end));
       s = file_view_tree_node_new(tree, sys, &tree->mem, n, fullpath, id);
     }
     tree->jmp = 1;
@@ -737,7 +736,7 @@ file_tree_view_clr(struct file_tree_view *tree, struct sys *sys) {
 }
 static void
 file_lst_view_add_path(struct file_list_view *lst, struct sys *sys,
-                           struct str path) {
+                       struct str path) {
   assert(lst);
   assert(sys);
 

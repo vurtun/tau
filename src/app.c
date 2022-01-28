@@ -222,8 +222,8 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
       continue;
     }
     app_view_init(view, sys, files[i]);
-    app->sel_tab = dyn_cnt(app->views);
-    dyn_add(app->views, sys, view);
+    dyn_put(app->views, sys, 0, &view, 1);
+    app->sel_tab = 0;
   }
 }
 static void
@@ -263,7 +263,7 @@ app_shutdown(struct app *app, struct sys *sys) {
     dyn_free(view->file_path, sys);
     app_view_del(app, view, sys);
   }
-  dyn_clr(app->views);
+  dyn_free(app->views, sys);
 }
 static int
 ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -438,6 +438,7 @@ ui_app_swap(struct app *app, int dst_idx, int src_idx) {
 
   struct app_view *dst = app->views[dst_idx];
   struct app_view *src = app->views[src_idx];
+
   app->views[dst_idx] = src;
   app->views[src_idx] = dst;
 }
@@ -487,14 +488,14 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
         /* new open file view tab */
         struct app_view *view = app_view_new(app, ctx->sys);
-        app->sel_tab = dyn_cnt(app->views);
-        dyn_add(app->views, ctx->sys, view);
+        dyn_put(app->views, ctx->sys, 0, &view, 1);
+        app->sel_tab = 0;
       }
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};
       app->show_tab_lst = tab.btn.clk ? !app->show_tab_lst : app->show_tab_lst;
       if (app->show_tab_lst) {
-        /* overflow tab selection */
+        /* tab selection */
         int ret = ui_app_tab_view_lst(app, ctx, &bdy, pan);
         if (ret >= 0) {
           ui_app_swap(app, 0, ret);
@@ -542,6 +543,7 @@ app_on_api(struct sys *sys) {
 
   }
   /* run unit tests */
+  ut_str(sys);
   ut_set(sys);
   ut_tbl(sys);
 #endif

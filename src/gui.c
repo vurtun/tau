@@ -5308,7 +5308,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   gui_panel_begin(ctx, &tab->pan, parent);
   if (tab->show_btn) {
     /* open list button */
-    gui_disable(ctx, cnt <= 1);
+    gui_disable(ctx, tab->cnt >= cnt);
     tab->btn.box = tab->hdr;
     tab->btn.box.x = gui_min_ext(tab->off, ctx->cfg.scrl);
     gui_btn_begin(ctx, &tab->btn, &tab->pan);
@@ -5318,7 +5318,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
       gui_arrow(ctx, &arr, &tab->btn.pan, GUI_SOUTH);
     }
     gui_btn_end(ctx, &tab->btn, &tab->pan);
-    gui_enable(ctx, cnt <= 1);
+    gui_enable(ctx, tab->cnt >= cnt);
 
     tab->hdr.x = gui_min_max(tab->btn.box.x.max, tab->hdr.x.max);
     tab->off = tab->hdr.x.min;
