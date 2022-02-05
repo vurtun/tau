@@ -144,7 +144,6 @@ rndn(unsigned long long *x) {
   return cast(double,n) / cast(double,UINT_MAX);
 }
 
-
 /* ---------------------------------------------------------------------------
  *                              Half-Float
  * ---------------------------------------------------------------------------
@@ -228,9 +227,28 @@ hflt4(flt4 f) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
+#undef FLT_EPSILON
+#define FLT_TAU 6.28318530717959f
+#define FLT_PI 3.14159265359f
+#define FLT_HALF_PI (0.5f * 3.14159265359f)
+#define FLT_E 2.71828182846f
+#define FLTR_SQRT2 1.41421356237f
+#define FLT_EPSILON (1.192092896e-07f)
+
+#define rad(x) ((x)*FLT_TAU/360.0f)
+#define deg(x) ((x)*360.0f/FLT_TAU)
 #define lerp(r,a,b,t) ((r)=(a)+(t)*((b)-(a)))
-#define rad(x) ((x)*3.141592653f/180.0f)
+#define lerp_smooth(r,a,b,t) lerp(r,a,b,smooth01(t))
+#define lerp_inv(r,a,b,v) (((v)-(a))/((b)-(a)))
+#define eerp(r,a,b,t) powa(a,1-t) * powa(b,t) // useful for scaling or zooming
+#define eerp_inv(a,b,v) logf((a)/(v))/logf((a)/(b))
 #define sincosa(a,s,c) *s = sina(a), *c = cosa(a)
+#define repeat(v,len) clamp((v) - floorf((v)/(len)) * (len), 0.0f, len) // repeats the given value in the interval specified by len
+#define pingpong(t,len) len - absf(repat(t,len * 2f)-len) // repeats a value within a range, going back and forth
+#define triwave(t,period) (1.0f-absf(2.0f*(((t)/(period))-floorf(((t)/(period))))-1.0f))
+#define smooth01(x) ((x)*(x)*(3-2*(x)))
+#define smoother01(x) ((x)*(x)*(x)*((x)*((x)*6-15)+10))
+#define remap(r,imin,imax,omin,omax,v) lerp(r,omin,omax, inv_lerp(imin,imax,v)) // remaps a value from the input range [iMin to iMax] into the output range [oMin to oMax].
 
 #define op(r,e,a,p,b,i,s) ((r) e (a) p ((b) i (s)))
 #define opN(r,e,a,p,b,i,s,N)\
@@ -239,7 +257,7 @@ hflt4(flt4 f) {
 #define opNs(r,e,a,p,b,i,s,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     op((r)[uniqid(_i_)],e,(0),+,(a)[uniqid(_i_)],p,s)
-#define lerpN(r,a,b,t)\
+#define lerpN(r,a,b,t,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     lerp(r[uniqid(_i_)],a[uniqid(_i_)],b[uniqid(_i_)],t)
 
@@ -264,6 +282,7 @@ hflt4(flt4 f) {
 #define norm2(n,v)      mul2(n,v,rsqrt(dot2(v, v)))
 #define normeq2(v)      norm2(v,v)
 #define lerp2(r,a,b,t)  lerpN(r,a,b,t,2)
+#define cmp2(a,b,e)     cmpN(a,b,e,2)
 
 #define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
 #define dup3(d,f)       set3(d,f,f,f)
@@ -278,11 +297,16 @@ hflt4(flt4 f) {
 #define subs3(d,a,b,s)  op3(d,=,a,-,b,*,s)
 #define norm3(n,v)      mul3(n,v,rsqrt(dot3(v, v)))
 #define normeq3(v)      norm3(v,v)
+#define proj3(p,v,n)    mul3(p,n,dot3(v,n))
+#define projn3(p,v,to)  mul3(to,dot3(v,to)/Dot(to,to));
+#define rej3(p,a,b)     do {proj3(p,a,b); sub3(p,a,p);}while(0)
+#define rejn3(p,a,b)    do {projn3(p,a,b); sub3(p,a,p);}while(0)
 #define lerp3(r,a,b,t)  lerpN(r,a,b,t,3)
+#define cmp3(a,b,e)     cmpN(a,b,e,3)
 #define cross3(d,a,b) do {\
-    (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
-    (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
-    (d)[2] = ((a)[0]*(b)[1]) - ((a)[1]*(b)[0]);}while(0)
+  (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
+  (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
+  (d)[2] = ((a)[0]*(b)[1]) - ((a)[1]*(b)[0]);}while(0)
 
 #define set4(v,x,y,z,w) (v)[0]=(x),(v)[1]=(y),(v)[2]=(z),(v)[3] =(w)
 #define set4w(d,s,w)    (d)[0]=(s)[0],(d)[1]=(s)[1],(d)[2]=(s)[2],(d)[3]=w
@@ -298,19 +322,20 @@ hflt4(flt4 f) {
 #define norm4(n,v)      mul4(n,v,rsqrt(dot4(v, v)))
 #define normaleq4(v)    norm4(v,v)
 #define lerp4(r,a,b,t)  lerpN(r,a,b,t,4)
+#define cmp4(a,b,e)     cmpN(a,b,e,4)
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
 #define quatf(q,angle,x,y,z)\
-    q[0] = (x) * sina(angle * 0.5f),\
-    q[1] = (y) * sina(angle * 0.5f),\
-    q[2] = (z) * sina(angle * 0.5f),\
-    q[3] = cosa(angle * 0.5f)
+  q[0] = (x) * sina(angle * 0.5f),\
+  q[1] = (y) * sina(angle * 0.5f),\
+  q[2] = (z) * sina(angle * 0.5f),\
+  q[3] = cosa(angle * 0.5f)
 #define quat(q,angle,axis) quatf(q,axis[0],axis[1],axis[2],angle)
 #define qmul(q,a,b)\
-    (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
-    (q)[1] = (a)[3]*(b)[1] + (a)[1]*(b)[3] + (a)[2]*b[0] - (a)[0]*(b)[2],\
-    (q)[2] = (a)[3]*(b)[2] + (a)[2]*(b)[3] + (a)[0]*b[1] - (a)[1]*(b)[0],\
-    (q)[3] = (a)[3]*(b)[3] - (a)[0]*(b)[0] - (a)[1]*b[1] - (a)[2]*(b)[2];
+  (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
+  (q)[1] = (a)[3]*(b)[1] + (a)[1]*(b)[3] + (a)[2]*b[0] - (a)[0]*(b)[2],\
+  (q)[2] = (a)[3]*(b)[2] + (a)[2]*(b)[3] + (a)[0]*b[1] - (a)[1]*(b)[0],\
+  (q)[3] = (a)[3]*(b)[3] - (a)[0]*(b)[0] - (a)[1]*b[1] - (a)[2]*(b)[2];
 // clang-format on
 
 union bit_castf {
@@ -380,6 +405,13 @@ absf(double x) {
   u.i &= -1ULL / 2;
   return u.f;
 }
+static inline int
+cmpN(const float *a, const float *b, float e, int N) {
+  int r = 1;
+  for (int i = 0; i < N; ++i)
+    r &= (absf(a[i] - b[i]) > e);
+  return r;
+}
 static float
 log2a(float x) {
   union bit_castf v = {x};
@@ -387,7 +419,7 @@ log2a(float x) {
   float y = (float)v.i;
   y *= 1.1920928955078125e-7f;
   return y - 124.22551499f - 1.498030302f * m.f -
-         1.72587999f / (0.3520887068f + m.f);
+    1.72587999f / (0.3520887068f + m.f);
 }
 static float
 loga(float x) {
@@ -449,6 +481,111 @@ static float
 sqrta(float x) {
   return x * rsqrt(x);
 }
+static float
+acosa(float a) {
+  if (a < 0.0f) {
+    if (a <= -1.0f) {
+      return FLT_PI;
+    }
+    a = cast(float, absf(a));
+    float t0 = (-0.0187293f * a + 0.0742610f);
+    float t1 = (t0 * a - 0.2121144f);
+    return FLT_PI - (t1 * a + 1.5707288f) * sqrta(1.0f-a);
+  } else {
+    if ( a >= 1.0f ) {
+      return 0.0f;
+    }
+    float t0 = (-0.0187293f * a + 0.0742610f);
+    float t1 = (t0 * a - 0.2121144f);
+    return (t1 * a + 1.5707288f) * sqrta(1.0f - a);
+  }
+}
+static float
+asina(float a) {
+  if (a < 0.0f) {
+    if (a <= -1.0f) {
+      return -FLT_HALF_PI;
+    }
+    a = cast(float, absf(a));
+    float t0 = (-0.0187293f * a + 0.0742610f);
+    float t1 = (t0 * a - 0.2121144f);
+    return (t1 * a + 1.5707288f) * sqrta(1.0f - a) - FLT_HALF_PI;
+  } else {
+    if (a >= 1.0f) {
+     return FLT_HALF_PI;
+    }
+    float t0 = (-0.0187293f * a + 0.0742610f);
+    float t1 = (t0 * a - 0.2121144f);
+    return FLT_HALF_PI - (t1 * a + 1.5707288f) * sqrta(1.0f - a);
+  }
+}
+static float
+atana(float a) {
+  float s;
+  if (absf(a) > 1.0f) {
+    a = 1.0f / a;
+    s = a * a;
+    float t0 = (0.0028662257f * s - 0.0161657367f);
+    float t1 = (t0 * s + 0.0429096138f);
+    float t2 = (t1 * s - 0.0752896400f);
+    float t3 = (t2 * s + 0.1065626393f);
+    float t4 = (t3 * s - 0.1420889944f);
+    float t5 = (t4 * s + 0.1999355085f);
+    float t6 = (t5 * s - 0.3333314528f);
+    s = - ((t6 * s) + 1.0f) * a;
+    if ( a < 0.0f ) {
+        return s - FLT_HALF_PI;
+    } else {
+        return s + FLT_HALF_PI;
+    }
+  } else {
+    s = a * a;
+    float t0 = (0.0028662257f * s - 0.0161657367f);
+    float t1 = (t0 * s + 0.0429096138f);
+    float t2 = (t1 * s - 0.0752896400f);
+    float t3 = (t2 * s + 0.1065626393f);
+    float t4 = (t3 * s - 0.1420889944f);
+    float t5 = (t4 * s + 0.1999355085f);
+    return (((t5 * s - 0.3333314528f) * s) + 1.0f) * a;
+  }
+}
+static float
+atan2a(float y, float x) {
+  float a, s;
+  if (absf(y) > absf(x)) {
+    a = x / y;
+    s = a * a;
+    float t0 = (0.0028662257f * s - 0.0161657367f);
+    float t1 = (t0 * s + 0.0429096138f);
+    float t2 = (t1 * s - 0.0752896400f);
+    float t3 = (t2 * s + 0.1065626393f);
+    float t4 = (t3 * s - 0.1420889944f);
+    float t5 = (t4 * s + 0.1999355085f);
+    s = - (((t5 * s - 0.3333314528f) * s) + 1.0f) * a;
+    if (a < 0.0f) {
+      return s - FLT_HALF_PI;
+    } else {
+      return s + FLT_HALF_PI;
+    }
+  } else {
+    a = y / x;
+    s = a * a;
+    float t0 = (0.0028662257f * s - 0.0161657367f);
+    float t1 = (t0 * s + 0.0429096138f);
+    float t2 = (t1 * s - 0.0752896400f);
+    float t3 = (t2 * s + 0.1065626393f);
+    float t4 = (t3 * s - 0.1420889944f);
+    float t5 = (t4 * s + 0.1999355085f);
+    return (((t5 * s - 0.3333314528f) * s) + 1.0f) * a;
+  }
+}
+static float
+angle3(const float *a3, const float *b3) {
+  float dot = dot3(a3,b3);
+  float len1 = dot3(a3,a3);
+  float len2 = dot3(b3,b3);
+  return acosa(dot/sqrta(len1 * len2));
+}
 static void
 qrot3(float *out, const float *q, const float *v) {
   float a[3]; mul3(a, q, 2.0f * dot3(q,v));
@@ -494,10 +631,136 @@ qtransform(float *o3, const float *v3, const float *q, const float *t3) {
   add3(o3, tmp, t3);
 }
 static void
-qtransformq(float *o3, const float *v3, const float *q, const float *t3) {
+qtransformI(float *o3, const float *v3, const float *q, const float *t3) {
   float tmp[3]; sub3(tmp, v3, t3);
   float inv[4]; qconj(inv, q);
   qrot3(o3, inv, tmp);
+}
+static void
+qaxis(float *o3, const float *q) {
+  float n = len3(q);
+  if (n < 1.0e-9f) {
+    set3(o3,-1, 0, 0);
+  }
+  mul3(o3, q, n);
+}
+static float
+qangle(const float *q) {
+  return 2.0f * acosa(clamp(-1.0f, q[3], 1.0f));
+}
+static void
+qpow(float *qo, const float *q, float exp) {
+  float axis[3]; qaxis(axis, q);
+  float angle = qangle(q) * exp;
+  quat(qo, angle, axis);
+}
+static void
+qintegrate(float *qo, const float *qq, const float *qv, float dt) {
+  float p[4];
+  qpow(p, qv, dt);
+  qmul(qo, p, qq);
+}
+static void
+qintegratev(float *qo, const float *q, float *angle_vel3, float dt) {
+  // omega: angular velocity (direction is axis, magnitude is angle)
+  // https://fgiesen.wordpress.com/2012/08/24/quaternion-differentiation/
+  // https://www.ashwinnarayan.com/post/how-to-integrate-quaternions/
+  // https://gafferongames.com/post/physics_in_3d/
+  dt *= 0.5f;
+  float t[4] = {0,0,0,1};
+  mul3(t, angle_vel3, dt);
+  qmul(qo, t, q);
+  normaleq4(qo);
+}
+static void
+qslerp(float *qres, const float *qfrom, const float *qto, float t) {
+  if (t <= 0.0f) {
+    cpy4(qres,qfrom);
+    return;
+  } else if (t >= 1.0f || cmp4(qfrom, qto, FLT_EPSILON)) {
+    cpy4(qres, qto);
+    return;
+  }
+  float tmp[4];
+  float cosom = dot4(qfrom,qto);
+  if (cosom < 0.0f) {
+    mul4(tmp,qto,-1.0f);
+    cosom = -cosom;
+  } else {
+    cpy4(tmp,qto);
+  }
+  float scale0, scale1;
+  if (( 1.0f - cosom) > 1e-6f) {
+    scale0 = 1.0f - cosom * cosom;
+    float sinom = rsqrt(scale0);
+    float omega = atan2a(scale0 * sinom, cosom);
+    scale0 = sina((1.0f - t) * omega) * sinom;
+    scale1 = sina(t * omega) * sinom;
+  } else {
+    scale0 = 1.0f - t;
+    scale1 = t;
+  }
+  float a[4]; mul4(a,qfrom,scale0);
+  float b[4]; mul4(b,tmp,scale1);
+  add4(qres,a,b);
+}
+static void
+qst__decomp(float *qswing, float *qtwist, const float *q, const float *twist_axis3) {
+  if (dot3(q,q) < 1.0e-9f) {
+     // singularity: rotation by 180 degree
+    float rot_twist_axis[3]; qrot3(rot_twist_axis, q, twist_axis3);
+    float swing_axis[3]; cross3(swing_axis, twist_axis3, rot_twist_axis);
+    if (dot3(swing_axis,swing_axis) < 1e-9f) {
+      float swing_angle = angle3(twist_axis3, rot_twist_axis);
+      quat(qswing, swing_angle, swing_axis);
+    } else {
+      set4(qswing, 0,0,0,1);
+    }
+    // always twist 180 degree on singularity
+    quat(qswing, rad(180.0f), twist_axis3);
+    return;
+  }
+  // formula & proof:
+  // http://www.euclideanspace.com/maths/geometry/rotations/for/decomposition/
+  proj3(qtwist, q, twist_axis3);
+  normaleq4(qtwist);
+  float inv[4]; qconj(inv, qtwist);
+  qmul(qswing, q, inv);
+}
+static void
+qst_decomp(float *qfull_swing, float *qfull_twist, const float *qa,
+           const float *qb, const float *twist_axis3) {
+  float inv[4]; qconj(inv, qa);
+  float q[4]; qmul(q, qb, inv);
+  qst__decomp(qfull_swing, qfull_twist, q, twist_axis3);
+}
+static void
+qst__nlerp(float *res, float *qswing, float *qtwist, const float *qfull_swing,
+          const float *qfull_twist, float t_swing, float t_twist) {
+  static const float qid[4] = {0,0,0,1};
+  lerp4(qswing, qid, qfull_swing, t_swing);
+  lerp4(qtwist, qid, qfull_twist, t_twist);
+  qmul(res, qtwist, qswing);
+}
+static void
+qst_nlerp(float *res, const float *qfull_swing, const float *qfull_twist,
+          float t_swing, float t_twist) {
+  float swing[4], twist[4];
+  qst__nlerp(res, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist);
+}
+static void
+qst__slerp(float *res, float *qswing, float *qtwist, const float *qfull_swing,
+          const float *qfull_twist, float t_swing, float t_twist) {
+  static const float qid[4] = {0,0,0,1};
+  qslerp(qswing, qid, qfull_swing, t_swing);
+  qslerp(qtwist, qid, qfull_twist, t_twist);
+  qmul(res, qtwist, qswing);
+}
+static void
+qst_slerp(float *res, const float *qfull_swing, const float *qfull_twist,
+          float t_swing, float t_twist) {
+  float swing[4], twist[4];
+  qst__slerp(res, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
 }
 
 /* ---------------------------------------------------------------------------
@@ -994,7 +1257,7 @@ str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
 static int
 str__fnd_sse(struct str hay, struct str needle) {
   static const char unsigned msk[32] = {
-    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
   };
@@ -1002,7 +1265,7 @@ str__fnd_sse(struct str hay, struct str needle) {
   chr16 o = chr16_ld(msk + 16 - (needle.len & 15));
   for (int i = 0; i + needle.len <= hay.len; i++) {
     chr16 h = chr16_ld(hay.str + i);
-    chr16 q = chr16_eq(n, h);
+    chr16 q = chr16_eq(n,h);
     chr16 m = chr16_or(q,o);
     if (chr16_tst_all_ones(m)) {
       return i;
