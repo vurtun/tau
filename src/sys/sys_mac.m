@@ -23,7 +23,9 @@
 #include <unistd.h>
 #include <time.h>
 #include <dlfcn.h>
+
 #import <Cocoa/Cocoa.h>
+#import <MetalKit/MetalKit.h>
 
 /* usr */
 #include "cpu.h"
@@ -47,7 +49,9 @@
 @end
 @interface sys__mac_window_delegate : NSObject<NSWindowDelegate>
 @end
-@interface sys__mac_view : NSView
+@interface sys__mac_view : MTKView
+@end
+@interface sys__mac_view_delegate : NSViewController<MTKViewDelegate>
 @end
 
 struct sys_mem_blk {
@@ -81,6 +85,20 @@ struct sys_mac_module {
   void **syms;
   sys_mod_export dlExport;
 };
+struct sys_mac_vertex {
+  float x, y, z, w;
+};
+#define SYS_MAX_TEX_BUF 2
+struct sys_mac_metal {
+  id<MTLDevice> dev;
+  id<MTLLibrary> lib;
+  dispatch_semaphore_t sem;
+  id<MTLCommandQueue> cmd_que;
+  id<MTLRenderPipelineState> pipe_state;
+  id<MTLTexture> tex[SYS_MAX_TEX_BUF];
+  int cur_buf;
+  struct sys_mac_vertex verts[4];
+};
 struct sys_mac {
   int quit;
   struct lst_elm mem_blks;
@@ -105,7 +123,7 @@ struct sys_mac {
   struct sys_mac_module app_lib;
 
   int mod_cnt;
-  #define SYS_MAC_MAX_MODS 32
+  #define SYS_MAC_MAX_MODS 64
   struct sys_mac_module mods[SYS_MAC_MAX_MODS];
 
   NSWindow* win;
@@ -113,13 +131,18 @@ struct sys_mac {
   sys__mac_app_delegate* app_dlg;
   sys__mac_window_delegate* win_dlg;
   sys__mac_view *view;
+  sys__mac_view_delegate *view_dlg;
+  struct sys_mac_metal metal;
 
   float dpi_scale[2];
-  int win_w, win_h;
+  int win_w, win_h, buf_stride;
   unsigned *backbuf;
+
+#if 0
   CGColorSpaceRef col_space;
   CGContextRef ctx_ref;
   CGImageRef cg_img;
+#endif
 };
 static struct sys_mac _mac;
 static struct sys _sys;
@@ -497,6 +520,145 @@ sys_mac_clipboard_get(struct arena *a) {
   }
   return data;
 }
+/* ---------------------------------------------------------------------------
+ *
+ *                                Metal
+ *
+ * ---------------------------------------------------------------------------
+ */
+#define kShader(inc, src) @inc#src
+static NSString *sys__mac_shdr_src = kShader(
+  "#include <metal_stdlib>\n",
+  using namespace metal;
+  struct VertexOutput {
+    float4 pos [[position]];
+    float2 texcoord;
+  };
+  struct Vertex {
+    float4 position [[position]];
+  };
+  vertex VertexOutput
+  vertFunc(unsigned int vID[[vertex_id]], const device Vertex *pos [[ buffer(0) ]]) {
+    VertexOutput out;
+    out.pos = pos[vID].position;
+    out.texcoord.x = (float) (vID / 2);
+    out.texcoord.y = 1.0 - (float) (vID % 2);
+    return out;
+  }
+  fragment float4
+  fragFunc(VertexOutput in [[stage_in]], texture2d<half> col_tex [[texture(0)]]) {
+    constexpr sampler tex_sampler(mag_filter::nearest, min_filter::nearest);
+    const half4 color = col_tex.sample(tex_sampler, in.texcoord);
+    return float4(color);
+  };
+);
+static int
+sys__mac_metal_init(struct sys_mac_metal *mtl, int w, int h) {
+  NSError *err = 0x0;
+  mtl->dev = MTLCreateSystemDefaultDevice();
+  if (!mtl->dev) {
+    NSLog(@"Metal is not supported on this device");
+    return -1;
+  }
+
+  mtl->sem = dispatch_semaphore_create(SYS_MAX_TEX_BUF);
+  mtl->cmd_que = [mtl->dev newCommandQueue];
+  mtl->lib = [mtl->dev newLibraryWithSource:sys__mac_shdr_src
+                       options:[[MTLCompileOptions alloc] init]
+                       error:&err];
+
+  if (err || !mtl->lib) {
+    NSLog(@"Unable to create shaders %@", err);
+    return -1;
+  }
+  id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"vertFunc"];
+  if (!vshdr_f) {
+    NSLog(@"Unable to get vertFunc!\n");
+    return -1;
+  }
+  id<MTLFunction> fshdr_f = [mtl->lib newFunctionWithName:@"fragFunc"];
+  if (!fshdr_f) {
+    NSLog(@"Unable to get fragFunc!\n");
+    return -1;
+  }
+  MTLRenderPipelineDescriptor *psd = [[MTLRenderPipelineDescriptor alloc] init];
+  psd.label = @"tau_pipeline";
+  psd.vertexFunction = vshdr_f;
+  psd.fragmentFunction = fshdr_f;
+  psd.colorAttachments[0].pixelFormat = 80;
+
+  mtl->pipe_state = [mtl->dev newRenderPipelineStateWithDescriptor:psd error:&err];
+  if (!mtl->pipe_state) {
+    NSLog(@"Failed to created pipeline state, error %@", err);
+    return -1;
+  }
+  static struct sys_mac_vertex s_vertices[4] = {
+    {-1.0, -1.0, 0, 1}, {-1.0,  1.0, 0, 1},
+    { 1.0, -1.0, 0, 1}, { 1.0,  1.0, 0, 1},
+  };
+  memcpy(mtl->verts, s_vertices, sizeof(s_vertices));
+
+  MTLTextureDescriptor *td = [MTLTextureDescriptor
+    texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+    width:(NSUInteger)w height:(NSUInteger)h mipmapped:false];
+  for (size_t i = 0; i < SYS_MAX_TEX_BUF; ++i) {
+    mtl->tex[i] = [mtl->dev newTextureWithDescriptor:td];
+  }
+  return 0;
+}
+static void
+sys__mac_metal_resize(struct sys_mac_metal *mtl, int w, int h) {
+  MTLTextureDescriptor *td = [MTLTextureDescriptor
+    texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+    width:(NSUInteger)w height:(NSUInteger)h mipmapped:false];
+  for (size_t i = 0; i < SYS_MAX_TEX_BUF; ++i) {
+    [mtl->tex[i] release];
+    mtl->tex[i] = [mtl->dev newTextureWithDescriptor:td];
+  }
+}
+@implementation sys__mac_view_delegate
+- (void)drawInMTKView:(nonnull MTKView *) view {
+  struct sys_mac_metal *mtl = &_mac.metal;
+  dispatch_semaphore_wait(mtl->sem, DISPATCH_TIME_FOREVER);
+  mtl->cur_buf = (mtl->cur_buf + 1) % SYS_MAX_TEX_BUF;
+
+  id<MTLCommandBuffer> cmd_buf = [mtl->cmd_que commandBuffer];
+  cmd_buf.label = @"tau_cmd_buf";
+
+  __block dispatch_semaphore_t blk_sem = mtl->sem;
+  [cmd_buf addCompletedHandler:^(id<MTLCommandBuffer> buf) {
+    unused(buf);
+    dispatch_semaphore_signal(blk_sem);
+  }];
+  /* copy the bytes from our data object into the texture */
+  MTLRegion region = {{0,0,0}, {(NSUInteger)_mac.win_w, (NSUInteger)_mac.win_h, 1}};
+  [mtl->tex[mtl->cur_buf] replaceRegion:region mipmapLevel:0
+    withBytes:_mac.backbuf bytesPerRow:(NSUInteger)_mac.buf_stride];
+  // delay getting the currentRenderPassDescriptor until absolutely needed.
+  // This avoids holding onto the drawable and blocking the display pipeline any
+  // longer than necessary
+  MTLRenderPassDescriptor* rpd = view.currentRenderPassDescriptor;
+  if (rpd != nil) {
+    rpd.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    // create a render command encoder so we can render into something
+    id<MTLRenderCommandEncoder> enc = [cmd_buf renderCommandEncoderWithDescriptor:rpd];
+    enc.label = @"tau_command_encoder";
+    // set render command encoder state
+    [enc setRenderPipelineState:mtl->pipe_state];
+    [enc setVertexBytes:mtl->verts length:sizeof(mtl->verts) atIndex:0];
+    [enc setFragmentTexture:mtl->tex[mtl->cur_buf] atIndex:0];
+    [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+    [enc endEncoding];
+
+    [cmd_buf presentDrawable:view.currentDrawable];
+  }
+  [cmd_buf commit]; // finalize rendering here & push the command buffer to the GPU
+}
+- (void) mtkView:(nonnull MTKView *)view drawableSizeWillChange:(CGSize)size {
+  unused(view);
+  unused(size);
+}
+@end
 
 /* ---------------------------------------------------------------------------
  *
@@ -511,17 +673,7 @@ sys__mac_free(void) {
   SYS__OBJ_REL(_mac.win_dlg);
   SYS__OBJ_REL(_mac.win);
   SYS__OBJ_REL(_mac.view);
-  if (_mac.ctx_ref) {
-    CGContextRelease(_mac.ctx_ref);
-    _mac.ctx_ref = 0;
-  }
-  if (_mac.col_space) {
-    CGColorSpaceRelease(_mac.col_space);
-    _mac.col_space = 0;
-  }
-  if (_mac.cg_img) {
-    CGImageRelease(_mac.cg_img);
-  }
+
   sys_mac_mod_close(&_mac.dbg_lib);
   sys_mac_mod_close(&_mac.ren_lib);
   sys_mac_mod_close(&_mac.app_lib);
@@ -602,23 +754,17 @@ sys_mac__resize(void) {
   if (_mac.win_w == w && _mac.win_h == h) {
     return;
   }
-  if (_mac.ctx_ref) {
-    CGContextRelease(_mac.ctx_ref);
-    _mac.ctx_ref = 0;
+  if (_mac.backbuf) {
     munmap(_mac.backbuf, cast(size_t, _mac.win_w * _mac.win_h * 4));
     _mac.backbuf = 0;
   }
-  size_t bpc = 8;
-  size_t num_comp = CGColorSpaceGetNumberOfComponents(_mac.col_space) + 1u;
-  size_t bpp = (bpc * num_comp) / 8;
-  size_t bpr = bpp * cast(size_t, w);
-
   _mac.win_w = w;
   _mac.win_h = h;
+  _mac.buf_stride = w * 4;
+
   _mac.backbuf = mmap(0, cast(size_t, w*h*4), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-  _mac.ctx_ref = CGBitmapContextCreate(_mac.backbuf, cast(size_t, _mac.win_w),
-      cast(size_t, _mac.win_h), bpc, bpr, _mac.col_space, kCGImageAlphaNoneSkipLast);
   _sys.ren_target.resized = 1;
+  sys__mac_metal_resize(&_mac.metal, w, h);
   sys__mac_on_frame();
   [_mac.view setNeedsDisplay:YES];
 }
@@ -651,7 +797,6 @@ sys__mac_load_col(void) {
 }
 @implementation sys__mac_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
-  _mac.col_space = CGColorSpaceCreateDeviceRGB();
   sys__mac_load_col();
 
   NSScreen *scrn = [NSScreen mainScreen];
@@ -662,29 +807,39 @@ sys__mac_load_col(void) {
   _sys.ui_scale /= 96.0f;
 
   /* create window */
+  NSRect win_rect = NSMakeRect(0, 0, 800, 600);
+  sys__mac_metal_init(&_mac.metal, 800, 600);
+  if (_mac.ren.dlInit) {
+    _mac.ren.dlInit(&_sys);
+  }
   const NSUInteger style =
     NSWindowStyleMaskTitled |
     NSWindowStyleMaskClosable |
     NSWindowStyleMaskMiniaturizable |
     NSWindowStyleMaskResizable;
 
-  NSRect window_rect = NSMakeRect(0, 0, 800, 600);
-  if (_mac.ren.dlInit) {
-    _mac.ren.dlInit(&_sys);
-  }
   _mac.win = [[sys__mac_window alloc]
-    initWithContentRect:window_rect
+    initWithContentRect:win_rect
     styleMask:style
     backing:NSBackingStoreBuffered
     defer:NO];
 
   _mac.win.releasedWhenClosed = NO;
-  _mac.win.title = [NSString stringWithUTF8String:"Lepton"];
+  _mac.win.title = [NSString stringWithUTF8String:"Tau"];
   _mac.win.acceptsMouseMovedEvents = YES;
   _mac.win.restorable = YES;
   _mac.win_dlg = [[sys__mac_window_delegate alloc] init];
   _mac.win.delegate = _mac.win_dlg;
-  _mac.view = [[sys__mac_view alloc] initWithFrame:window_rect];
+
+  _mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
+  _mac.view_dlg = [[sys__mac_view_delegate alloc] init];
+  _mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
+  _mac.view.device = _mac.metal.dev;
+  _mac.view.delegate = _mac.view_dlg;
+  _mac.view.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+  _mac.view.enableSetNeedsDisplay = YES;
+  _mac.view.paused = YES;
+
   [_mac.view updateTrackingAreas];
   [_mac.win setContentView:_mac.view];
   [_mac.win center];
@@ -693,6 +848,7 @@ sys__mac_load_col(void) {
   [NSApp activateIgnoringOtherApps:YES];
   [_mac.win makeKeyAndOrderFront:nil];
   sys_mac__resize();
+  [NSApp finishLaunching];
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
   return YES;
@@ -1007,23 +1163,6 @@ sys__macos_on_key(unsigned long *keys, int scan) {
 - (void)windowDidExpose {
   sys_mac__resize();
 }
-- (void)drawRect:(NSRect)rect {
-  if (_mac.col_mod) {
-    sys__mac_load_col();
-    _sys.ren_target.resized = 1;
-    sys__mac_on_frame();
-    _mac.col_mod = 0;
-  }
-  if (dyn_any(_sys.ren_target.dirty_rects)) {
-    CGImageRelease(_mac.cg_img);
-    _mac.cg_img = CGBitmapContextCreateImage(_mac.ctx_ref);
-  }
-  if (_mac.cg_img) {
-    CGContextRef gctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextDrawImage(gctx, CGRectMake(0, 0, _mac.win_w, _mac.win_h), _mac.cg_img);
-  }
-  dyn_clr(_sys.ren_target.dirty_rects);
-}
 - (void)viewDidChangeEffectiveAppearance {
   _mac.col_mod = 1;
   [_mac.view setNeedsDisplay:YES];
@@ -1232,18 +1371,14 @@ main(int argc, char* argv[]) {
   _sys.mem.phy_siz = sysconf(_SC_PHYS_PAGES) * _sys.mem.page_siz;
   lst_init(&_mac.mem_blks);
 
-  /* directory */
+  /* api */
   _sys.dir.lst = sys_dir_lst;
   _sys.dir.nxt = sys_dir_nxt;
   _sys.dir.exists = sys_dir_exists;
-  /* clipboard */
   _sys.clipboard.set = sys_mac_clipboard_set;
   _sys.clipboard.get = sys_mac_clipboard_get;
-  /* plugin */
   _sys.plugin.add = sys_mac_plugin_add;
-  /* time */
   _sys.time.timestamp = sys_mac_timestamp;
-  /* file */
   _sys.file.info = sys_file_info;
 
   /* constants */

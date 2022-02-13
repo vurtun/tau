@@ -1416,13 +1416,13 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       elm = fs->lst.elms + fs->lst.sel_idx;
       dis = elm->isdir || !elm->isvalid;
     }
-    gui.disable(ctx, dis);
-    if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, -1)) {
-      const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
-      dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
-      ret = 1;
+    gui_disable_on(&gui, ctx, dis) {
+      if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, -1)) {
+        const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
+        dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
+        ret = 1;
+      }
     }
-    gui.enable(ctx, dis);
   }
   gui.pan.end(ctx, pan, parent);
   dbg_blk_end(ctx->sys);

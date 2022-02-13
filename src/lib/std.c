@@ -241,7 +241,7 @@ hflt4(flt4 f) {
 #define lerp_smooth(r,a,b,t) lerp(r,a,b,smooth01(t))
 #define lerp_inv(r,a,b,v) (((v)-(a))/((b)-(a)))
 #define eerp(r,a,b,t) powa(a,1-t) * powa(b,t) // useful for scaling or zooming
-#define eerp_inv(a,b,v) logf((a)/(v))/logf((a)/(b))
+#define eerp_inv(a,b,v) (logf((a)/(v))/logf((a)/(b)))
 #define sincosa(a,s,c) *s = sina(a), *c = cosa(a)
 #define repeat(v,len) clamp((v) - floorf((v)/(len)) * (len), 0.0f, len) // repeats the given value in the interval specified by len
 #define pingpong(t,len) len - absf(repat(t,len * 2f)-len) // repeats a value within a range, going back and forth
@@ -705,24 +705,24 @@ qslerp(float *qres, const float *qfrom, const float *qto, float t) {
   add4(qres,a,b);
 }
 static void
-qst__decomp(float *qswing, float *qtwist, const float *q, const float *twist_axis3) {
+qst__decomp(float *qswing, float *qtwist, const float *q, const float *axis3) {
   if (dot3(q,q) < 1.0e-9f) {
      // singularity: rotation by 180 degree
-    float rot_twist_axis[3]; qrot3(rot_twist_axis, q, twist_axis3);
-    float swing_axis[3]; cross3(swing_axis, twist_axis3, rot_twist_axis);
+    float rot_twist_axis[3]; qrot3(rot_twist_axis, q, axis3);
+    float swing_axis[3]; cross3(swing_axis, axis3, rot_twist_axis);
     if (dot3(swing_axis,swing_axis) < 1e-9f) {
-      float swing_angle = angle3(twist_axis3, rot_twist_axis);
+      float swing_angle = angle3(axis3, rot_twist_axis);
       quat(qswing, swing_angle, swing_axis);
     } else {
       set4(qswing, 0,0,0,1);
     }
     // always twist 180 degree on singularity
-    quat(qswing, rad(180.0f), twist_axis3);
+    quat(qswing, rad(180.0f), axis3);
     return;
   }
   // formula & proof:
   // http://www.euclideanspace.com/maths/geometry/rotations/for/decomposition/
-  proj3(qtwist, q, twist_axis3);
+  proj3(qtwist, q, axis3);
   normaleq4(qtwist);
   float inv[4]; qconj(inv, qtwist);
   qmul(qswing, q, inv);

@@ -51,7 +51,7 @@ clean:
 
 bin/tau: src/sys/sys_mac.o
 	@mkdir -p bin
-	$(CC) $(OBJCFLAGS) -o bin/tau src/sys/sys_mac.m -framework Cocoa
+	$(CC) $(OBJCFLAGS) -o bin/tau src/sys/sys_mac.m -framework Cocoa -framework Metal -framework MetalKit
 
 bin/dbg.so: src/sys/dbg.o
 	@mkdir -p bin
@@ -84,8 +84,8 @@ bin/dbs.so: src/dbs.o
 $(BIN): src/sys/sys_mac.o src/app.o
 	rm -r -f bin
 	@mkdir -p bin
-	$(CC) $(OBJCFLAGS) -c src/sys/sys_mac.m -o src/sys/sys_mac.o -framework Cocoa
-	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/sys_mac.o -framework Cocoa
+	$(CC) $(OBJCFLAGS) -c src/sys/sys_mac.m -o src/sys/sys_mac.o -framework Cocoa -framework Metal -framework MetalKit
+	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/sys_mac.o -framework Cocoa -framework Metal -framework MetalKit
 
 else # UNIX
 

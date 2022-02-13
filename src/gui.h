@@ -153,14 +153,11 @@ enum gui_box_cut_side {
   GUI_BOX_CUT_TOP,
   GUI_BOX_CUT_BOT,
 };
-#define gui_box_cut(b, s, g) (struct gui_box_cut){b, s, g}
 struct gui_box_cut {
   struct gui_box *box;
   enum gui_box_cut_side side;
   int gap;
 };
-#define gui_unbox(b) (b)->x.min, (b)->y.min, (b)->x.max, (b)->y.max
-
 /* panel */
 struct gui_ctx;
 #define gui_id(ptr) ((unsigned long long)(ptr))
@@ -261,19 +258,6 @@ struct gui_lay {
   int idx, cnt;
   int gap[2], item;
 };
-#define gui_row(gui, lay, row, def, gap, con, sol) \
-  for (int lay[cntof((int[])def)],            \
-    uniqid__i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_hlay(gui, ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
-  for (int items[cntof(def)],            \
-    uniqid(_i_) = ((gui)->lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_vlay(gui, ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
-  for (int items[cntof(def)],            \
-    uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
-
 /* Widget: Edit */
 #define GUI_EDT_UNDO_CNT 128
 #define GUI_EDT_UNDO_CHAR_CNT (4 * 1024)
@@ -594,17 +578,12 @@ struct gui_lst {
   enum gui_lst_fltr_on fltr_on;
   unsigned long long id;
 };
-#define for_gui_lst(i,gui,l)\
-  for (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
-
 /* Widget: List-Area */
 struct gui_lst_reg {
   struct gui_box box;
   struct gui_lst lst;
   struct gui_reg reg;
 };
-#define for_gui_reg_lst(i,gui,r)\
-  for (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
 
 /* Widget: Tree-Node */
 enum gui_tree_type {
@@ -714,8 +693,16 @@ struct gui_tbl {
   struct gui_box col_lay;
   int idx, cnt;
 };
-#define for_gui_tbl_lst(i,gui,t)\
-  for (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
+/* Widget: Combo */
+struct gui_combo {
+  /* in */
+  struct gui_box box;
+  /* out: */
+  struct gui_box hdr;
+  struct gui_panel pan;
+  struct gui_input in;
+  unsigned opened: 1;
+};
 
 /* Widget: Tab Control */
 struct gui_tab_ctl_hdr {
@@ -951,6 +938,30 @@ struct gui_ctx {
 };
 
 /* API */
+#define gui_box_cut(b, s, g) (struct gui_box_cut){b, s, g}
+#define gui_unbox(b) (b)->x.min, (b)->y.min, (b)->x.max, (b)->y.max
+#define gui_row(gui, lay, row, def, gap, con, sol) \
+  for (int lay[cntof((int[])def)],            \
+    uniqid__i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
+    uniqid(_i_) < 1; ++uniqid(_i_))
+#define gui_hlay(gui, ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
+  for (int items[cntof(def)],            \
+    uniqid(_i_) = ((gui)->lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) < 1; ++uniqid(_i_))
+#define gui_vlay(gui, ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
+  for (int items[cntof(def)],            \
+    uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
+    uniqid(_i_) < 1; ++uniqid(_i_))
+#define gui_disable_on(gui,ctx,cond)\
+  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->disable(ctx,uniqid(_c_)), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->enable(ctx,uniqid(_c_)), 1))
+#define for_gui_tbl_lst(i,gui,t)\
+  for (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
+#define for_gui_lst(i,gui,l)\
+  for (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
+#define for_gui_reg_lst(i,gui,r)\
+  for (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
+
 struct gui_bnd_api {
   struct gui_bnd (*min_max)(int a, int b);
   struct gui_bnd (*min_ext)(int m, int e);
@@ -1246,8 +1257,8 @@ struct gui_api {
   void (*scissor)(struct gui_ctx *ctx, int lhs, int top, int rhs, int bot);
   void (*clip_begin)(struct gui_box *tmp, struct gui_ctx *ctx, int lhs, int top, int rhs, int bot);
   void (*clip_end)(struct gui_ctx *ctx, struct gui_box *clip);
-  void (*enable)(struct gui_ctx *ctx, int cond);
-  void (*disable)(struct gui_ctx *ctx, int cond);
+  int (*enable)(struct gui_ctx *ctx, int cond);
+  int (*disable)(struct gui_ctx *ctx, int cond);
 
   struct gui_bnd_api bnd;
   struct gui_box_api box;

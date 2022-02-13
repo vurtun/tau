@@ -431,7 +431,7 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx,
   return ret;
 }
 static void
-ui_app_swap(struct app *app, int dst_idx, int src_idx) {
+ui_app_swap_view(struct app *app, int dst_idx, int src_idx) {
   assert(app);
   assert(dst_idx < dyn_cnt(app->views));
   assert(src_idx < dyn_cnt(app->views));
@@ -471,8 +471,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
-        /* resort views */
-        ui_app_swap(app, tab.sort.dst, tab.sort.src);
+        ui_app_swap_view(app, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
         assert(dyn_any(app->views));
@@ -498,7 +497,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
         /* tab selection */
         int ret = ui_app_tab_view_lst(app, ctx, &bdy, pan);
         if (ret >= 0) {
-          ui_app_swap(app, 0, ret);
+          ui_app_swap_view(app, 0, ret);
           app->show_tab_lst = 0;
           app->sel_tab = 0;
         }

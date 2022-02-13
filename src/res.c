@@ -175,19 +175,23 @@ res__decode_85(unsigned char* dst, const unsigned char* src) {
     dst += 4;
   }
 }
-// clang-format on
+/* clang-format on */
 
 static void *
 res_unpack(int *data_siz, const char *src, struct sys *sys,
            struct arena *a, struct arena *tmp) {
-  const int com_size = (((int)strlen(src) + 4) / 5) * 4;
-  unsigned char *com_buf = arena_alloc(tmp, sys, com_size);
-  res__decode_85(com_buf, cast(const unsigned char *, src));
-
-  const unsigned un_siz = res__decompress_len(com_buf);
-  unsigned char *data = arena_alloc(a, sys, cast(int, un_siz));
-  res__decompress(data, com_buf, un_siz);
-  *data_siz = cast(int, un_siz);
+  unsigned char *data = 0;
+  {
+    const int com_size = (((int)strlen(src) + 4) / 5) * 4;
+    unsigned char *com_buf = arena_alloc(tmp, sys, com_size);
+    res__decode_85(com_buf, cast(const unsigned char *, src));
+    {
+      unsigned un_siz = res__decompress_len(com_buf);
+      data = arena_alloc(a, sys, cast(int, un_siz));
+      res__decompress(data, com_buf, un_siz);
+      *data_siz = cast(int, un_siz);
+    }
+  }
   return data;
 }
 static void *
@@ -210,7 +214,7 @@ res__run_cache_slot(struct res_run_cache *c, aes128 h) {
   assert(slot < c->hcnt);
   return &c->htbl[slot];
 }
-static inline struct res_fnt_run*
+static struct res_fnt_run*
 res__run_cache_get(struct res_run_cache *c, int i) {
   assert(i < c->run_cnt);
   return &c->runs[i];
@@ -222,10 +226,10 @@ res__run_cache_sen(struct res_run_cache *c) {
 #ifdef DEBUG_MODE
 static void
 res__run_cache_val_lru(struct res_run_cache *c, int expct_cnt_chng) {
-  int run_cnt = 0;
+  int i, run_cnt = 0;
   struct res_fnt_run *sen = res__run_cache_sen(c);
   int last_ordering = sen->ordering;
-  for(int i = sen->lru_nxt; i != 0; ) {
+  for (i = sen->lru_nxt; i != 0; ) {
     struct res_fnt_run *run = res__run_cache_get(c, i);
     assert(run->ordering < last_ordering);
     last_ordering = run->ordering;

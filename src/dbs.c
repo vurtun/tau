@@ -1421,13 +1421,12 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_view *view,
     /* table column header filter icon button */
     struct gui_btn fltr = {.box = slot.pan.box};
     fltr.box.x = gui.bnd.max_ext(slot.pan.box.x.max, ctx->cfg.item);
-    gui.disable(ctx, col->blob);
-    if (gui.btn.ico(ctx, &fltr, &slot.pan, ICO_SEARCH)) {
-      view->state = TBL_VIEW_FILTER;
-      view->fltr.ini.col = col;
+    gui_disable_on(&gui, ctx, col->blob) {
+      if (gui.btn.ico(ctx, &fltr, &slot.pan, ICO_SEARCH)) {
+        view->state = TBL_VIEW_FILTER;
+        view->fltr.ini.col = col;
+      }
     }
-    gui.enable(ctx, col->blob);
-
     /* header label with foreign key icon */
     struct gui_cfg_stk stk[1] = {0};
     unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
@@ -1457,13 +1456,12 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_view *view, struct db_tbl_col *col,
     /* table column header filter icon button */
     struct gui_btn fltr = {.box = slot.pan.box};
     fltr.box.x = gui.bnd.max_ext(slot.pan.box.x.max, ctx->cfg.item);
-    gui.disable(ctx, col->blob);
-    if (gui.btn.ico(ctx, &fltr, &slot.pan, ICO_SEARCH)) {
-      view->state = TBL_VIEW_FILTER;
-      view->fltr.ini.col = col;
+    gui_disable_on(&gui, ctx, col->blob) {
+      if (gui.btn.ico(ctx, &fltr, &slot.pan, ICO_SEARCH)) {
+        view->state = TBL_VIEW_FILTER;
+        view->fltr.ini.col = col;
+      }
     }
-    gui.enable(ctx, col->blob);
-
     struct gui_btn hdr = {.box = slot.pan.box};
     static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
     hdr.box.x = gui.bnd.min_max(slot.pan.box.x.min, fltr.box.x.min);
@@ -1497,16 +1495,16 @@ ui_db_tbl_view_lst_elm_blob(struct db_ui_view *sql, struct db_tbl_view *view,
           view->name, pk->name, data[pki], meta->name);
       }
     }
-    gui.disable(ctx, 1);
-    struct gui_panel lbl = {.box = lay};
-    gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
-    gui.enable(ctx, 1);
+    gui_disable_on(&gui, ctx, 1) {
+      struct gui_panel lbl = {.box = lay};
+      gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
+    }
   } else {
     /* show dummy text for blob data */
-    gui.disable(ctx, 1);
-    struct gui_panel lbl = {.box = col->box};
-    gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
-    gui.enable(ctx, 1);
+    gui_disable_on(&gui, ctx, 1) {
+      struct gui_panel lbl = {.box = col->box};
+      gui.txt.lbl(ctx, &lbl, col, strv("blob"), 0);
+    }
   }
 }
 static void
@@ -1536,10 +1534,10 @@ ui_db_tbl_view_lst_elm(struct db_ui_view *sql, struct db_tbl_view *view,
     if (meta->blob) {
       ui_db_tbl_view_lst_elm_blob(sql, view, ctx, &col, meta, data);
     } else {
-      gui.disable(ctx, 1);
-      struct gui_panel lbl = {.box = col.box};
-      gui.txt.lbl(ctx, &lbl, &col, strv("null"), 0);
-      gui.enable(ctx, 1);
+      gui_disable_on(&gui, ctx, 1) {
+        struct gui_panel lbl = {.box = col.box};
+        gui.txt.lbl(ctx, &lbl, &col, strv("null"), 0);
+      }
     }
     gui.pan.end(ctx, &col, elm);
   }
@@ -2364,11 +2362,11 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
 
       /* open tables */
       int dis = tbl_empty(ui->tree.sel);
-      gui.disable(ctx, dis);
-      if (ui_btn_ico(ctx, &open, pan, strv("Open"), ICO_LIST, 0)) {
-        ui_db_open_sel(ui, view, ctx);
+      gui_disable_on(&gui, ctx, dis) {
+        if (ui_btn_ico(ctx, &open, pan, strv("Open"), ICO_LIST, 0)) {
+          ui_db_open_sel(ui, view, ctx);
+        }
       }
-      gui.enable(ctx, dis);
     } break;
 
     case TBL_VIEW_DISPLAY: {
@@ -2378,11 +2376,11 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       clr.box.y = gui.bnd.max_ext(pan->box.y.max, ctx->cfg.item);
       {
         int dis = !dyn_cnt(view->fltr.lst);
-        gui.disable(ctx, dis);
-        if (gui.btn.ico(ctx, &clr, pan, ICO_TRASH_ALT)) {
-          dyn_clr(view->fltr.lst);
+        gui_disable_on(&gui, ctx, dis) {
+          if (gui.btn.ico(ctx, &clr, pan, ICO_TRASH_ALT)) {
+            dyn_clr(view->fltr.lst);
+          }
         }
-        gui.enable(ctx, dis);
       }
       /* jump to filter view button */
       struct gui_btn fltr = {.box = clr.box};
@@ -2423,14 +2421,13 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       /* select button */
       int dis = view->fltr.sel_col < 0;
       dis = !dis ? view->cols[view->fltr.sel_col].blob : dis;
-      gui.disable(ctx, dis);
-      struct gui_btn sel = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
-      if (ui_btn_ico(ctx, &sel, pan, strv("Select"), ICO_CHECK,0)) {
-        view->fltr.ini.col = &view->cols[view->fltr.sel_col];
-        view->state = TBL_VIEW_FILTER;
+      gui_disable_on(&gui, ctx, dis) {
+        struct gui_btn sel = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
+        if (ui_btn_ico(ctx, &sel, pan, strv("Select"), ICO_CHECK,0)) {
+          view->fltr.ini.col = &view->cols[view->fltr.sel_col];
+          view->state = TBL_VIEW_FILTER;
+        }
       }
-      gui.enable(ctx, dis);
-
       /* filter column select view */
       struct gui_panel lst = {.box = lay};
       ui_db_tbl_fltr_col_view(view, ctx, &lst, pan);
@@ -2450,19 +2447,19 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       }
       /* apply button */
       int dis = !view->fltr.ini.is_date && dyn_empty(view->fltr.buf);
-      gui.disable(ctx, dis);
-      if (ui_btn_ico(ctx, &apply, pan, strv("Apply"), ICO_CHECK, 0)) {
-        view->fltr.ini.enabled = 1;
-        view->fltr.ini.str = arena_str(&view->mem, ctx->sys, dyn_str(view->fltr.buf));
-        dyn_add(view->fltr.lst, ctx->sys, view->fltr.ini);
+      gui_disable_on(&gui, ctx, dis) {
+        if (ui_btn_ico(ctx, &apply, pan, strv("Apply"), ICO_CHECK, 0)) {
+          view->fltr.ini.enabled = 1;
+          view->fltr.ini.str = arena_str(&view->mem, ctx->sys, dyn_str(view->fltr.buf));
+          dyn_add(view->fltr.lst, ctx->sys, view->fltr.ini);
 
-        db_tbl_fltr_clr(view, &view->fltr, ctx->sys);
-        db_tbl_view_clr(view);
+          db_tbl_fltr_clr(view, &view->fltr, ctx->sys);
+          db_tbl_view_clr(view);
 
-        view->state = TBL_VIEW_DISPLAY;
-        view->fltr.rev++;
+          view->state = TBL_VIEW_DISPLAY;
+          view->fltr.rev++;
+        }
       }
-      gui.enable(ctx, dis);
     } break;
 
     case TBL_VIEW_BLOB_VIEW: {

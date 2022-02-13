@@ -1001,18 +1001,20 @@ gui_clip_end(struct gui_ctx *ctx, struct gui_box *clip) {
     gui_scissor(ctx, gui_unbox(clip));
   }
 }
-static void
+static int
 gui_disable(struct gui_ctx *ctx, int cond) {
   assert(ctx);
   if (cond) ctx->disabled++;
+  return cast(int, ctx->disabled);
 }
-static void
+static int
 gui_enable(struct gui_ctx *ctx, int cond) {
   assert(ctx);
   if (cond) {
     assert(ctx->disabled > 0);
     ctx->disabled--;
   }
+  return cast(int, ctx->disabled);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1431,7 +1433,6 @@ gui_btn_begin(struct gui_ctx *ctx, struct gui_btn *btn,
   assert(btn);
   assert(ctx);
   assert(parent);
-  dbg_blk_begin(ctx->sys, "gui:btn");
 
   btn->pan.box = btn->box;
   gui_panel_begin(ctx, &btn->pan, parent);
@@ -1456,7 +1457,6 @@ gui_btn_end(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent) 
   if (pan->state == GUI_FOCUSED) {
     btn->clk = bit_tst_clr(ctx->keys, GUI_KEY_ACT) ? 1 : btn->clk;
   }
-  dbg_blk_end(ctx->sys);
 }
 static int
 gui_btn_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
@@ -5275,6 +5275,71 @@ gui_tbl_lst_tm(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
   struct gui_panel item = {0};
   gui_tbl_lst_elm_col(&item.box, ctx, tbl, lay);
   gui_tm(ctx, &item, elm, fmt, tm);
+}
+
+/* ---------------------------------------------------------------------------
+ *                              Drop Down
+ * ---------------------------------------------------------------------------
+ */
+static void
+gui_pckr_begin(struct gui_ctx *ctx, struct gui_combo *com,
+                    struct gui_panel *parent) {
+  assert(ctx);
+  assert(com);
+  assert(parent);
+
+  struct gui_panel *pan = &com->pan;
+  pan->box = com->box;
+  pan->focusable = 1;
+
+  gui_panel_begin(ctx, pan, parent);
+  if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
+    gui_edit_drw(ctx, pan);
+  }
+  /* open dropdown popup on click */
+  struct gui_btn btn = {0};
+  btn.box.x = gui_max_ext(pan->box.x.max, ctx->cfg.scrl);
+  btn.box.y = gui_min_max(pan->box.y.min + 2, pan->box.y.max - 1);
+  gui__scrl_btn(ctx, &btn, pan, GUI_EAST);
+
+  com->hdr.y = pan->box.y;
+  com->hdr.x = gui_shrink(&pan->box.x, ctx->cfg.pad[0]);
+  com->hdr.x = gui_min_max(com->hdr.x.min, btn.box.x.min - ctx->cfg.gap[0]);
+}
+static void
+gui_pckr_end(struct gui_ctx *ctx, struct gui_combo *com,
+                  struct gui_panel *parent) {
+  assert(ctx);
+  assert(com);
+  if (ctx->pass == GUI_RENDER && com->pan.state == GUI_FOCUSED) {
+    struct gui_box hdr = com->hdr;
+    hdr.x = gui_min_max(com->box.x.min, hdr.x.max);
+    gui_focus_drw(ctx, &hdr, 1);
+  }
+  gui_panel_hot(ctx, &com->pan, parent);
+  gui_panel_end(ctx, &com->pan, parent);
+
+  gui_input(&com->in, ctx, &com->pan, GUI_BTN_LEFT);
+  if (com->in.mouse.btn.left.clk || com->pan.state == GUI_FOCUSED) {
+    if (com->in.mouse.btn.left.clk || bit_tst_clr(ctx->keys, GUI_KEY_ACT)) {
+      com->opened = 1;
+    }
+  }
+}
+static int
+gui_pckr(struct gui_ctx *ctx, struct gui_combo *com,
+          struct gui_panel *parent, struct str txt) {
+  assert(ctx);
+  assert(com);
+  assert(parent);
+  gui_pckr_begin(ctx, com, parent);
+  {
+    static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
+    struct gui_panel lbl = {.box = com->hdr};
+    gui_txt(ctx, &lbl, &com->pan, txt, &align);
+  }
+  gui_pckr_end(ctx, com, parent);
+  return com->opened;
 }
 
 /* ---------------------------------------------------------------------------
