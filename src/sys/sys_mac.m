@@ -833,7 +833,6 @@ sys__mac_load_col(void) {
 
   _mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
   _mac.view_dlg = [[sys__mac_view_delegate alloc] init];
-  _mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
   _mac.view.device = _mac.metal.dev;
   _mac.view.delegate = _mac.view_dlg;
   _mac.view.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;

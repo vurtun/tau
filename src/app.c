@@ -196,11 +196,10 @@ app_view_init(struct app_view *view, struct sys *sys, struct str path) {
 }
 static void
 app_open_files(struct app *app, struct sys *sys, const struct str *files, int cnt) {
+  int i = 0;
   assert(app);
   assert(sys);
   assert(files);
-
-  int i = 0;
   if (cnt && app->views[app->sel_tab]->state == APP_STATE_FILE) {
     /* open first database in place */
     struct app_view *view = app->views[app->sel_tab];
