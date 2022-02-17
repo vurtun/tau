@@ -306,7 +306,8 @@ hflt4(flt4 f) {
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
   (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
-  (d)[2] = ((a)[0]*(b)[1]) - ((a)[1]*(b)[0]);}while(0)
+  (d)[2] = ((a)[0]*(b)[1]) - ((a)[1]*(b)[0]);\
+} while(0)
 
 #define set4(v,x,y,z,w) (v)[0]=(x),(v)[1]=(y),(v)[2]=(z),(v)[3] =(w)
 #define set4w(d,s,w)    (d)[0]=(s)[0],(d)[1]=(s)[1],(d)[2]=(s)[2],(d)[3]=w
@@ -326,16 +327,15 @@ hflt4(flt4 f) {
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
 #define quatf(q,angle,x,y,z)\
-  q[0] = (x) * sina(angle * 0.5f),\
-  q[1] = (y) * sina(angle * 0.5f),\
-  q[2] = (z) * sina(angle * 0.5f),\
-  q[3] = cosa(angle * 0.5f)
-#define quat(q,angle,axis) quatf(q,axis[0],axis[1],axis[2],angle)
+  (q)[3] = sina((angle) * 0.5f),\
+  (q)[0] = (x) * (q)[3], (q)[1] = (y) * (q)[3],\
+  (q)[2] = (z) * (q)[3], (q)[3] = cosa((angle) * 0.5f)
+#define quat(q,n,x) quatf(q,n,x[0],x[1],x[2])
 #define qmul(q,a,b)\
   (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
   (q)[1] = (a)[3]*(b)[1] + (a)[1]*(b)[3] + (a)[2]*b[0] - (a)[0]*(b)[2],\
   (q)[2] = (a)[3]*(b)[2] + (a)[2]*(b)[3] + (a)[0]*b[1] - (a)[1]*(b)[0],\
-  (q)[3] = (a)[3]*(b)[3] - (a)[0]*(b)[0] - (a)[1]*b[1] - (a)[2]*(b)[2];
+  (q)[3] = (a)[3]*(b)[3] - (a)[0]*(b)[0] - (a)[1]*b[1] - (a)[2]*(b)[2]
 // clang-format on
 
 union bit_castf {
