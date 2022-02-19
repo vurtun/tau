@@ -330,7 +330,7 @@ hflt4(flt4 f) {
   (q)[3] = sina((angle) * 0.5f),\
   (q)[0] = (x) * (q)[3], (q)[1] = (y) * (q)[3],\
   (q)[2] = (z) * (q)[3], (q)[3] = cosa((angle) * 0.5f)
-#define quat(q,n,x) quatf(q,n,x[0],x[1],x[2])
+#define quat(q,n,x) quatf(q,n,(x)[0],(x)[1],(x)[2])
 #define qmul(q,a,b)\
   (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
   (q)[1] = (a)[3]*(b)[1] + (a)[1]*(b)[3] + (a)[2]*b[0] - (a)[0]*(b)[2],\
@@ -472,10 +472,8 @@ cosa(float x) {
 }
 static float
 rsqrt(float n) {
-  union bit_castf conv = {n};
-  conv.i = 0x5f375A84 - (conv.i >> 1);
-  conv.f = conv.f * (1.5f - ((n * 0.5f) * conv.f * conv.f));
-  return conv.f;
+  flt4_strs(&n, flt4_rsqrt(flt4_flt(n)));
+  return n;
 }
 static float
 sqrta(float x) {
@@ -492,7 +490,7 @@ acosa(float a) {
     float t1 = (t0 * a - 0.2121144f);
     return FLT_PI - (t1 * a + 1.5707288f) * sqrta(1.0f-a);
   } else {
-    if ( a >= 1.0f ) {
+    if (a >= 1.0f) {
       return 0.0f;
     }
     float t0 = (-0.0187293f * a + 0.0742610f);
@@ -580,24 +578,33 @@ atan2a(float y, float x) {
   }
 }
 static float
-angle3(const float *a3, const float *b3) {
-  float dot = dot3(a3,b3);
-  float len1 = dot3(a3,a3);
-  float len2 = dot3(b3,b3);
-  return acosa(dot/sqrta(len1 * len2));
+angle3(const float *restrict a3, const float *restrict b3) {
+  float c[3]; cpy3(c, a3);
+  float d[3]; cpy3(d, b3);
+  float len1 = dot3(c,c);
+  float len2 = dot3(d,d);
+  float n = len1 * len2;
+  if (n < 1.e-6f) return 0.0f;
+  float dot = dot3(c,d);
+  return acosa(dot/sqrta(n));
 }
 static void
-qrot3(float *out, const float *q, const float *v) {
+qrot3(float *restrict out, const float *restrict qrot, const float *restrict vec) {
+  float q[4]; cpy4(q,qrot);
+  float v[3]; cpy3(v,vec);
   float a[3]; mul3(a, q, 2.0f * dot3(q,v));
   float b[3]; mul3(b, v, q[3]*q[3] - dot3(q,q));
   float c[3]; cross3(c,q,v);
   float d[3]; mul3(d,c, 2.0f * q[3]);
   float e[3]; add3(e, a, b);
-  add3(out, e, d);
+  float r[3]; add3(r, e, d);
+  cpy3(out, r);
 }
 static void
-qalign3(float *q, const float *u, const float *v) {
+qalign3(float *restrict q, const float *restrict from3, const float *restrict to3) {
   float w[3] = {0};
+  float u[3]; cpy3(u,from3);
+  float v[3]; cpy3(v,to3);
   float norm_u_norm_v = sqrta(dot3(u,u) * dot3(v,v));
   float real_part = norm_u_norm_v + dot3(u,v);
   if (real_part < (1.e-6f * norm_u_norm_v)) {
@@ -619,61 +626,83 @@ qeuler(float *qout, float yaw, float pitch, float roll) {
   float sp, cp; sincosa(pitch * 0.5f, &sp, &cp);
   float sy, cy; sincosa(yaw * 0.5f, &sy, &cy);
 
-  qout[0] = cy * sp * cr + sy * cp * sr;
-  qout[1] = sy * cp * cr - cy * sp * sr;
-  qout[2] = cy * cp * sr - sy * sp * cr;
-  qout[3] = cy * cp * cr + sy * sp * sr;
+  float ret[4];
+  ret[0] = cy * sp * cr + sy * cp * sr;
+  ret[1] = sy * cp * cr - cy * sp * sr;
+  ret[2] = cy * cp * sr - sy * sp * cr;
+  ret[3] = cy * cp * cr + sy * sp * sr;
+  cpy4(qout, ret);
 }
 static void
-qtransform(float *o3, const float *v3, const float *q, const float *t3) {
-  float tmp[3];
+qtransform(float *restrict o3, const float *restrict in3,
+           const float *restrict qrot, const float *restrict mov3) {
+  float v3[3]; cpy3(v3, in3);
+  float q[4]; cpy4(q, qrot);
+  float t3[3]; cpy3(t3, mov3);
+
+  float tmp[3], ret[3];
   qrot3(tmp, q, v3);
-  add3(o3, tmp, t3);
+  add3(ret, tmp, t3);
+  cpy3(o3, ret);
 }
 static void
-qtransformI(float *o3, const float *v3, const float *q, const float *t3) {
+qtransformI(float *restrict o3, const float *restrict in3,
+            const float *restrict qrot, const float *restrict mov3) {
+  float v3[3]; cpy3(v3, in3);
+  float q[4]; cpy4(q, qrot);
+  float t3[3]; cpy3(t3, mov3);
+
   float tmp[3]; sub3(tmp, v3, t3);
   float inv[4]; qconj(inv, q);
-  qrot3(o3, inv, tmp);
+  float ret[3]; qrot3(ret, inv, tmp);
+  cpy3(o3,ret);
 }
 static void
-qaxis(float *o3, const float *q) {
+qaxis(float *restrict o3, const float *restrict q) {
   float n = len3(q);
   if (n < 1.0e-9f) {
     set3(o3,-1, 0, 0);
+    return;
   }
-  mul3(o3, q, n);
+  float tmp[3];
+  mul3(tmp, q, n);
+  cpy3(o3, tmp);
 }
 static float
 qangle(const float *q) {
   return 2.0f * acosa(clamp(-1.0f, q[3], 1.0f));
 }
 static void
-qpow(float *qo, const float *q, float exp) {
+qpow(float *restrict qo, const float *restrict q, float exp) {
   float axis[3]; qaxis(axis, q);
   float angle = qangle(q) * exp;
-  quat(qo, angle, axis);
+  float ret[4]; quat(ret, angle, axis);
+  cpy4(qo, ret);
 }
 static void
-qintegrate(float *qo, const float *qq, const float *qv, float dt) {
-  float p[4];
-  qpow(p, qv, dt);
-  qmul(qo, p, qq);
+qintegrate(float *restrict qo, const float *restrict qq,
+           const float *restrict qv, float dt) {
+  float p[4]; qpow(p, qv, dt);
+  float r[4]; qmul(r, p, qq);
+  cpy4(qo, r);
 }
 static void
-qintegratev(float *qo, const float *q, float *angle_vel3, float dt) {
+qintegratev(float *restrict qo, const float *restrict qrot,
+            float *restrict angle_vel3, float dt) {
   // omega: angular velocity (direction is axis, magnitude is angle)
   // https://fgiesen.wordpress.com/2012/08/24/quaternion-differentiation/
   // https://www.ashwinnarayan.com/post/how-to-integrate-quaternions/
   // https://gafferongames.com/post/physics_in_3d/
-  dt *= 0.5f;
+  float q[4]; cpy4(q, qrot);
+  float av[3]; cpy3(av, angle_vel3);
   float t[4] = {0,0,0,1};
-  mul3(t, angle_vel3, dt);
-  qmul(qo, t, q);
-  normaleq4(qo);
+  mul3(t, av, dt * 0.5f);
+  float r[4]; qmul(r, t, q); normaleq4(r);
+  cpy4(qo, r);
 }
 static void
-qslerp(float *qres, const float *qfrom, const float *qto, float t) {
+qslerp(float *restrict qres, const float *restrict qfrom,
+       const float *restrict qto, float t) {
   if (t <= 0.0f) {
     cpy4(qres,qfrom);
     return;
@@ -705,7 +734,8 @@ qslerp(float *qres, const float *qfrom, const float *qto, float t) {
   add4(qres,a,b);
 }
 static void
-qst__decomp(float *qswing, float *qtwist, const float *q, const float *axis3) {
+qst__decomp(float *restrict qswing, float *restrict qtwist,
+            const float *restrict q, const float *restrict axis3) {
   if (dot3(q,q) < 1.0e-9f) {
      // singularity: rotation by 180 degree
     float rot_twist_axis[3]; qrot3(rot_twist_axis, q, axis3);
@@ -728,39 +758,42 @@ qst__decomp(float *qswing, float *qtwist, const float *q, const float *axis3) {
   qmul(qswing, q, inv);
 }
 static void
-qst_decomp(float *qfull_swing, float *qfull_twist, const float *qa,
-           const float *qb, const float *twist_axis3) {
+qst_decomp(float *restrict qfull_swing, float *restrict qfull_twist,
+           const float *restrict qa, const float *restrict qb,
+           const float *restrict twist_axis3) {
   float inv[4]; qconj(inv, qa);
   float q[4]; qmul(q, qb, inv);
   qst__decomp(qfull_swing, qfull_twist, q, twist_axis3);
 }
 static void
-qst__nlerp(float *res, float *qswing, float *qtwist, const float *qfull_swing,
-          const float *qfull_twist, float t_swing, float t_twist) {
+qst__nlerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
+           const float *restrict qfull_swing, const float *restrict qfull_twist,
+           float t_swing, float t_twist) {
   static const float qid[4] = {0,0,0,1};
   lerp4(qswing, qid, qfull_swing, t_swing);
   lerp4(qtwist, qid, qfull_twist, t_twist);
-  qmul(res, qtwist, qswing);
+  qmul(qres, qtwist, qswing);
 }
 static void
-qst_nlerp(float *res, const float *qfull_swing, const float *qfull_twist,
-          float t_swing, float t_twist) {
+qst_nlerp(float *restrict qres, const float *restrict qfull_swing,
+          const float *restrict qfull_twist, float t_swing, float t_twist) {
   float swing[4], twist[4];
-  qst__nlerp(res, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist);
+  qst__nlerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist);
 }
 static void
-qst__slerp(float *res, float *qswing, float *qtwist, const float *qfull_swing,
-          const float *qfull_twist, float t_swing, float t_twist) {
+qst__slerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
+           const float *restrict qfull_swing, const float *restrict qfull_twist,
+           float t_swing, float t_twist) {
   static const float qid[4] = {0,0,0,1};
   qslerp(qswing, qid, qfull_swing, t_swing);
   qslerp(qtwist, qid, qfull_twist, t_twist);
-  qmul(res, qtwist, qswing);
+  qmul(qres, qtwist, qswing);
 }
 static void
-qst_slerp(float *res, const float *qfull_swing, const float *qfull_twist,
-          float t_swing, float t_twist) {
+qst_slerp(float *restrict qres, const float *restrict qfull_swing,
+          const float *restrict qfull_twist, float t_swing, float t_twist) {
   float swing[4], twist[4];
-  qst__slerp(res, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
+  qst__slerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1177,8 +1210,8 @@ str__match_hash(struct str s) {
 #define str_sub(s,b,e) str((s).str + (b), (e) - (b))
 #define str_rhs(s, n) str_sub(s, min((s).len, n), (s).len)
 #define str_lhs(s, n) str_sub(s, 0, min((s).len, n))
-#define str_cut_lhs(s, n) *s = str_rhs(*s, n)
-#define str_cut_rhs(s, n) *s = str_lhs(*s, n)
+#define str_cut_lhs(s, n) *(s) = str_rhs(*(s), n)
+#define str_cut_rhs(s, n) *(s) = str_lhs(*(s), n)
 
 #define for_str(it,c,s)\
   for (const char *it = (c)->str; it < (c)->end; it += (s))
@@ -1256,18 +1289,18 @@ str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
 }
 static int
 str__fnd_sse(struct str hay, struct str needle) {
-  static const char unsigned msk[32] = {
+  static const char unsigned ovr_msk[32] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
   };
-  chr16 n = chr16_ld(needle.str);
-  chr16 o = chr16_ld(msk + 16 - (needle.len & 15));
+  chr16 ndl = chr16_ld(needle.str);
+  chr16 ovr = chr16_ld(ovr_msk + 16 - (needle.len & 15));
   for (int i = 0; i + needle.len <= hay.len; i++) {
-    chr16 h = chr16_ld(hay.str + i);
-    chr16 q = chr16_eq(n,h);
-    chr16 m = chr16_or(q,o);
-    if (chr16_tst_all_ones(m)) {
+    chr16 txt = chr16_ld(hay.str + i);
+    chr16 ceq = chr16_eq(ndl,txt);
+    chr16 msk = chr16_or(ceq,ovr);
+    if (chr16_tst_all_ones(msk)) {
       return i;
     }
   }

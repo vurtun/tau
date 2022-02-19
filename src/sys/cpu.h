@@ -197,6 +197,8 @@ struct cpu_info {
 #define flt4_zip_hi64(a,b) _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
 #define flt4_int4(a) _mm_castsi128_ps(a)
 #define flt4_cmpu(a,b) _mm_cmpunord_ps(a,b)
+#define flt4_rsqrt(a) _mm_rsqrt_ps(a)
+#define flt4_strs(d,a) _mm_store_ss(d,a)
 
 #define int4 __m128i
 #define int4_ld(p) _mm_loadu_si128((const __m128i*)(const void*)p)
@@ -358,6 +360,8 @@ chr16_tst_all_zero(chr16 a) {
 #define flt4_zip_lo64(a,b) vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
 #define flt4_zip_hi64(a,b) vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
 #define flt4_int4(a) vreinterpretq_f32_s32(a)
+#define flt4_rsqrt(a) vrsqrteq_f32(a)
+#define flt4_strs(d,a) vst1q_lane_f32(d,a,0)
 
 static inline flt4
 flt4_cmpu(flt4 a, flt4 b) {
