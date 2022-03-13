@@ -1300,10 +1300,10 @@ ui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
     lbl.box.x = gui.bnd.shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
     gui.txt.uln(ctx, &lbl, &btn->pan, txt, &align, uline, 1);
 
-    struct gui_icon ico = {0};
+    struct gui_panel ico = {0};
     ico.box.x = gui.bnd.max_ext(lbl.box.x.min - ctx->cfg.gap[0], ctx->cfg.ico);
     ico.box.y = gui.bnd.mid_ext(btn->box.y.mid, ctx->cfg.ico);
-    gui.ico.icon(ctx, &ico, &btn->pan, icon);
+    gui.ico.img(ctx, &ico, &btn->pan, icon);
   }
   gui.btn.end(ctx, btn, parent);
   return btn->clk;
@@ -1319,9 +1319,9 @@ ui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *paren
   gui.btn.begin(ctx, btn, parent);
   {
     /* icon */
-    struct gui_icon ico = {.box = btn->pan.box};
+    struct gui_panel ico = {.box = btn->pan.box};
     ico.box.x = gui.bnd.max_ext(btn->pan.box.x.max, ctx->cfg.item);
-    gui.ico.icon(ctx, &ico, &btn->pan, icon);
+    gui.ico.img(ctx, &ico, &btn->pan, icon);
 
     /* label */
     struct gui_panel lbl = {.box = btn->pan.box};
@@ -1350,10 +1350,10 @@ ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
       gui.edt.drw(ctx, pan);
     }
     /* icon */
-    struct gui_icon ico = {0};
+    struct gui_panel ico = {0};
     ico.box.y = gui.bnd.shrink(&pan->box.y, pad[1]);
     ico.box.x = gui.bnd.min_ext(pan->box.x.min, ctx->cfg.item);
-    gui.ico.icon(ctx, &ico, pan, ICO_SEARCH);
+    gui.ico.img(ctx, &ico, pan, ICO_SEARCH);
 
     /* edit */
     edt->pan.focusable = 1;
@@ -1392,9 +1392,9 @@ ui_db_tbl_view_hdr_key_slot(struct db_tbl_view *view, struct db_tbl_col *col,
     gui.cfg.pushu(stk, &ctx->cfg.col[GUI_COL_ICO], fk_col);
     {
       /* icon */
-      struct gui_icon ico = {.box = slot.box};
+      struct gui_panel ico = {.box = slot.box};
       ico.box.x = gui.bnd.max_ext(slot.box.x.max, ctx->cfg.item);
-      gui.ico.icon(ctx, &ico, &slot.pan, ICO_KEY);
+      gui.ico.img(ctx, &ico, &slot.pan, ICO_KEY);
 
       /* label */
       struct gui_panel lbl = {.box = slot.box};
@@ -1481,12 +1481,11 @@ ui_db_tbl_view_lst_elm_blob(struct db_ui_view *sql, struct db_tbl_view *view,
   assert(data);
 
   if (col->is_hot && !view->blob.disabled) {
-    /* show icon to open hex view on column hover */
-    struct gui_icon btn;
     struct gui_box lay = col->box;
-    btn.box = gui.cut.rhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
-
-    gui.ico.icon(ctx, &btn, col, ICO_FILE_IMPORT);
+    struct gui_box ico = gui.cut.rhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
+    /* show icon to open hex view on column hover */
+    struct gui_icon btn = {.box = ico};
+    gui.ico.clk(ctx, &btn, col, ICO_FILE_IMPORT);
     if (btn.clk) {
       int pki = db_tbl_view_fnd_pk(view);
       if (pki < dyn_cnt(view->cols)) {
@@ -1631,8 +1630,8 @@ ui_db_tbl_fltr_lst_ico_slot(struct gui_ctx *ctx, struct gui_tbl *tbl,
 
   gui.tbl.hdr.slot.begin(ctx, tbl, slot);
   {
-    struct gui_icon tog = {.box = slot->box};
-    gui.ico.icon(ctx, &tog, &slot->pan, ico);
+    struct gui_panel tog = {.box = slot->box};
+    gui.ico.img(ctx, &tog, &slot->pan, ico);
   }
   gui.tbl.hdr.slot.end(ctx, tbl, tbl_lay, slot, state);
   return slot->clk;
@@ -1692,7 +1691,7 @@ ui_db_tbl_fltr_tog(struct db_tbl_fltr *item, struct gui_ctx *ctx,
   struct gui_icon tog = {0};
   gui.tbl.lst.elm.col.slot(&tog.box, ctx, tbl, tbl_lay);
   {
-    gui.ico.icon(ctx, &tog, elm, enabled ? ICO_TOGGLE_ON : ICO_TOGGLE_OFF);
+    gui.ico.clk(ctx, &tog, elm, enabled ? ICO_TOGGLE_ON : ICO_TOGGLE_OFF);
     if (tog.clk) {
       item->enabled = !item->enabled;
     }
@@ -1743,7 +1742,7 @@ ui_db_tbl_fltr_lst_view(struct db_tbl_view *view, struct gui_ctx *ctx,
           /* remove icon */
           struct gui_icon del = {0};
           gui.tbl.lst.elm.col.slot(&del.box, ctx, &tbl, tbl_cols);
-          gui.ico.icon(ctx, &del, &elm, ICO_TRASH_ALT);
+          gui.ico.clk(ctx, &del, &elm, ICO_TRASH_ALT);
           if (del.clk){
             del_idx = i;
           }
@@ -2495,7 +2494,7 @@ ui_db_explr_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
   {
     struct gui_box lay = pan->box;
     struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
-    gui.ico.icon(ctx, &close, pan, ICO_TIMES);
+    gui.ico.clk(ctx, &close, pan, ICO_TIMES);
     ret = close.clk;
 
     struct gui_panel lbl = {.box = lay};

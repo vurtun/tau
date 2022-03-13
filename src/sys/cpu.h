@@ -182,6 +182,12 @@ struct cpu_info {
 #define chr16_tst_all_zero(a) _mm_test_all_zero(a,_mm_set1_epi8(0xff))
 #define chr16_or(a,b) _mm_or_si128(a,b)
 
+#define bigreg __m128i
+#define bigreg_u8(c) _mm_set1_epi8(c)
+#define bigreg_ld(v,ptr) (v)=_mm_load_si128(((__m128i*)(ptr)))
+#define bigreg_str(ptr,val) _mm_store_si128(((__m128i*)(ptr)),val)
+#define bigreg_stru(ptr,val) _mm_storeu_si128( ((__m128i*)(ptr)),val)
+
 #define flt4 __m128
 #define flt4_flt(a) _mm_set_ps1(a)
 #define flt4_str(d,r) _mm_storeu_ps(((float*)(d)),r)
@@ -332,6 +338,8 @@ cpu_info(struct cpu_info *cpu) {
 #define chr16_ld(p) vld1q_u8((const unsigned char*)(const void*)p)
 #define chr16_eq(a,b) vceqq_u8(a,b)
 #define chr16_or(a,b) vorrq_u8(a,b)
+#define chr16_str(p,v) vst1q_u8( ((const unsigned char*)(p)),v)
+#define chr16_stru(p,v) vst1q_u8( ((const unsigned char*)(p)),v)
 
 static inline int
 chr16_tst_all_ones(chr16 a) {
@@ -345,6 +353,12 @@ chr16_tst_all_zero(chr16 a) {
   unsigned long long hi = vgetq_lane_u64(vreinterpretq_u64_u8(a), 1);
   return (lo | hi) == 0u;
 }
+
+#define bigreg uint8x16_t
+#define bigreg_u8(c) vdupq_n_u8(c)
+#define bigreg_ld(val,ptr) (val)=vld1q_u8((const unsigned char*)(const void*)(ptr))
+#define bigreg_str(ptr,val) vst1q_u8((void*)(ptr),val)
+#define bigreg_stru(ptr,val) vst1q_u8(((bigreg*)(void*)(ptr)),val)
 
 #define flt4 float32x4_t
 #define flt4_flt(a) vdupq_n_f32(a)

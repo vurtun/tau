@@ -537,7 +537,6 @@ static void
 res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
   assert(r);
   assert(bnd);
-
   memset(bnd, 0, sizeof(*bnd));
   bnd->end = txt.end;
   if (!space) {
@@ -574,9 +573,9 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
 static struct fnt_baked_char *
 res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
            int x, int y, int rune) {
-  struct sys *sys = r->sys;
   struct res_glyph_set *set = res_fnt_get_glyphset(r, fnt, rune);
   struct fnt_baked_char *g = &set->glyphs[rune & 0xFF];
+  struct sys *sys = r->sys;
 
   int sx = g->x0;
   int sy = g->y0;

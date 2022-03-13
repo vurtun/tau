@@ -278,7 +278,7 @@ ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
   {
     struct gui_box lay = pan->box;
     struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
-    gui.ico.icon(ctx, &close, pan, ICO_TIMES);
+    gui.ico.clk(ctx, &close, pan, ICO_TIMES);
     ret = close.clk;
 
     struct gui_panel lbl = {.box = lay};

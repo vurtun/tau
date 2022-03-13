@@ -173,6 +173,12 @@ struct sys_dnd {
   struct str str;
 };
 
+/* tooltip */
+struct sys_tooltip {
+  char buf[256];
+  struct str str;
+};
+
 /* api */
 struct sys_mem_api {
   long page_siz;
@@ -236,6 +242,7 @@ struct sys {
   enum sys_cur_style cursor;
   struct sys_win win;
   struct sys_dnd dnd;
+  struct sys_tooltip tooltip;
 
   /* style */
   unsigned style_mod:1;

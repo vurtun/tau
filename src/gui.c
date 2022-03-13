@@ -635,6 +635,31 @@ gui_panel_id(struct gui_ctx *ctx, struct gui_panel *pan,
   gui_panel_close(ctx, pan, parent);
 }
 static void
+gui_panel_cur_hov(struct gui_ctx *ctx, const struct gui_panel *pan,
+                  enum sys_cur_style cur) {
+  assert(pan);
+  assert(ctx);
+  if (pan->is_hov) {
+    struct sys *sys = ctx->sys;
+    sys->cursor = cur;
+  }
+}
+static void
+gui_tooltip(struct gui_ctx *ctx, const struct gui_panel *pan, struct str str) {
+  assert(pan);
+  assert(ctx);
+  if (pan->is_hov) {
+    struct sys *sys = ctx->sys;
+    if (str.len < szof(sys->tooltip.buf)) {
+      memcpy(sys->tooltip.buf, str.str, str.len);
+      sys->tooltip.str = str(sys->tooltip.buf, str.len);
+    } else {
+      memcpy(sys->tooltip.buf, str.str, sizeof(sys->tooltip.buf));
+      sys->tooltip.str = str(sys->tooltip.buf, szof(sys->tooltip.buf));
+    }
+  }
+}
+static void
 gui_focus_on(struct gui_ctx *ctx, int cond) {
   assert(ctx);
   ctx->focus_next = cond ? 1 : ctx->focus_next;
@@ -913,6 +938,7 @@ gui_begin(struct gui_ctx *ctx) {
       }
     } break;
     case GUI_RENDER: {
+      sys->tooltip.str = str_nil;
       sys->cursor = SYS_CUR_ARROW;
       ctx->ren = sys->ren.que.mk(sys->ren.que.dev);
       sys->ren.drw.line_style(ctx->ren, 1);
@@ -1333,24 +1359,34 @@ gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
  * ---------------------------------------------------------------------------
  */
 static void
+gui_ico(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
+         const char *icon) {
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+  struct sys *sys = ctx->sys;
+
+  gui_panel_begin(ctx, pan, parent);
+  if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
+    struct gui_box ico = {0};
+    ico = gui_box_mid_ext(&pan->box, ctx->cfg.ico, ctx->cfg.ico);
+    if (pan->state == GUI_DISABLED) {
+      sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
+    } else sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_ICO]);
+    res.ico(ctx->ren, ctx->res, ico.x.min, ico.y.min, icon);
+  }
+  gui_panel_end(ctx, pan, parent);
+}
+static void
 gui_icon(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent,
          const char *icon) {
   assert(ctx);
   assert(icn);
   assert(parent);
-  struct sys *sys = ctx->sys;
 
   icn->pan.box = icn->box;
-  gui_panel_begin(ctx, &icn->pan, parent);
-  if (ctx->pass == GUI_RENDER && icn->pan.state != GUI_HIDDEN) {
-    struct gui_box ico = {0};
-    ico = gui_box_mid_ext(&icn->pan.box, ctx->cfg.ico, ctx->cfg.ico);
-    if (icn->pan.state == GUI_DISABLED) {
-      sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
-    } else sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_ICO]);
-    res.ico(ctx->ren, ctx->res, ico.x.min, ico.y.min, icon);
-  }
-  gui_panel_end(ctx, &icn->pan, parent);
+  gui_ico(ctx, &icn->pan, parent, icon);
+  gui_panel_cur_hov(ctx, &icn->pan, SYS_CUR_HAND);
 
   gui_input(&icn->in, ctx, &icn->pan, GUI_BTN_LEFT);
   icn->pressed = icn->in.mouse.btn.left.pressed;
@@ -1373,9 +1409,9 @@ gui_icon_box(struct gui_ctx *ctx, struct gui_panel *pan,
   pan->box.x = gui_min_ext(pan->box.x.min, min(pan->box.x.ext, w));
   gui_panel_begin(ctx, pan, parent);
   {
-    struct gui_icon ico = {.box = pan->box};
+    struct gui_panel ico = {.box = pan->box};
     ico.box.x = gui_min_ext(pan->box.x.min, ctx->cfg.item);
-    gui_icon(ctx, &ico, pan, icon);
+    gui_ico(ctx, &ico, pan, icon);
 
     struct gui_panel lbl = {.box = pan->box};
     static const struct gui_align def_align = {GUI_HALIGN_MID, GUI_VALIGN_MID};
@@ -1498,9 +1534,9 @@ gui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
 
   gui_btn_begin(ctx, btn, parent);
   {
-    struct gui_icon ico = {0};
+    struct gui_panel ico = {0};
     ico.box = gui_box_mid_ext(&btn->box, ctx->cfg.ico, ctx->cfg.ico);
-    gui_icon(ctx, &ico, &btn->pan, icon);
+    gui_ico(ctx, &ico, &btn->pan, icon);
   }
   gui_btn_end(ctx, btn, parent);
   return btn->clk;
@@ -1520,10 +1556,10 @@ gui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *pare
     lbl.box.x = gui_shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
     gui_txt_uln(ctx, &lbl, &btn->pan, txt, &align, uline, 1);
 
-    struct gui_icon ico = {0};
+    struct gui_panel ico = {0};
     ico.box.x = gui_max_ext(lbl.box.x.min - ctx->cfg.gap[0], ctx->cfg.ico);
     ico.box.y = gui_mid_ext(btn->box.y.mid, ctx->cfg.ico);
-    gui_icon(ctx, &ico, &btn->pan, icon);
+    gui_ico(ctx, &ico, &btn->pan, icon);
   }
   gui_btn_end(ctx, btn, parent);
   return btn->clk;
@@ -1836,7 +1872,8 @@ gui__scrl_cur(struct gui_ctx *ctx, struct gui_scrl *s, struct gui_panel *pan,
   gui_panel_begin(ctx, pan, parent);
   {
     /* draw */
-    if (ctx->pass == GUI_RENDER && pan->state != GUI_DISABLED) {
+    if (ctx->pass == GUI_RENDER &&
+        pan->state != GUI_DISABLED) {
       gui_panel_drw(ctx, &pan->box);
     }
     /* input */
@@ -4702,6 +4739,7 @@ gui_tree_node_icon(struct gui_ctx *ctx, struct gui_panel *pan,
     gui_tree_node_icon_drw(ctx, pan, is_open);
   }
   gui_panel_end(ctx, pan, parent);
+  gui_panel_cur_hov(ctx, pan, SYS_CUR_HAND);
 
   struct gui_input in = {0};
   gui_input(&in, ctx, pan, GUI_BTN_LEFT);
@@ -5233,20 +5271,26 @@ gui_tbl_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui_reg_end(ctx, &tbl->reg, parent, off);
 }
 static void
-gui_tbl_lst_txt(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
-                struct gui_panel *elm, struct str txt,
-                const char *icon, const struct gui_align *align) {
+gui_tbl_lst_col_txt(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
+                    struct gui_panel *elm, struct gui_panel *item, struct str txt,
+                    const char *icon, const struct gui_align *align) {
   assert(ctx);
   assert(tbl);
   assert(elm);
-
-  struct gui_panel item = {0};
-  gui_tbl_lst_elm_col(&item.box, ctx, tbl, lay);
+  assert(item);
+  gui_tbl_lst_elm_col(&item->box, ctx, tbl, lay);
   if (icon) {
-    gui_icon_box(ctx, &item, elm, icon, txt);
+    gui_icon_box(ctx, item, elm, icon, txt);
   } else {
-    gui_txt(ctx, &item, elm, txt, align);
+    gui_txt(ctx, item, elm, txt, align);
   }
+}
+static void
+gui_tbl_lst_txt(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
+                struct gui_panel *elm, struct str txt,
+                const char *icon, const struct gui_align *align) {
+  struct gui_panel item = {0};
+  gui_tbl_lst_col_txt(ctx, tbl, lay, elm, &item, txt, icon, align);
 }
 static void
 gui_tbl_lst_txtf(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
@@ -5296,7 +5340,6 @@ gui_pckr_begin(struct gui_ctx *ctx, struct gui_combo *com,
   if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
     gui_edit_drw(ctx, pan);
   }
-  /* open dropdown popup on click */
   struct gui_btn btn = {0};
   btn.box.x = gui_max_ext(pan->box.x.max, ctx->cfg.scrl);
   btn.box.y = gui_min_max(pan->box.y.min + 2, pan->box.y.max - 1);
@@ -5765,6 +5808,7 @@ static const struct gui_api gui_api = {
   .enable = gui_enable,
   .disable = gui_disable,
   .color_scheme = gui_color_scheme,
+  .tooltip = gui_tooltip,
   .bnd = {
     .min_max = gui_min_max,
     .min_ext = gui_min_ext,
@@ -5828,6 +5872,9 @@ static const struct gui_api gui_api = {
     .close = gui_panel_close,
     .begin = gui_panel_begin,
     .end = gui_panel_close,
+    .cur = {
+      .hov = gui_panel_cur_hov,
+    },
   },
   .cfg = {
     .pushi = gui_cfg_pushi,
@@ -5854,7 +5901,8 @@ static const struct gui_api gui_api = {
     .fmt = gui_lblf,
   },
   .ico = {
-    .icon = gui_icon,
+    .img = gui_ico,
+    .clk = gui_icon,
     .box = gui_icon_box,
   },
   .btn = {
@@ -5995,6 +6043,9 @@ static const struct gui_api gui_api = {
         .begin = gui_tbl_lst_elm_begin,
         .end = gui_tbl_lst_elm_end,
         .col = {
+          .pan = {
+            .txt = gui_tbl_lst_col_txt,
+          },
           .slot = gui_tbl_lst_elm_col,
           .txt = gui_tbl_lst_txt,
           .txtf = gui_tbl_lst_txtf,

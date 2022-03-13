@@ -133,16 +133,11 @@ struct sys_mac {
   sys__mac_view *view;
   sys__mac_view_delegate *view_dlg;
   struct sys_mac_metal metal;
+  unsigned long long tooltip;
 
   float dpi_scale[2];
   int win_w, win_h, buf_stride;
   unsigned *backbuf;
-
-#if 0
-  CGColorSpaceRef col_space;
-  CGContextRef ctx_ref;
-  CGImageRef cg_img;
-#endif
 };
 static struct sys_mac _mac;
 static struct sys _sys;
@@ -630,7 +625,7 @@ sys__mac_metal_resize(struct sys_mac_metal *mtl, int w, int h) {
     unused(buf);
     dispatch_semaphore_signal(blk_sem);
   }];
-  /* copy the bytes from our data object into the texture */
+  /* copy bytes from our data object into texture */
   MTLRegion region = {{0,0,0}, {(NSUInteger)_mac.win_w, (NSUInteger)_mac.win_h, 1}};
   [mtl->tex[mtl->cur_buf] replaceRegion:region mipmapLevel:0
     withBytes:_mac.backbuf bytesPerRow:(NSUInteger)_mac.buf_stride];
@@ -730,7 +725,7 @@ sys__mac_on_frame(void) {
     case SYS_CUR_ARROW: [[NSCursor arrowCursor] set]; break;
     case SYS_CUR_NO: [[NSCursor operationNotAllowedCursor] set]; break;
     case SYS_CUR_CROSS: [[NSCursor crosshairCursor] set]; break;
-    case SYS_CUR_HAND: [[NSCursor openHandCursor] set]; break;
+    case SYS_CUR_HAND: [[NSCursor pointingHandCursor] set]; break;
     case SYS_CUR_IBEAM: [[NSCursor IBeamCursor] set]; break;
     case SYS_CUR_MOVE: [[NSCursor closedHandCursor] set]; break;
     case SYS_CUR_SIZE_NS: [[NSCursor resizeUpDownCursor] set]; break;
@@ -742,6 +737,20 @@ sys__mac_on_frame(void) {
     }
     _mac.cursor = _sys.cursor;
   }
+  unsigned long long tooltip_id = str_hash(_sys.tooltip.str);
+  if (tooltip_id != _mac.tooltip) {
+    if (_sys.tooltip.str.len) {
+      NSString *str = [[NSString alloc]
+        initWithBytes: (const void*)_sys.tooltip.str.str
+        length:(NSUInteger)_sys.tooltip.str.len encoding:NSUTF8StringEncoding];
+      [_mac.view setToolTip: str];
+    } else {
+      [_mac.view setToolTip: nil];
+    }
+    _mac.tooltip = tooltip_id;
+  }
+  _sys.tooltip.str = str_nil;
+
   if (_mac.dbg.dlEnd) {
     _mac.dbg.dlEnd(&_sys);
   }

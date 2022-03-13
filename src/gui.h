@@ -228,6 +228,7 @@ struct gui_icon {
   unsigned released : 1;
 };
 
+
 enum gui_chk_state {
   GUI_CHK_UNSELECTED,
   GUI_CHK_PARTIAL,
@@ -1002,7 +1003,11 @@ struct gui_lay_api {
   void (*hlay)(struct gui_ctx *ctx, struct gui_lay *lay, int *items, const int *def, int cnt, int row_h, int row_gap, int col_gap, const int *con, struct gui_lay_sol *sol);
   void (*vlay)(struct gui_ctx *ctx, struct gui_lay *lay, int *items, const int *def, int cnt, int col_w, int row_gap, int col_gap, const int *con, struct gui_lay_sol *sol);
 };
+struct gui_panel_cur_api {
+  void (*hov)(struct gui_ctx *ctx, const struct gui_panel *pan, enum sys_cur_style cur);
+};
 struct gui_panel_api {
+  struct gui_panel_cur_api cur;
   void (*hot)(struct gui_ctx *ctx, struct gui_panel *p, struct gui_panel *parent);
   void (*focus)(struct gui_ctx *ctx, struct gui_panel *p);
   void (*input)(struct gui_input *in, struct gui_ctx *ctx, const struct gui_panel *p, unsigned mask);
@@ -1053,7 +1058,8 @@ struct gui_lbl_api {
   void (*fmt)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct gui_box_cut *cut, const char *fmt, ...);
 };
 struct gui_ico_api {
-  void (*icon)(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent, const char *icon);
+  void (*img)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, const char *icon);
+  void (*clk)(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent, const char *icon);
   void (*box)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, const char *icon, struct str txt);
 };
 struct gui_btn_api {
@@ -1190,7 +1196,11 @@ struct gui_tbl_hdr_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, int *res, int *s);
   void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl);
 };
+struct gui_tbl_lst_elm_col_pan_api {
+  void (*txt)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct gui_panel *item, struct str txt, const char *icon, const struct gui_align *align);
+};
 struct gui_tbl_lst_elm_col_api {
+  struct gui_tbl_lst_elm_col_pan_api pan;
   void (*slot)(struct gui_box *box, struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay);
   void (*txt)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct str txt, const char *icon, const struct gui_align *align);
   void (*txtf)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const struct gui_align *align, const char *fmt, ...);
@@ -1259,6 +1269,7 @@ struct gui_api {
   void (*clip_end)(struct gui_ctx *ctx, struct gui_box *clip);
   int (*enable)(struct gui_ctx *ctx, int cond);
   int (*disable)(struct gui_ctx *ctx, int cond);
+  void (*tooltip)(struct gui_ctx *ctx, const struct gui_panel *pan, struct str str);
 
   struct gui_bnd_api bnd;
   struct gui_box_api box;

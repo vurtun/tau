@@ -39,6 +39,94 @@ rng__mk(int lo, int hi, int s) {
        (it) += rng(b,e,s,cntof(a)).step)
 
 /* ---------------------------------------------------------------------------
+ *                                Memory
+ * ---------------------------------------------------------------------------
+ */
+static void
+mcpy(void* restrict dstp, void const *restrict srcp, int bytes) {
+  #define PERLOOP (4*szof(bigreg))
+  assert(dstp);
+  assert(srcp);
+  assert(bytes >= 0);
+  assert((((uintptr_t)srcp) & 15)==0);
+  assert((((uintptr_t)dstp) & 15)==0);
+  assert(srcp != dstp);
+
+  int s = bytes/PERLOOP;
+  unsigned char const *src = (unsigned char const*)srcp;
+  unsigned char *dst = (unsigned char*)dstp;
+  int rest = bytes & 15;
+
+  bytes = (bytes & 63) / 16;
+  while(s) { // 64-byte chunks
+#ifdef __clang__
+  __asm__ __volatile__("");
+#endif
+    bigreg a; bigreg_ld(a,src+0);
+    bigreg b; bigreg_ld(b,src+1);
+    bigreg c; bigreg_ld(c,src+2);
+    bigreg d; bigreg_ld(d,src+3);
+
+    bigreg_str(((bigreg*)(void*)dst)+0,a);
+    bigreg_str(((bigreg*)(void*)dst)+1,b);
+    bigreg_str(((bigreg*)(void*)dst)+2,c);
+    bigreg_str(((bigreg*)(void*)dst)+3,d);
+
+    src+=PERLOOP;
+    dst+=PERLOOP;
+    --s;
+  };
+  #undef PERLOOP
+  while (bytes) { // 16-byte chunks
+    bigreg a;
+    bigreg_ld(a,src);
+    bigreg_str(dst,a);
+
+    src+=16;
+    dst+=16;
+    --bytes;
+  }
+  while (rest) {
+    *dst = *src;
+    src+=1;
+    dst+=1;
+    --rest;
+  }
+}
+static void
+mset(void *addr, unsigned char c, int n) {
+  assert(addr);
+  assert(n >= 0);
+  unsigned char *dst = addr;
+
+  bigreg z = bigreg_u8(c);
+  #define PERLOOP (2*szof(bigreg))
+  int s = n/PERLOOP;
+  int bytes = (n & 63) / 16;
+  int rest = n & 15;
+  while(s) { // 64-byte chunks
+#ifdef __clang__
+  __asm__ __volatile__("");
+#endif
+    bigreg_str(((bigreg*)(void*)dst)+0,z);
+    bigreg_str(((bigreg*)(void*)dst)+1,z);
+    dst+=PERLOOP;
+    --s;
+  };
+  while (bytes) { // 16-byte chunks
+    bigreg_str(dst,z);
+    dst+=16;
+    --bytes;
+  }
+  while (rest) {
+    *dst = 0;
+    dst+=1;
+    --rest;
+  }
+  #undef PERLOOP
+}
+
+/* ---------------------------------------------------------------------------
  *                                  Hash
  * ---------------------------------------------------------------------------
  */
@@ -248,7 +336,7 @@ hflt4(flt4 f) {
 #define triwave(t,period) (1.0f-absf(2.0f*(((t)/(period))-floorf(((t)/(period))))-1.0f))
 #define smooth01(x) ((x)*(x)*(3-2*(x)))
 #define smoother01(x) ((x)*(x)*(x)*((x)*((x)*6-15)+10))
-#define remap(r,imin,imax,omin,omax,v) lerp(r,omin,omax, inv_lerp(imin,imax,v)) // remaps a value from the input range [iMin to iMax] into the output range [oMin to oMax].
+#define remap(r,imin,imax,omin,omax,v) lerp(r,omin,omax, inv_lerp(imin,imax,v))
 
 #define op(r,e,a,p,b,i,s) ((r) e (a) p ((b) i (s)))
 #define opN(r,e,a,p,b,i,s,N)\
@@ -283,6 +371,7 @@ hflt4(flt4 f) {
 #define normeq2(v)      norm2(v,v)
 #define lerp2(r,a,b,t)  lerpN(r,a,b,t,2)
 #define cmp2(a,b,e)     cmpN(a,b,e,2)
+#define swzl2(d,f,a,b)  set2(r,(f)[a],(f)[b])
 
 #define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
 #define dup3(d,f)       set3(d,f,f,f)
@@ -303,6 +392,7 @@ hflt4(flt4 f) {
 #define rejn3(p,a,b)    do {projn3(p,a,b); sub3(p,a,p);}while(0)
 #define lerp3(r,a,b,t)  lerpN(r,a,b,t,3)
 #define cmp3(a,b,e)     cmpN(a,b,e,3)
+#define swzl3(d,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
   (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
@@ -324,6 +414,7 @@ hflt4(flt4 f) {
 #define normaleq4(v)    norm4(v,v)
 #define lerp4(r,a,b,t)  lerpN(r,a,b,t,4)
 #define cmp4(a,b,e)     cmpN(a,b,e,4)
+#define swzl4(d,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
 #define quatf(q,angle,x,y,z)\
@@ -589,7 +680,8 @@ angle3(const float *restrict a3, const float *restrict b3) {
   return acosa(dot/sqrta(n));
 }
 static void
-qrot3(float *restrict out, const float *restrict qrot, const float *restrict vec) {
+qrot3(float *restrict out, const float *restrict qrot,
+      const float *restrict vec) {
   float q[4]; cpy4(q,qrot);
   float v[3]; cpy3(v,vec);
   float a[3]; mul3(a, q, 2.0f * dot3(q,v));
@@ -601,7 +693,8 @@ qrot3(float *restrict out, const float *restrict qrot, const float *restrict vec
   cpy3(out, r);
 }
 static void
-qalign3(float *restrict q, const float *restrict from3, const float *restrict to3) {
+qalign3(float *restrict q, const float *restrict from3,
+        const float *restrict to3) {
   float w[3] = {0};
   float u[3]; cpy3(u,from3);
   float v[3]; cpy3(v,to3);
@@ -632,6 +725,20 @@ qeuler(float *qout, float yaw, float pitch, float roll) {
   ret[2] = cy * cp * sr - sy * sp * cr;
   ret[3] = cy * cp * cr + sy * sp * sr;
   cpy4(qout, ret);
+}
+static void
+eulerq(float *restrict out3, const float *restrict qin) {
+  float q[4]; cpy4(q, qin);
+  float y_sq = q[1] * q[1];
+  float t0 = 2.0f * (q[3] * q[0] + q[1] * q[2]);
+  float t1 = 1.0f - 2.0f * (q[0] * q[0] + y_sq);
+  float t2 = 2.0f * (q[3] * q[1] - q[2] * q[0]);
+  t2 = t2 > 1.0f ? 1.0f : t2;
+  t2 = t2 < -1.0f ? -1.0f : t2;
+  float t3 = 2.0f * (q[3] * q[2] + q[0] * q[1]);
+  float t4 = 1.0f - 2.0f * (y_sq + q[2] * q[2]);
+  float v[3]; set3(v, atan2a(t0, t1), asina(t2), atan2a(t3, t4));
+  cpy3(out3, v);
 }
 static void
 qtransform(float *restrict o3, const float *restrict in3,
@@ -719,7 +826,7 @@ qslerp(float *restrict qres, const float *restrict qfrom,
     cpy4(tmp,qto);
   }
   float scale0, scale1;
-  if (( 1.0f - cosom) > 1e-6f) {
+  if ((1.0f - cosom) > 1e-6f) {
     scale0 = 1.0f - cosom * cosom;
     float sinom = rsqrt(scale0);
     float omega = atan2a(scale0 * sinom, cosom);
@@ -732,6 +839,39 @@ qslerp(float *restrict qres, const float *restrict qfrom,
   float a[4]; mul4(a,qfrom,scale0);
   float b[4]; mul4(b,tmp,scale1);
   add4(qres,a,b);
+}
+static void
+qtwist(float *restrict qtwist, const float *restrict qin,
+       const float *restrict axis) {
+  float q[4]; cpy4(q, qin);
+  float d = dot3(q,axis);
+  float t[4]; mul3(t,axis,d); t[3] = q[3];
+  float l2 = dot4(t,t);
+  if (l2 == 0.0f) {
+    set4(qtwist, 0,0,0,1);
+    return;
+  }
+  float l = rsqrt(l2);
+  mul4(t,t,l);
+  cpy4(qtwist,t);
+}
+static void
+qst_get(float *restrict qswing, float *restrict qtwist,
+        const float *restrict qin){
+  float q[4]; cpy4(q,qin);
+  float s = sqrta((q[3]*q[3]) + (q[0]*q[0]));
+  if (s != 0.0f) {
+    float y = (q[3] * q[1] - q[0] * q[2]);
+    float z = (q[3] * q[2] + q[0] * q[1]);
+    float qs[4]; set4(qs, 0, y/s, z/s, s);
+    float qt[4]; set4(qtwist, q[0]/s, 0, 0, q[3]/s);
+    cpy4(qswing, qs);
+    cpy4(qtwist, qt);
+  } else {
+    /* 180 degree rotation around either y or z */
+    set4(qtwist, 0,0,0,1);
+    cpy4(qswing, q);
+  }
 }
 static void
 qst__decomp(float *restrict qswing, float *restrict qtwist,
@@ -1809,27 +1949,27 @@ struct dyn_hdr {
        (it) += rng(b,e,s,dyn_cnt(a)).step)
 
 #define dyn_asn(b, s, x, n) do {                  \
-    dyn_clr(b);                                   \
-    dyn_fit(b, s, n);                             \
-    memcpy(b, x, sizeof((b)[0]) * cast(size_t, (n))); \
-    dyn__hdr(b)->cnt = (n);                       \
-  } while (0)
+  dyn_clr(b);                                   \
+  dyn_fit(b, s, n);                             \
+  memcpy(b, x, sizeof((b)[0]) * cast(size_t, (n))); \
+  dyn__hdr(b)->cnt = (n);                       \
+} while (0)
 
 #define dyn_put(b, s, i, x, n) do {                                       \
-    dyn_fit(b, s, n);                                                     \
-    assert((i) <= dyn_cnt(b));                                            \
-    assert((i) < dyn_cap(b));                                             \
-    memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
-    memcpy((b) + (i), (x), sizeof((b)[0]) * cast(size_t, (n)));           \
-    dyn__hdr(b)->cnt += (n);                                              \
-  } while (0)
+  dyn_fit(b, s, n);                                                     \
+  assert((i) <= dyn_cnt(b));                                            \
+  assert((i) < dyn_cap(b));                                             \
+  memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
+  memcpy((b) + (i), (x), sizeof((b)[0]) * cast(size_t, (n)));           \
+  dyn__hdr(b)->cnt += (n);                                              \
+} while (0)
 
 #define dyn_cut(b, i, n) do {                                             \
-    assert((i) < dyn_cnt(b));                                             \
-    assert((i) + (n) <= dyn_cnt(b));                                      \
-    memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
-    dyn__hdr(b)->cnt -= (n);                                              \
-  } while (0)
+  assert((i) < dyn_cnt(b));                                             \
+  assert((i) + (n) <= dyn_cnt(b));                                      \
+  memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
+  dyn__hdr(b)->cnt -= (n);                                              \
+} while (0)
 // clang-format on
 
 static void *

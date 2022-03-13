@@ -930,10 +930,10 @@ ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
       gui.edt.drw(ctx, pan);
     }
     /* icon */
-    struct gui_icon ico = {0};
+    struct gui_panel ico = {0};
     ico.box.y = gui.bnd.shrink(&pan->box.y, pad[1]);
     ico.box.x = gui.bnd.min_ext(pan->box.x.min, ctx->cfg.item);
-    gui.ico.icon(ctx, &ico, pan, ICO_SEARCH);
+    gui.ico.img(ctx, &ico, pan, ICO_SEARCH);
 
     /* edit */
     edt->pan.focusable = 1;
@@ -982,6 +982,8 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
       file_view_tree_open(fs, &fs->tree, ctx->sys, fs->home);
       file_view_cd(fs, ctx->sys, fs->home);
     }
+    gui.tooltip(ctx, &home.pan, strv("Goto Home Directory"));
+
     struct gui_btn up = {.box = gui.cut.rhs(&lay, ctx->cfg.item, gap)};
     if (gui.btn.ico(ctx, &up, pan, ICO_ARROW_CIRCLE_UP)) {
       /* go up to parent directory  */
@@ -991,6 +993,8 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
         file_view_cd(fs, ctx->sys, strp(lst->full_path, file_name.str));
       }
     }
+    gui.tooltip(ctx, &up.pan, strv("Move to Parent Directory"));
+
     struct gui_edit_box edt = {.box = lay};
     gui.edt.txt(ctx, &edt, pan, &lst->nav_ed, &lst->nav_path);
   }
@@ -1111,7 +1115,6 @@ ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
   assert(ctx);
   assert(node);
   assert(parent);
-
   gui.tree.begin(ctx, node, parent, n->depth);
   {
     struct gui_cfg_stk stk[1] = {0};
@@ -1121,6 +1124,7 @@ ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
       struct str txt = path_file(n->fullpath);
       const char *ico = node->open ? ICO_FOLDER_OPEN : ICO_FOLDER;
       gui.ico.box(ctx, &lbl, &node->pan, ico, txt);
+      gui.tooltip(ctx, &node->pan, n->fullpath);
     }
     gui.cfg.pop(stk);
   }
@@ -1422,6 +1426,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
         dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
         ret = 1;
       }
+      gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));
     }
   }
   gui.pan.end(ctx, pan, parent);
