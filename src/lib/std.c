@@ -347,7 +347,17 @@ hflt4(flt4 f) {
     op((r)[uniqid(_i_)],e,(0),+,(a)[uniqid(_i_)],p,s)
 #define lerpN(r,a,b,t,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    lerp(r[uniqid(_i_)],a[uniqid(_i_)],b[uniqid(_i_)],t)
+    lerp((r)[uniqid(_i_)],(a)[uniqid(_i_)],(b)[uniqid(_i_)],t)
+#define map2N(r,fn,a,b,N)\
+  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
+    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)])
+#define map3N(r,fn,a,b,c,N)\
+  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
+    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)],(c)[uniqid(_i_)])
+
+#define minN(r,a,b,N) map2N(r,min,a,b,N)
+#define maxN(r,a,b,N) map2N(r,max,a,b,N)
+#define clampN(r,i,v,x,N) map3N(r,clamp,i,v,x,N)
 
 #define op2(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,2)
 #define op2s(r,e,a,p,s) opNs(r,e,a,p,b,i,s,2)
@@ -372,6 +382,9 @@ hflt4(flt4 f) {
 #define lerp2(r,a,b,t)  lerpN(r,a,b,t,2)
 #define cmp2(a,b,e)     cmpN(a,b,e,2)
 #define swzl2(d,f,a,b)  set2(r,(f)[a],(f)[b])
+#define min2(r,a,b)     minN(r,a,b,2)
+#define max2(r,a,b)     maxN(r,a,b,2)
+#define clamp2(r,i,v,x) clampN(r,i,v,x,2)
 
 #define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
 #define dup3(d,f)       set3(d,f,f,f)
@@ -393,6 +406,9 @@ hflt4(flt4 f) {
 #define lerp3(r,a,b,t)  lerpN(r,a,b,t,3)
 #define cmp3(a,b,e)     cmpN(a,b,e,3)
 #define swzl3(d,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
+#define min3(r,a,b)     minN(r,a,b,3)
+#define max3(r,a,b)     maxN(r,a,b,3)
+#define clamp3(r,i,v,x) clampN(r,i,v,x,3)
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
   (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
@@ -414,6 +430,9 @@ hflt4(flt4 f) {
 #define normaleq4(v)    norm4(v,v)
 #define lerp4(r,a,b,t)  lerpN(r,a,b,t,4)
 #define cmp4(a,b,e)     cmpN(a,b,e,4)
+#define min4(r,a,b)     minN(r,a,b,3)
+#define max4(r,a,b)     maxN(r,a,b,3)
+#define clamp4(r,i,v,x) clampN(r,i,v,x,4)
 #define swzl4(d,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
@@ -1725,6 +1744,9 @@ lck_rel(struct lck *lck) {
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
 #define arena_dyn(a, s, T, n) \
   cast(T *, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
+#define scp_mem(a,s,sys)\
+  for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
+    uniqid(_i_) = (mem_scp_end(s,a,sys), 1))
 
 static int
 arena_align_off(struct arena *a, int align) {
@@ -1854,17 +1876,18 @@ arena_boot(struct arena *a, struct sys *s, int obj_siz, int arena_off) {
   *(struct arena*)(void*)((unsigned char*)obj + arena_off) = boot;
   return obj;
 }
-static void
-scope_begin(struct scope *s, struct arena *a) {
+static int
+mem_scp_begin(struct mem_scp *s, struct arena *a) {
   assert(a);
   assert(s);
 
   s->blk = a->blk;
   s->used = a->blk ? a->blk->used : 0;
   a->tmp_cnt++;
+  return 1;
 }
-static void
-scope_end(struct scope *s, struct arena *a, struct sys *sys) {
+static int
+mem_scp_end(struct mem_scp *s, struct arena *a, struct sys *sys) {
   assert(s);
   assert(a);
   assert(sys);
@@ -1877,6 +1900,7 @@ scope_end(struct scope *s, struct arena *a, struct sys *sys) {
   }
   assert(a->tmp_cnt > 0);
   a->tmp_cnt--;
+  return 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2110,8 +2134,7 @@ static void set__swap(unsigned long long *a, unsigned long long *b) {unsigned lo
 #define set_put(t,s,k) ((!(t) || !set_fnd(t, k)) ? set__add(t, s, k) : set_cap(t))
 #define set_del(s,k) set__del(s, k, set_cap(s))
 #define set_free(s,sys) dyn_free(s, sys)
-#define set_clr(s) \
-  do {((s) ? memset(s, 0, sizeof(unsigned long long) * (size_t)dyn_cap(s)) : 0); dyn_clr(s); } while(0)
+#define set_clr(s) do {((s) ? memset(s,0,sizeof(unsigned long long) * (size_t)dyn_cap(s)) : 0); dyn_clr(s);} while(0)
 // clang-format on
 
 static inline unsigned long long

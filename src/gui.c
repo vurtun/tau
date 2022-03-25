@@ -784,7 +784,7 @@ static void
 gui_free(struct gui_ctx *ctx) {
   dyn_free(ctx->txt_state.buf ,ctx->sys);
 }
-static void
+static int
 gui_cfg_pushi(struct gui_cfg_stk *stk, void *ptr, int val) {
   assert(stk);
   assert(ptr);
@@ -792,14 +792,17 @@ gui_cfg_pushi(struct gui_cfg_stk *stk, void *ptr, int val) {
   stk->ptr = ptr;
   memcpy(&stk->val, ptr, sizeof(val));
   memcpy(ptr, &val, sizeof(val));
+  return 1;
 }
-static void
+static int
 gui_cfg_pushi_on(struct gui_cfg_stk *stk, void *ptr, int val, int cond) {
   if (cond) {
     gui_cfg_pushi(stk, ptr, val);
+    return 1;
   }
+  return 0;
 }
-static void
+static int
 gui_cfg_pushu(struct gui_cfg_stk *stk, void *ptr, unsigned val) {
   assert(stk);
   assert(ptr);
@@ -807,23 +810,29 @@ gui_cfg_pushu(struct gui_cfg_stk *stk, void *ptr, unsigned val) {
   stk->ptr = ptr;
   memcpy(&stk->val, ptr, sizeof(val));
   memcpy(ptr, &val, sizeof(val));
+  return 1;
 }
-static void
+static int
 gui_cfg_pushu_on(struct gui_cfg_stk *stk, void *ptr, unsigned val, int cond) {
   if (cond) {
     gui_cfg_pushu(stk, ptr, val);
+    return 1;
   }
+  return 0;
 }
-static void
+static int
 gui_cfg_pop(const struct gui_cfg_stk *stk) {
   assert(stk);
   memcpy(stk->ptr, &stk->val, sizeof(stk->val));
+  return 1;
 }
-static void
+static int
 gui_cfg_pop_on(const struct gui_cfg_stk *stk, int cond) {
   if (cond) {
     gui_cfg_pop(stk);
+    return 1;
   }
+  return 0;
 }
 static void
 gui_input_begin(struct gui_ctx *ctx, struct sys_mouse *mouse) {
@@ -852,7 +861,7 @@ gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
   }
 }
 static void
-gui_input_consume(struct gui_ctx *ctx) {
+gui_input_eat(struct gui_ctx *ctx) {
   for_cnt(i, GUI_MOUSE_BTN_CNT) {
     memset(&ctx->btn, 0, sizeof(ctx->btn));
   }
@@ -2937,12 +2946,12 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_PASTE)) {
-    struct scope scp;
+    struct mem_scp scp;
     struct sys *sys = ctx->sys;
-    scope_begin(&scp, sys->mem.tmp);
-    struct str p = sys->clipboard.get(sys->mem.tmp);
-    gui_txt_ed_paste(edt, ctx->sys, buf, p);
-    scope_end(&scp, sys->mem.tmp, sys);
+    scp_mem(sys->mem.tmp, &scp, sys) {
+      struct str p = sys->clipboard.get(sys->mem.tmp);
+      gui_txt_ed_paste(edt, ctx->sys, buf, p);
+    }
     mod = 1;
   }
   return mod;
@@ -5885,7 +5894,7 @@ static const struct gui_api gui_api = {
     .pop_on = gui_cfg_pop_on,
   },
   .in = {
-    .consume = gui_input_consume,
+    .eat = gui_input_eat,
   },
   .txt = {
     .width = gui_txt_width,

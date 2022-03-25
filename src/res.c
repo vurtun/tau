@@ -379,8 +379,8 @@ res__load_glyphset(struct res *r, struct res_fnt *fnt, struct arena *a, int idx)
 
 retry:;
   /* load glyphs */
-  struct scope scp;
-  scope_begin(&scp, a);
+  struct mem_scp scp;
+  mem_scp_begin(&scp, a);
 
   set->img = img_new(a, sys, w, h);
   float s = fnt_scale_for_mapping_em_to_pixels(&fnt->stbfont, 1) /
@@ -391,7 +391,7 @@ retry:;
   /* retry with a larger image buffer if the buffer wasn't large enough */
   if (ret < 0) {
     w *= 2, h *= 2;
-    scope_end(&scp, a, sys);
+    mem_scp_end(&scp, a, sys);
     goto retry;
   }
   /* adjust glyph yoffsets and xadvance */
@@ -425,8 +425,8 @@ res_fnt_new(struct res *r, struct arena *a, void *data, float pntsiz) {
   struct sys *sys = r->sys;
 
   /* init font */
-  struct scope scp;
-  scope_begin(&scp, a);
+  struct mem_scp scp;
+  mem_scp_begin(&scp, a);
 
   struct res_fnt *fnt = arena_alloc(a, sys, szof(struct res_fnt));
   fnt->size = pntsiz;
@@ -447,7 +447,7 @@ res_fnt_new(struct res *r, struct arena *a, void *data, float pntsiz) {
   return fnt;
 
 fail:
-  scope_end(&scp, a, sys);
+  mem_scp_end(&scp, a, sys);
   return 0;
 }
 static void
@@ -660,24 +660,19 @@ res_init(struct res *r, const struct res_args *args) {
       best_d = d;
     }
   }
-  struct scope scp;
-  scope_begin(&scp, sys->mem.tmp);
-  {
+  struct mem_scp scp;
+  scp_mem(sys->mem.tmp, &scp, sys) {
     int fnt_siz = 0;
     void *mem = res_default_fnt(&fnt_siz, sys, sys->mem.arena, sys->mem.tmp);
     r->fnt = res_fnt_new(r, sys->mem.arena, mem, r->fnt_pnt_size);
     assert(r->fnt);
   }
-  scope_end(&scp, sys->mem.tmp, sys);
-
   int ico_siz = 0;
-  scope_begin(&scp, sys->mem.tmp);
-  {
+  scp_mem(sys->mem.tmp, &scp, sys) {
     void *mem = res_icon_fnt(&ico_siz, sys, sys->mem.arena, sys->mem.tmp);
     r->ico = res_fnt_new(r, sys->mem.arena, mem, 16.0f);
     assert(r->ico);
   }
-  scope_end(&scp, sys->mem.tmp, sys);
   res_run_cache_init(&r->run_cache, sys, args);
 }
 

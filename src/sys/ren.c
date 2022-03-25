@@ -99,7 +99,7 @@ struct ren_tex {
   int w, h;
 };
 struct ren {
-  struct scope scp;
+  struct mem_scp scp;
   struct arena mem;
   struct ren_cmd_que que;
 

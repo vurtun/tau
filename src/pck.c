@@ -574,9 +574,8 @@ file_view_tree_build(struct file_tree_view *tree,
   if (n->parent && !set_fnd(tree->exp, n->parent->id)) {
     return upt;
   }
-  struct scope scp = {0};
-  scope_begin(&scp, tmp);
-  {
+  struct mem_scp scp = {0};
+  scp_mem(tmp, &scp, sys) {
     unsigned long long *set = arena_set(tmp, sys, 1024);
     struct lst_elm *elm = 0;
     for_lst(elm, &n->sub) {
@@ -609,7 +608,6 @@ file_view_tree_build(struct file_tree_view *tree,
     }
     set_free(set, sys);
   }
-  scope_end(&scp, tmp, sys);
 
   /* recurse child directory nodes */
   struct lst_elm *it = 0;
@@ -741,8 +739,8 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *sys,
   assert(sys);
 
   struct file_elm elm = {0};
-  struct scope scp = {0};
-  scope_begin(&scp, &lst->mem);
+  struct mem_scp scp = {0};
+  mem_scp_begin(&scp, &lst->mem);
 
   /* parse file/directory name */
   elm.fullpath = arena_str(&lst->mem, sys, path);
@@ -753,7 +751,7 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *sys,
   /* extract file stat, extension and type */
   struct sys_file_info info;
   if (!sys->file.info(&info, elm.fullpath, &lst->mem)) {
-    scope_end(&scp, &lst->mem, sys);
+    mem_scp_end(&scp, &lst->mem, sys);
     return;
   }
   elm.size = info.siz;
@@ -807,10 +805,9 @@ file_view_cd(struct file_view *fs, struct sys *sys, struct str path) {
   assert(fs);
   assert(sys);
 
-  struct scope scp = {0};
+  struct mem_scp scp = {0};
   struct arena *tmp = fs->tmp_arena;
-  scope_begin(&scp, tmp);
-  {
+  scp_mem(tmp, &scp, sys) {
     struct str sys_path = arena_str(tmp, sys, path);
     file_lst_view_clr(&fs->lst, sys);
     dyn_asn_str(fs->lst.full_path, sys, sys_path);
@@ -825,7 +822,6 @@ file_view_cd(struct file_view *fs, struct sys *sys, struct str path) {
     dyn_sort(fs->lst.elms, file_cmp_asc);
     fs->lst.sel_idx = -1;
   }
-  scope_end(&scp, tmp, sys);
   fs->lst.state = FILE_VIEW_LIST;
   fs->lst.con = FILE_CON_MENU_MAIN;
 }
@@ -1015,8 +1011,7 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui.tbl.lst.elm.begin(ctx, tbl, elm, elm_id, is_sel);
   {
     struct gui_cfg_stk stk[1] = {0};
-    gui.cfg.pushu_on(stk, &ctx->cfg.col[GUI_COL_ICO], dir_col, fi->isdir);
-    {
+    scp_gui_cfg_pushu_on(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, fi->isdir) {
       /* columns */
       struct tm *mod_time = localtime(&fi->mtime);
       gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, fi->name, fi->ico, 0);
@@ -1025,7 +1020,6 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
       gui.tbl.lst.elm.col.txt(ctx, tbl, lay, elm, str0(fi->perms), 0, 0);
       gui.tbl.lst.elm.col.tm(ctx, tbl, lay, elm, "%d/%m/%Y %H:%M:%S", mod_time);
     }
-    gui.cfg.pop_on(stk, fi->isdir);
   }
   gui.tbl.lst.elm.end(ctx, tbl, elm);
 }
@@ -1083,7 +1077,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
         }
         if (in.mouse.btn.right.clk) {
           lst->state = FILE_VIEW_MENU;
-          gui.in.consume(ctx);
+          gui.in.eat(ctx);
         }
       }
       gui.tbl.lst.end(ctx, &tbl);
@@ -1115,18 +1109,17 @@ ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
   assert(ctx);
   assert(node);
   assert(parent);
+
   gui.tree.begin(ctx, node, parent, n->depth);
   {
     struct gui_cfg_stk stk[1] = {0};
-    gui.cfg.pushu(stk, &ctx->cfg.col[GUI_COL_ICO], col_rgb_hex(0xeecd4a));
-    {
+    scp_gui_cfg_pushu(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], col_rgb_hex(0xeecd4a)) {
       struct gui_panel lbl = {.box = node->box};
       struct str txt = path_file(n->fullpath);
       const char *ico = node->open ? ICO_FOLDER_OPEN : ICO_FOLDER;
       gui.ico.box(ctx, &lbl, &node->pan, ico, txt);
       gui.tooltip(ctx, &node->pan, n->fullpath);
     }
-    gui.cfg.pop(stk);
   }
   gui.tree.end(ctx, node, parent);
 }
@@ -1194,9 +1187,23 @@ ui_file_view_tree_key(struct file_view *fs, struct file_tree_view *tree,
         tree->sel = nidx;
         break;
       }
-    } else set_del(tree->exp, n->id);
+    } else {
+      set_del(tree->exp, n->id);
+    }
     fs->tree_rev++;
   }
+}
+static int
+ui_file_view_tree_jmp_elm(struct file_tree_view *tree,
+                          unsigned long long jmp_id) {
+  fori_dyn(i, tree->lst) {
+    assert(i < dyn_cnt(tree->lst));
+    struct file_tree_node *n = tree->lst[i];
+    if (n->id == jmp_id) {
+      return i;
+    }
+  }
+  return dyn_cnt(tree->lst);
 }
 static void
 ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
@@ -1218,6 +1225,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, tree->off);
     for_gui_reg_lst(i,gui,&reg) {
+      /* tree nodes */
       struct gui_panel elm = {0};
       struct file_tree_node *n = tree->lst[i];
       if (ui_file_view_tree_elm(ctx, tree, n, &reg, &elm, tree->sel == i)) {
@@ -1225,14 +1233,11 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
       }
     }
     if (tree->jmp) {
-      /* jump to element */
-      fori_dyn(i, tree->lst) {
-        assert(i < dyn_cnt(tree->lst));
-        struct file_tree_node *n = tree->lst[i];
-        if (n->id != tree->jmp_to) continue;
-        gui.lst.reg.center(&reg, i);
-        tree->sel = i;
-        break;
+      /* jump to list element */
+      int idx = ui_file_view_tree_jmp_elm(tree, tree->jmp_to);
+      if (idx < dyn_cnt(tree->lst)) {
+        gui.lst.reg.center(&reg, idx);
+        tree->sel = idx;
       }
       tree->jmp = 0;
     }
@@ -1330,7 +1335,7 @@ ui_file_con_menu(struct file_list_view *lst, struct gui_ctx *ctx,
     } else {
       lst->con = FILE_CON_MENU_MAIN;
     }
-    gui.in.consume(ctx);
+    gui.in.eat(ctx);
   }
   dbg_blk_end(ctx->sys);
 }
@@ -1420,7 +1425,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       elm = fs->lst.elms + fs->lst.sel_idx;
       dis = elm->isdir || !elm->isvalid;
     }
-    gui_disable_on(&gui, ctx, dis) {
+    scp_gui_disable_on(&gui, ctx, dis) {
       if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), ICO_FILE_IMPORT, -1)) {
         const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
         dyn_asn_str(*filepath, ctx->sys, elm->fullpath);

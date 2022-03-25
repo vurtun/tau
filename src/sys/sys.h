@@ -93,8 +93,8 @@ struct sys_dir_iter {
 
   char isdir;
   void *handle;
-  struct scope scp;
-  struct scope scp_base;
+  struct mem_scp scp;
+  struct mem_scp scp_base;
 };
 
 /* cursor */

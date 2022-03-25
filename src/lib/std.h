@@ -92,7 +92,7 @@ struct mem_blk {
   int used;
   struct mem_blk *prv;
 };
-struct scope {
+struct mem_scp {
   struct mem_blk *blk;
   int used;
 };

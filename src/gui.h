@@ -943,7 +943,7 @@ struct gui_ctx {
 #define gui_unbox(b) (b)->x.min, (b)->y.min, (b)->x.max, (b)->y.max
 #define gui_row(gui, lay, row, def, gap, con, sol) \
   for (int lay[cntof((int[])def)],            \
-    uniqid__i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
+    uniqid(_i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 #define gui_hlay(gui, ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
   for (int items[cntof(def)],            \
@@ -953,15 +953,29 @@ struct gui_ctx {
   for (int items[cntof(def)],            \
     uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_disable_on(gui,ctx,cond)\
-  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->disable(ctx,uniqid(_c_)), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->enable(ctx,uniqid(_c_)), 1))
+
 #define for_gui_tbl_lst(i,gui,t)\
   for (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
 #define for_gui_lst(i,gui,l)\
   for (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
 #define for_gui_reg_lst(i,gui,r)\
   for (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
+
+#define scp_gui_disable_on(gui,ctx,cond)\
+  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->disable(ctx,uniqid(_c_)), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->enable(ctx,uniqid(_c_)), 1))
+#define scp_gui_cfg_pushi(gui,stk,ptr,val)\
+  for (int uniqid(_i_) = ((gui)->cfg.pushi(stk,ptr,val), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
+#define scp_gui_cfg_pushu(gui,stk,ptr,val)\
+  for (int uniqid(_i_) = ((gui)->cfg.pushu(stk,ptr,val), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
+#define scp_gui_cfg_pushi_on(gui,stk,ptr,val,cond)\
+  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushi_on(stk,ptr,val,uniqid(_c_)), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
+#define scp_gui_cfg_pushu_on(gui,stk,ptr,val,cond)\
+  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushu_on(stk,ptr,val,uniqid(_c_)), 0);\
+      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
 
 struct gui_bnd_api {
   struct gui_bnd (*min_max)(int a, int b);
@@ -1034,15 +1048,15 @@ struct gui_dnd_api {
   struct gui_dnd_dst_api dst;
 };
 struct gui_cfg_api {
-  void (*pushi)(struct gui_cfg_stk *stk, void *ptr, int val);
-  void (*pushi_on)(struct gui_cfg_stk *stk, void *ptr, int val, int cond);
-  void (*pushu)(struct gui_cfg_stk *stk, void *ptr, unsigned val);
-  void (*pushu_on)(struct gui_cfg_stk *stk, void *ptr, unsigned val, int cond);
-  void (*pop)(const struct gui_cfg_stk *stk);
-  void (*pop_on)(const struct gui_cfg_stk *stk, int cond);
+  int (*pushi)(struct gui_cfg_stk *stk, void *ptr, int val);
+  int (*pushi_on)(struct gui_cfg_stk *stk, void *ptr, int val, int cond);
+  int (*pushu)(struct gui_cfg_stk *stk, void *ptr, unsigned val);
+  int (*pushu_on)(struct gui_cfg_stk *stk, void *ptr, unsigned val, int cond);
+  int (*pop)(const struct gui_cfg_stk *stk);
+  int (*pop_on)(const struct gui_cfg_stk *stk, int cond);
 };
 struct gui_input_api {
-  void (*consume)(struct gui_ctx *ctx);
+  void (*eat)(struct gui_ctx *ctx);
 };
 struct gui_txt_api {
   int (*width)(struct gui_ctx *ctx, struct str txt);
