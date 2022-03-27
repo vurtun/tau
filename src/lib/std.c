@@ -954,7 +954,6 @@ qst_slerp(float *restrict qres, const float *restrict qfull_swing,
   float swing[4], twist[4];
   qst__slerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
 }
-
 /* ---------------------------------------------------------------------------
  *                                  Bitset
  * ---------------------------------------------------------------------------

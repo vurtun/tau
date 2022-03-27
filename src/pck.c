@@ -1022,6 +1022,7 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
     }
   }
   gui.tbl.lst.elm.end(ctx, tbl, elm);
+  gui.tooltip(ctx, elm, fi->name);
 }
 static void
 ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
@@ -1236,7 +1237,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
       /* jump to list element */
       int idx = ui_file_view_tree_jmp_elm(tree, tree->jmp_to);
       if (idx < dyn_cnt(tree->lst)) {
-        gui.lst.reg.center(&reg, idx);
+        gui.lst.reg.ctr(&reg, idx);
         tree->sel = idx;
       }
       tree->jmp = 0;

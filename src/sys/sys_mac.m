@@ -198,13 +198,14 @@ sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
   assert(info);
   assert(tmp);
 
-  struct scope scp;
-  scope_begin(&scp, tmp);
-
+  int res = 0;
   struct stat stats;
-  char *fullpath = arena_cstr(tmp, &_sys, path);
-  int res = stat(fullpath, &stats);
-  scope_end(&scp, tmp, &_sys);
+
+  struct mem_scp scp;
+  scp_mem(tmp, &scp, &_sys) {
+    char *fullpath = arena_cstr(tmp, &_sys, path);
+    res = stat(fullpath, &stats);
+  }
   if (res < 0) {
     return 0;
   }
@@ -234,7 +235,7 @@ sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
  */
 static void
 sys__dir_free(struct sys_dir_iter *it, struct arena *a) {
-  scope_end(&it->scp_base, a, &_sys);
+  mem_scp_end(&it->scp_base, a, &_sys);
   if (!it->valid) return;
   it->valid = 0;
   it->err = 0;
@@ -248,13 +249,13 @@ sys__dir_excl(struct sys_dir_iter *it) {
 }
 static int
 sys_dir_exists(struct str path, struct arena *tmp) {
-  struct scope scp;
-  scope_begin(&scp, tmp);
+  struct mem_scp scp;
+  mem_scp_begin(&scp, tmp);
 
   struct stat stats;
   char *fullpath = arena_cstr(tmp, &_sys, path);
   int res = stat(fullpath, &stats);
-  scope_end(&scp, tmp, &_sys);
+  mem_scp_end(&scp, tmp, &_sys);
   if (res < 0 || !S_ISDIR(stats.st_mode)) {
     return 0;
   }
@@ -265,12 +266,12 @@ sys_dir_nxt(struct sys_dir_iter *it, struct arena *a) {
   if (!it->valid) {
     return;
   }
-  scope_end(&it->scp, a, &_sys);
-  scope_begin(&it->scp, a);
+  mem_scp_end(&it->scp, a, &_sys);
+  mem_scp_begin(&it->scp, a);
   do {
     struct dirent *ent = readdir(it->handle);
     if (!ent) {
-      scope_end(&it->scp, a, &_sys);
+      mem_scp_end(&it->scp, a, &_sys);
       sys__dir_free(it, a);
       return;
     }
@@ -282,7 +283,7 @@ sys_dir_nxt(struct sys_dir_iter *it, struct arena *a) {
 static void
 sys_dir_lst(struct sys_dir_iter *it, struct arena *a, struct str path) {
   memset(it, 0, sizeof(*it));
-  scope_begin(&it->scp_base, a);
+  mem_scp_begin(&it->scp_base, a);
   it->base = arena_str(a, &_sys, path);
 
   DIR *dir = opendir(it->base.str);
@@ -293,7 +294,7 @@ sys_dir_lst(struct sys_dir_iter *it, struct arena *a, struct str path) {
   it->handle = dir;
   it->valid = 1;
 
-  scope_begin(&it->scp, a);
+  mem_scp_begin(&it->scp, a);
   sys_dir_nxt(it, a);
 }
 
@@ -442,9 +443,8 @@ sys_mac_mod_open(struct sys_mac_module *mod, struct arena *mem) {
     }
     return;
   }
-  struct scope scp = {0};
-  scope_begin(&scp, mem);
-  {
+  struct mem_scp scp = {0};
+  scp_mem(mem, &scp, &_sys) {
     mod->fileId = fileID;
     mod->valid = 1;
     mod->lib = sys_mac_lib_open(mod->path.str);
@@ -462,7 +462,6 @@ sys_mac_mod_open(struct sys_mac_module *mod, struct arena *mem) {
       sys_mac_mod_close(mod);
     }
   }
-  scope_end(&scp, mem, &_sys);
 }
 static int
 sys_mac_mod_chk(struct sys_mac_module *mod) {
@@ -486,9 +485,8 @@ sys_mac_mod_reload(struct sys_mac_module *mod, struct arena *a) {
  */
 static void
 sys_mac_clipboard_set(struct str s, struct arena *a) {
-  struct scope scp = {0};
-  scope_begin(&scp, a);
-  {
+  struct mem_scp scp = {0};
+  scp_mem(a, &scp, &_sys) {
     struct str tmp = arena_str(a, &_sys, s);
     @autoreleasepool {
       NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
@@ -496,7 +494,6 @@ sys_mac_clipboard_set(struct str s, struct arena *a) {
       [pasteboard setString:@(tmp.str) forType:NSPasteboardTypeString];
     }
   }
-  scope_end(&scp, a, &_sys);
 }
 static struct str
 sys_mac_clipboard_get(struct arena *a) {
@@ -916,23 +913,22 @@ sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
   BOOL ret = NO;
   int file_cnt = cast(int, [files count]);
 
-  struct scope scp;
-  scope_begin(&scp, _sys.mem.tmp);
+  struct mem_scp scp;
+  scp_mem(_sys.mem.tmp, &scp, &_sys) {
+    _sys.dnd.state = SYS_DND_DELIVERY;
+    _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
+    for (int i = 0; i < file_cnt; i++) {
+      NSUInteger idx = cast(NSUInteger, i);
+      NSURL *fileUrl = [NSURL fileURLWithPath:[[files objectAtIndex:idx] stringForType:NSPasteboardTypeFileURL]];
+      struct str path = str0(fileUrl.standardizedURL.path.UTF8String);
+      _sys.dnd.files[i] = arena_str(_sys.mem.tmp, &_sys, path);
+    }
+    _sys.dnd.file_cnt = file_cnt;
+    _sys.dnd_mod = 1;
+    _sys.dnd.state = state;
 
-  _sys.dnd.state = SYS_DND_DELIVERY;
-  _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
-  for (int i = 0; i < file_cnt; i++) {
-    NSUInteger idx = cast(NSUInteger, i);
-    NSURL *fileUrl = [NSURL fileURLWithPath:[[files objectAtIndex:idx] stringForType:NSPasteboardTypeFileURL]];
-    struct str path = str0(fileUrl.standardizedURL.path.UTF8String);
-    _sys.dnd.files[i] = arena_str(_sys.mem.tmp, &_sys, path);
+    sys__mac_on_frame();
   }
-  _sys.dnd.file_cnt = file_cnt;
-  _sys.dnd_mod = 1;
-  _sys.dnd.state = state;
-
-  sys__mac_on_frame();
-  scope_end(&scp, _sys.mem.tmp, &_sys);
   ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
 
   _sys.dnd.state = SYS_DND_NONE;
@@ -945,21 +941,21 @@ static BOOL
 sys__mac_dnd_str(NSArray *strs, enum sys_dnd_state state) {
   BOOL ret = NO;
 
-  struct scope scp;
-  scope_begin(&scp, _sys.mem.tmp);
-  _sys.dnd.state = SYS_DND_DELIVERY;
+  struct mem_scp scp;
+  scp_mem(_sys.mem.tmp, &scp, &_sys) {
+    _sys.dnd.state = SYS_DND_DELIVERY;
 
-  NSString *str = [strs objectAtIndex:0];
-  NSData *utf8Data = [str dataUsingEncoding:NSUTF8StringEncoding];
-  int len = cast(int, [utf8Data length]);
-  struct str raw_str = str(cast(const char*, [utf8Data bytes]), len);
+    NSString *str = [strs objectAtIndex:0];
+    NSData *utf8Data = [str dataUsingEncoding:NSUTF8StringEncoding];
+    int len = cast(int, [utf8Data length]);
+    struct str raw_str = str(cast(const char*, [utf8Data bytes]), len);
 
-  _sys.dnd.str = arena_str(_sys.mem.tmp, &_sys, raw_str);
-  _sys.dnd.state = state;
-  _sys.dnd_mod = 1;
+    _sys.dnd.str = arena_str(_sys.mem.tmp, &_sys, raw_str);
+    _sys.dnd.state = state;
+    _sys.dnd_mod = 1;
 
-  sys__mac_on_frame();
-  scope_end(&scp, _sys.mem.tmp, &_sys);
+    sys__mac_on_frame();
+  }
   ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
 
   _sys.dnd.state = SYS_DND_NONE;

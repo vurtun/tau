@@ -1135,7 +1135,7 @@ struct gui_lst_lay_api {
   void (*init)(struct gui_lst_lay *lst);
   void (*gen)(struct gui_box *box, struct gui_lst_lay *lst);
   void (*apply_view)(struct gui_lst_lay *lst, const struct gui_lst_view *v);
-  double (*center)(struct gui_lst_lay *lay, int idx);
+  double (*ctr)(struct gui_lst_lay *lay, int idx);
   double (*fit_start)(struct gui_lst_lay *lay, int idx);
   double (*fit_end)(struct gui_lst_lay *lay, int idx);
   double (*clamps)(struct gui_lst_lay *lay, int idx);
@@ -1161,7 +1161,7 @@ struct gui_lst_reg_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_lst_reg *la, struct gui_panel *parent, const struct gui_lst_cfg *cfg, const double *off);
   int (*nxt)(const struct gui_lst_reg *la, int idx);
   struct gui_lst_reg_elm_api elm;
-  void (*center)(struct gui_lst_reg *la, int idx);
+  void (*ctr)(struct gui_lst_reg *la, int idx);
   void (*fit_start)(struct gui_lst_reg *la, int idx);
   void (*fit_end)(struct gui_lst_reg *la, int idx);
   void (*clamp)(struct gui_lst_reg *la, int idx);
