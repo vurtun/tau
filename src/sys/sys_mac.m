@@ -1438,7 +1438,6 @@ main(int argc, char* argv[]) {
     _mac.app.dlRegister(&_sys);
   }
 #endif
-
   /* start application */
   [NSApplication sharedApplication];
   _mac.app_dlg = [[sys__mac_app_delegate alloc] init];

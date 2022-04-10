@@ -348,6 +348,9 @@ hflt4(flt4 f) {
 #define lerpN(r,a,b,t,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     lerp((r)[uniqid(_i_)],(a)[uniqid(_i_)],(b)[uniqid(_i_)],t)
+#define mapN(r,fn,a,N)\
+  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
+    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)])
 #define map2N(r,fn,a,b,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)])
@@ -381,14 +384,15 @@ hflt4(flt4 f) {
 #define normeq2(v)      norm2(v,v)
 #define lerp2(r,a,b,t)  lerpN(r,a,b,t,2)
 #define cmp2(a,b,e)     cmpN(a,b,e,2)
-#define swzl2(d,f,a,b)  set2(r,(f)[a],(f)[b])
+#define swzl2(r,f,a,b)  set2(r,(f)[a],(f)[b])
 #define min2(r,a,b)     minN(r,a,b,2)
 #define max2(r,a,b)     maxN(r,a,b,2)
 #define clamp2(r,i,v,x) clampN(r,i,v,x,2)
+#define map2(r,fn,a)    mapN(r,fn,a,2);
 
 #define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
 #define dup3(d,f)       set3(d,f,f,f)
-#define zero3(v)        set3(0,0,0)
+#define zero3(v)        set3(v,0,0,0)
 #define cpy3(d,s)       (d)[0]=(s)[0],(d)[1]=(s)[1],(d)[2]=(s)[2]
 #define add3(d,a,b)     op3(d,=,a,+,b,+,0)
 #define sub3(d,a,b)     op3(d,=,a,-,b,+,0)
@@ -405,9 +409,10 @@ hflt4(flt4 f) {
 #define rejn3(p,a,b)    do {projn3(p,a,b); sub3(p,a,p);}while(0)
 #define lerp3(r,a,b,t)  lerpN(r,a,b,t,3)
 #define cmp3(a,b,e)     cmpN(a,b,e,3)
-#define swzl3(d,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
+#define swzl3(r,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
 #define min3(r,a,b)     minN(r,a,b,3)
 #define max3(r,a,b)     maxN(r,a,b,3)
+#define map3(r,fn,a)    mapN(r,fn,a,3);
 #define clamp3(r,i,v,x) clampN(r,i,v,x,3)
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
@@ -432,8 +437,9 @@ hflt4(flt4 f) {
 #define cmp4(a,b,e)     cmpN(a,b,e,4)
 #define min4(r,a,b)     minN(r,a,b,3)
 #define max4(r,a,b)     maxN(r,a,b,3)
+#define map4(r,fn,a)    mapN(r,fn,a,4);
 #define clamp4(r,i,v,x) clampN(r,i,v,x,4)
-#define swzl4(d,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
+#define swzl4(r,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
 #define quatf(q,angle,x,y,z)\
@@ -514,6 +520,67 @@ absf(double x) {
   union bit_castd u = {x};
   u.i &= -1ULL / 2;
   return u.f;
+}
+static float
+fmoda(float x, float y) {
+  union {float f; unsigned i;} ux = {x}, uy = {y};
+  int ex = (ux.i >> 23) & 0xff;
+  int ey = (uy.i >> 23) & 0xff;
+  unsigned sx = ux.i & 0x80000000;
+  unsigned i, uxi = ux.i;
+
+  if (uy.i<<1 == 0 || ((uy.i & 0x7fffffff) > 0x7f800000) || ex == 0xff){
+    return (x*y)/(x*y);
+  }
+  if (uxi<<1 <= uy.i<<1) {
+    if (uxi<<1 == uy.i<<1) {
+      return 0*x;
+    }
+    return x;
+  }
+  /* normalize x and y */
+  if (!ex) {
+    for (i = uxi<<9; i>>31 == 0; ex--, i <<= 1);
+    uxi <<= -ex + 1;
+  } else {
+    uxi &= -1U >> 9;
+    uxi |= 1U << 23;
+  }
+  if (!ey) {
+    for (i = uy.i<<9; i>>31 == 0; ey--, i <<= 1);
+    uy.i <<= -ey + 1;
+  } else {
+    uy.i &= -1U >> 9;
+    uy.i |= 1U << 23;
+  }
+  /* x mod y */
+  for (; ex > ey; ex--) {
+    i = uxi - uy.i;
+    if (i >> 31 == 0) {
+      if (i == 0)
+        return 0*x;
+      uxi = i;
+    }
+    uxi <<= 1;
+  }
+  i = uxi - uy.i;
+  if (i >> 31 == 0) {
+    if (i == 0)
+      return 0*x;
+    uxi = i;
+  }
+  for (; uxi>>23 == 0; uxi <<= 1, ex--);
+
+  /* scale result up */
+  if (ex > 0) {
+    uxi -= 1U << 23;
+    uxi |= (unsigned)ex << 23;
+  } else {
+    uxi >>= -ex + 1;
+  }
+  uxi |= sx;
+  ux.i = uxi;
+  return ux.f;
 }
 static inline int
 cmpN(const float *a, const float *b, float e, int N) {
@@ -1377,16 +1444,20 @@ str__match_hash(struct str s) {
   for (int i = 0; i < (c)->len; i += (s))
 #define for_str_rng(it,a, b,e,s)\
   for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;\
-   (it) != (a)->str + rng(b,e,s,(a)->len).hi;\
-   (it) += rng(b,e,s,(a)->len).step)
+      (it) != (a)->str + rng(b,e,s,(a)->len).hi;\
+      (it) += rng(b,e,s,(a)->len).step)
 #define for_str_tok(it, rest, src, delim)                       \
   for (struct str rest = src, it = str_split_cut(&rest, delim); \
        it.len; it = str_split_cut(&rest, delim))
 // clang-format on
 
 static unsigned long long
+str__hash(struct str s, unsigned long long id) {
+  return fnv1a64(s.str, s.len, id);
+}
+static unsigned long long
 str_hash(struct str s) {
-  return fnv1a64(s.str, s.len, FNV1A64_HASH_INITIAL);
+  return str__hash(s, FNV1A64_HASH_INITIAL);
 }
 static int
 str_cmp(struct str a, struct str b) {
@@ -1737,12 +1808,13 @@ lck_rel(struct lck *lck) {
 #define ARENA_ALIGNMENT 8
 #define ARENA_BLOCK_SIZE KB(64)
 
-#define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
-#define arena_tbl(a, s, n) arena_dyn(a, s, unsigned long long, (n << 1))
-#define arena_arr(a, s, T, n) cast(T *, arena_alloc(a, s, szof(T) * n))
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
+#define arena_arr(a, s, T, n) cast(T *, arena_alloc(a, s, szof(T) * n))
 #define arena_dyn(a, s, T, n) \
   cast(T *, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
+#define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
+#define arena_tbl(t, a, s, T, n) (t)->vals = (T*)tbl__static(&(t)->hdr, s, sizeof(T), n);
+
 #define scp_mem(a,s,sys)\
   for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
     uniqid(_i_) = (mem_scp_end(s,a,sys), 1))
@@ -2113,6 +2185,7 @@ path_ext(struct str path) {
  *                                  Set
  * ---------------------------------------------------------------------------
  */
+
 #define SET_MIN_SIZE 64
 #define SET_GROW_FACTOR 2.8f
 #define SET_FULL_PERCENT 0.85f
@@ -2125,7 +2198,7 @@ path_ext(struct str path) {
 #define set__fit(t,s,n) (set__fits(t, n) ? 0 : ((t) = set__grow(t, s, n)))
 #define set__add(t,s,k) (set__fit(t, s, set_cnt(t) + 1), set__put(t, k))
 #define set__key(k) ((k) != 0u && !set__is_del(k))
-static void set__swap(unsigned long long *a, unsigned long long *b) {unsigned long long t = *a; *a = *b, *b = t;}
+static void set__swapi(unsigned long long *a, unsigned long long *b) {unsigned long long t = *a; *a = *b, *b = t;}
 
 #define set_cnt(s) dyn_cnt(s)
 #define set_cap(s) dyn_cap(s)
@@ -2141,35 +2214,52 @@ set__hash(unsigned long long k) {
   unsigned long long h = k & 0x7fffffffffffffffllu;
   return h | (h == 0);
 }
+static int
+set__new_cap(int old, int req) {
+  int nn = max(SET_MIN_SIZE, (int)((float)req * SET_MIN_GROW_PERCENT));
+  return max(nn, cast(int, SET_GROW_FACTOR * cast(float, old)));
+}
 static unsigned long long*
 set_new(int old, int req, struct sys *sys) {
-  int nn = max(SET_MIN_SIZE, (int)((float)req * SET_MIN_GROW_PERCENT));
-  int cap = max(nn, cast(int, SET_GROW_FACTOR * cast(float, old)));
+  int cap = set__new_cap(old, req);
   return dyn__grow(0, sys, cap, sizeof(unsigned long long));
 }
+static void
+set__swap(void *a, void *b, void *tmp, int siz) {
+  memcpy(tmp, a, siz);
+  memcpy(a, b, siz);
+  memcpy(b, tmp, siz);
+}
 static inline long long
-set__store(unsigned long long *keys, unsigned long long *vals,
-           unsigned long long i, unsigned long long h, unsigned long long v) {
+set__store(unsigned long long *keys, void *vals,
+           unsigned long long i, unsigned long long h,
+           void* val, int val_siz) {
   keys[i] = h;
-  if (vals) vals[i] = v;
+  if (vals) {
+    unsigned long long off = (unsigned long long)val_siz * i;
+    memcpy((unsigned char*)vals + off, val, val_siz);
+  }
   return cast(long long, i);
 }
 static long long
-set__slot(unsigned long long *keys, unsigned long long *vals, int cap,
-          unsigned long long h, unsigned long long v) {
+set__slot(unsigned long long *keys, void *vals, int cap,
+          unsigned long long h, void *v, int val_siz) {
   unsigned long long n = cast(unsigned long long, cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
-    assert(cast(int, i) < set_cap(keys));
     unsigned long long k = keys[i];
-    if (!k) return set__store(keys, vals, i, h, v);
+    if (!k) return set__store(keys, vals, i, h, v, val_siz);
     unsigned long long d = set__dist(k, n, i);
     if (d++ > dist++) continue;
     if (set__is_del(k)) {
-      return set__store(keys, vals, i, h, v);
+      return set__store(keys, vals, i, h, v, val_siz);
     }
-    set__swap(&h, &keys[i]);
-    if (vals) set__swap(&v, &vals[i]);
+    set__swapi(&h, &keys[i]);
+    if (vals) {
+      void *tmp_val = (unsigned char*)vals + cap * val_siz;
+      void *cur_val = (unsigned char*)vals + i * (unsigned long long)val_siz;
+      set__swap(cur_val, v, tmp_val, val_siz);
+    }
     dist = d;
   } while ((i = ((i + 1) % n)) != b);
   return cast(long long, n);
@@ -2178,7 +2268,7 @@ static intptr_t
 set__put(unsigned long long *set, unsigned long long key) {
   assert(set);
   unsigned long long h = set__hash(key);
-  long long i = set__slot(set, 0, set_cap(set), h, 0);
+  long long i = set__slot(set, 0, set_cap(set), h, 0, 0);
   if (i < set_cap(set)) {
     assert(i < set_cap(set));
     dyn__hdr(set)->cnt++;
@@ -2204,7 +2294,6 @@ set__fnd(unsigned long long *set, unsigned long long key, int cap) {
   unsigned long long n = cast(unsigned long long, cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
-    assert(cast(int, i) < set_cap(set));
     if (!set[i] || dist > set__dist(set[i],n,i)) {
       return cap;
     } else if(set[i] == h) {
@@ -2217,7 +2306,7 @@ set__fnd(unsigned long long *set, unsigned long long key, int cap) {
 static long long
 set__del(unsigned long long* set, unsigned long long key, int cap) {
   assert(set);
-  if (!set_cnt(set)) {
+  if (!cap) {
     return cap;
   }
   long long i = set__fnd(set, key, cap);
@@ -2315,122 +2404,147 @@ ut_set(struct sys *sys) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define tbl__fits(t,n) ((n) < (int)((float)tbl_cap(t) * SET_FULL_PERCENT))
-#define tbl__fit(t,s,n) (tbl__fits(t, n) ? 0 : ((t) = set__grow(t, s, n)))
-#define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put(t, k, v))
+#define tbl__fits(t,n) ((n) < (int)(((float)tbl_cap(t)) * SET_FULL_PERCENT))
+#define tbl__fit(t,s,n) (tbl__fits(t, n) ? 0 : ((t)->vals = tbl__grow(&(t)->hdr,s,(t)->vals,szof((t)->vals[0]),n)))
+#define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put(&(t)->hdr,(t)->vals,k,v,szof((t)->vals[0])))
 #define tbl__key(k) set__key(k)
+#define tbl__val(vals,i,s) (cast(unsigned char*, vals) + s * i)
 
-#define tbl_free(t,s) set_free(t,s)
-#define tbl_clr(t) set_clr(t)
-#define tbl_cnt(t) set_cnt(t)
-#define tbl_cap(t) (set_cap(t) >> 1)
-#define tbl_val(t,i) cast(long long,((t)[tbl_cap(t) + i]))
-#define tbl_del(t,k) tbl__del(t, k, 0)
-#define tbl_has(t,k,e) (tbl_fnd(t, k, e) != (e))
+#define tbl_free(t,s) do {if((t)->hdr.cap > 0){(s)->mem.free((t)->hdr.blk);}memset(t,0,sizeof(*t));} while(0)
+#define tbl_clr(t) do{(t)->hdr.cnt = 0; memset((t)->hdr.keys, 0, abs((t)->hdr.cap) * szof(unsigned long long));} while(0)
+#define tbl_cnt(t) ((t)->hdr.cnt)
+#define tbl_cap(t) ((t)->hdr.cap < 0 ? -(t)->hdr.cap:(t)->hdr.cap)
+#define tbl_del(t,k) tbl__del(&(t)->hdr, k)
+#define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_any(t) (tbl_cnt(t) > 0)
 #define tbl_empty(t) (tbl_cnt(t) == 0)
-#define tbl_put(t,s,k,v)                                                  \
-  ((!(t) || set__fnd(t,k,tbl_cap(t)) >= tbl_cap(t)) ? tbl__add(t,s,k,v) : tbl_cap(t))
+#define tbl_put(t,s,k,v) ((!(t)->hdr.cap || !tbl__fnd(&(t)->hdr,(t)->vals,k,szof((t)->vals[0]))) ? tbl__add(t,s,k,v) : 0)
+#define tbl_fnd(t,k) (!(t)->hdr.cnt) ? 0: tbl__fnd(&(t)->hdr, (t)->vals, k, szof((t)->vals[0]))
 #define for_tbl(i,n,v,t)\
-  for (int n = tbl__nxt_idx(t,v,0), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,v,n+1), i = i + 1)
+  for (int n = tbl__nxt_idx(&(t)->hdr,(t)->vals,(void**)v,szof((t)->vals[0]),0), i = 0;\
+       n < tbl_cap(t);\
+       n = tbl__nxt_idx(&(t)->hdr,(t)->vals,(void**)v,szof((t)->vals[0]),n+1), i = i + 1)
 // clang-format on
 
 static int
-tbl__nxt_idx(unsigned long long *tbl, long long *val, int i) {
-  int cnt = tbl_cap(tbl);
+tbl__nxt_idx(struct tbl_hdr *tbl, void *vals, void **val, int val_siz, int i) {
+  int cnt = abs(tbl->cap);
   for (; i < cnt; ++i) {
-    if (tbl__key(tbl[i])) {
-      *val = tbl_val(tbl,i);
+    if (tbl__key(tbl->keys[i])) {
+      *val = tbl__val(vals,i,val_siz);
       return i;
     }
   }
   return cnt;
 }
-static long long
-tbl__put(unsigned long long *tbl, unsigned long long key, long long ival) {
-  assert(tbl);
+static void*
+tbl__put(struct tbl_hdr *tbl, void *vals, unsigned long long key,
+         void *val, int val_siz) {
   unsigned long long h = set__hash(key);
-  unsigned long long v = cast(unsigned long long, ival);
-  long long i = set__slot(tbl, tbl + tbl_cap(tbl), tbl_cap(tbl), h, v);
-  if (i < tbl_cap(tbl)) {
-    assert(i < tbl_cap(tbl));
-    dyn__hdr(tbl)->cnt++;
+  long long i = set__slot(tbl->keys, vals, abs(tbl->cap), h, val, val_siz);
+  if (i < abs(tbl->cap)) {
+    tbl->cnt++;
+    return tbl__val(vals,i,val_siz);
   }
-  return i;
+  return 0;
 }
-static unsigned long long *
-tbl__grow(unsigned long long *old, struct sys *s, int n) {
-  unsigned long long *tbl = set_new(set_cap(old), n << 1, s);
-  for (int i = 0; i < tbl_cap(old); ++i) {
-    if (tbl__key(old[i])) {
-      assert(i < tbl_cap(old));
-      tbl__put(tbl, old[i], tbl_val(old, i));
+static void*
+tbl__fnd(struct tbl_hdr *tbl, void *vals,
+         unsigned long long key, int val_siz) {
+  long long i = set__fnd(tbl->keys, key, abs(tbl->cap));
+  if(i >= abs(tbl->cap)) {
+    return 0;
+  }
+  return cast(unsigned char*, vals) + i * val_siz;
+}
+static void
+tbl__del(struct tbl_hdr *tbl, unsigned long long key) {
+  assert(tbl);
+  if (!tbl->cap) return;
+  long long i = set__fnd(tbl->keys, key, abs(tbl->cap));
+  if(i < abs(tbl->cap)) {
+    tbl->keys[i] |= 0x8000000000000000llu;
+    tbl->cnt--;
+  }
+}
+static void*
+tbl__grow(struct tbl_hdr *tbl, struct sys *sys,
+          void *vals, int val_siz, int n) {
+  int cap = set__new_cap(abs(tbl->cap), n);
+  int siz = szof(unsigned long long) * cap + val_siz * (cap + 1) + 16;
+  struct mem_blk *blk = sys->mem.alloc(0, siz, SYS_MEM_GROWABLE, 0);
+
+  int val_off = szof(unsigned long long) * cap + 16;
+  void *new_ualgn = cast(unsigned char*, blk->base) + val_off;
+  void *new_vals = align_down_ptr(new_ualgn, 16u);
+
+  struct tbl_hdr new_tbl = {.blk = blk, .cap = cap, .cnt = tbl->cnt};
+  new_tbl.keys = cast(unsigned long long*, cast(void*, blk->base));
+  for (int i = 0; i < abs(tbl->cap); ++i) {
+    if (set__key(tbl->keys[i])) {
+      void *val = tbl__val(vals,i,val_siz);
+      tbl__put(&new_tbl, new_vals, tbl->keys[i], val, val_siz);
     }
   }
-  dyn_free(old, s);
-  return tbl;
-}
-static long long
-tbl__del(unsigned long long *tbl, unsigned long long key, intptr_t not_found) {
-  assert(tbl);
-  long long i = set__del(tbl, key, tbl_cap(tbl));
-  if (i >= tbl_cap(tbl)) {
-    return not_found;
+  if (tbl->cap > 0) {
+    sys->mem.free(tbl->blk);
   }
-  return tbl_val(tbl, i);
+  *tbl = new_tbl;
+  return new_vals;
 }
-static long long
-tbl_fnd(unsigned long long *tbl, unsigned long long key, long long not_found) {
-  assert(tbl);
-  if (!tbl_cnt(tbl)) {
-    return not_found;
-  }
-  long long i = set__fnd(tbl, key, tbl_cap(tbl));
-  return (i >= tbl_cap(tbl)) ? not_found : (long long)tbl_val(tbl, i);
+static void*
+tbl__static(struct tbl_hdr *hdr, struct sys *sys, int val_siz, int n) {
+  memset(hdr, 0, sizeof(*hdr));
+  hdr->cap = -n;
+  int siz = szof(unsigned long long) * n + val_siz * (n + 1) + 16;
+
+  hdr->blk = sys->mem.alloc(0, siz, 0, 0);
+  void *mem = hdr->blk->base;
+  hdr->keys = cast(unsigned long long*, mem);
+
+  int val_off = szof(unsigned long long) * n + 16;
+  void *new_ualgn = cast(unsigned char*, mem) + val_off;
+  return align_down_ptr(new_ualgn, 16u);
 }
 static void
 ut_tbl(struct sys *sys) {
-  unsigned long long *tbl = 0;
-  unsigned long long h = STR_HASH8("Command");
-  long long val = 1337;
+  static const unsigned long long h = STR_HASH8("Command");
+  int val = 1337;
 
-  long long at = tbl_put(tbl, sys, h, val);
-  assert(tbl != 0);
-  assert(tbl_cnt(tbl) == 1);
-  assert(tbl_cap(tbl) == 32);
-  assert(at == 28);
-  assert(tbl[at] == set__hash(h));
-  assert(tbl[32 + 28] == 1337);
+  struct tbl(int) t = {0};
 
-  long long v = tbl_fnd(tbl, h, 0);
-  assert(v == 1337);
-
-  v = tbl_fnd(tbl, h + 1, 0);
+  int *v = tbl_fnd(&t, h);
   assert(v == 0);
 
-  tbl_del(tbl, h);
-  assert(tbl_cnt(tbl) == 0);
-  assert(tbl_cap(tbl) > 0);
-  assert(tbl[at] == (set__hash(h)|0x8000000000000000llu));
+  int *at = tbl_put(&t, sys, h, &val);
+  assert(tbl_cnt(&t) == 1);
+  assert(tbl_cap(&t) == 64);
+  assert(*at == val);
 
-  v = tbl_fnd(tbl, h, 0);
+  v = tbl_fnd(&t, h);
+  assert(v);
+  assert(*v == val);
+
+  v = tbl_fnd(&t, h + 1);
   assert(v == 0);
 
-  long long at2 = tbl_put(tbl, sys, h, val);
-  assert(tbl_cnt(tbl) == 1);
-  assert(tbl_cap(tbl) > 0);
+  tbl_del(&t, h);
+  assert(tbl_cnt(&t) == 0);
+  assert(tbl_cap(&t) > 0);
+
+  int *at2 = tbl_put(&t, sys, h, &val);
+  assert(tbl_cnt(&t) == 1);
+  assert(tbl_cap(&t) > 0);
   assert(at == at2);
-  assert(tbl[at] == set__hash(h));
-  assert(tbl[32 + 28] == 1337);
 
-  tbl_free(tbl, sys);
-  assert(tbl == 0);
-  assert(tbl_cnt(tbl) == 0);
-  assert(tbl_cap(tbl) == 0);
+  tbl_free(&t, sys);
+  assert(t.hdr.blk == 0);
+  assert(tbl_cnt(&t) == 0);
+  assert(tbl_cap(&t) == 0);
 }
 
 /* ---------------------------------------------------------------------------
- *                                  Image
+ *                                  Color
  * ---------------------------------------------------------------------------
  */
 #define col_get(u) \
@@ -2454,6 +2568,109 @@ ut_tbl(struct sys *sys) {
   (col_shl(r, COL_R) | col_shl(g, COL_G) | col_shl(b, COL_B) | col_shl(a, COL_A))
 #define col_rgb(r, g, b) col_rgba(r, g, b, 0xFFu)
 
+#define byte_flt(x) clamp(0u, cast(unsigned char, 0.5f + 255.0f * (x)), 255u)
+#define flt_byte(x) (cast(float,(x)) * (1.0f/255.0f))
+
+static float
+col_srgb_linear(float x) {
+  float v = 0.0f;
+  if (x <= 0.0031308f) {
+    v = 12.92f * x;
+  } else {
+    v = (1.0f + 0.055f) * powa(x, 1.0f / 2.0f) - 0.055f;
+  }
+  return clamp(0, v, 1.0f);
+}
+static void
+col_srgb_rgb(float *restrict srgb_out, const float *restrict rgb_in) {
+  float rgb[3]; cpy3(rgb, rgb_in);
+  float srgb[3]; map3(srgb, col_srgb_linear, rgb);
+  cpy3(srgb_out, srgb);
+}
+static void
+col_srgba_rgba(float *restrict srgba_out, const float *restrict rgba_in) {
+  float rgba[4]; cpy4(rgba, rgba_in);
+  float srgba[4]; map4(srgba, col_srgb_linear, rgba);
+  cpy4(srgba_out, srgba);
+}
+static float
+col_linear_srgb(float x) {
+  if (x <= 0.04045f) {
+    return x / 12.98f;
+  } else {
+    return powa((x + 0.055f )/(1.0f + 0.055f), 2.4f);
+  }
+}
+static void
+col_rgb_srgb(float *restrict rgb_out, const float *restrict srgb_in) {
+  float srgb[3]; cpy3(srgb, srgb_in);
+  float rgb[3]; map3(rgb, col_linear_srgb, srgb);
+  cpy3(rgb_out, rgb);
+}
+static void
+col_rgba_srgba(float *restrict rgba_out, const float *restrict srgba_in) {
+  float srgba[4]; cpy4(srgba, srgba_in);
+  float rgba[4]; map4(rgba, col_linear_srgb, srgba);
+  cpy4(rgba_out, rgba);
+}
+static unsigned
+col_paq_flt(const float *restrict rgba_in) {
+  float rgba[4]; cpy4(rgba, rgba_in);
+  unsigned char col[4]; map4(col, byte_flt, rgba);
+  return col_rgba(col[0], col[1], col[2], col[3]);
+}
+static void
+col_flt_paq(float *out, unsigned in) {
+  unsigned char col[4] = {col_r(in), col_g(in), col_b(in), col_a(in)};
+  float rgba[4]; map4(rgba, flt_byte, col);
+  cpy4(out, rgba);
+}
+static void
+col_hsv_rgb(float *restrict hsv_out, const float *restrict rgb_in) {
+  float hsv[3] = {0};
+  float rgb[3]; cpy3(rgb, rgb_in);
+  float m = min3i(rgb[0], rgb[1], rgb[2]);
+  hsv[2] = max3i(rgb[0], rgb[1], rgb[2]);
+  float c = hsv[2] - m;
+  if (c != 0.0f) {
+    hsv[1] = c / hsv[2];
+    float d[3] = {(hsv[2] - rgb[0])/c, (hsv[2] - rgb[1])/c, (hsv[2] - rgb[2])/c};
+    float dzxy[3]; swzl3(dzxy,d,2,0,1);
+    static const float off[3] = {2.0f, 4.0f, 6.0f};
+    float t[3]; sub3(t, d, dzxy);
+    add3(d, t, off);
+    if (rgb[0] >= hsv[2]) hsv[0] = d[2];
+    else if (rgb[1] >= hsv[2]) hsv[0] = d[0];
+    else hsv[0] = d[1];
+    hsv[0] = fmoda(hsv[0] / 6.0f, 1.0f);
+  }
+  cpy3(hsv_out, hsv);
+}
+static void
+col_rgb_hue(float *restrict rgb_out, float hue) {
+  const float rgb[3] = {
+    clamp01((float)absf(hue * 6.0f - 3.0f) - 1.0f),
+    clamp01(2.0f - (float)absf(hue * 6.0f - 2.0f)),
+    clamp01(2.0f - (float)absf(hue * 6.0f - 4.0f))
+  };
+  cpy3(rgb_out, rgb);
+}
+static void
+col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
+  float hsv[3]; cpy3(hsv, hsv_in);
+  float rgb[3]; col_rgb_hue(rgb, hsv[0]);
+  const float ret[3] = {
+    ((rgb[0] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+    ((rgb[1] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+    ((rgb[2] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+  };
+  cpy3(rgb_out, ret);
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  Image
+ * ---------------------------------------------------------------------------
+ */
 #define img_w(img) (img)[-2]
 #define img_h(img) (img)[-1]
 #define img_pix(img, x, y) \

@@ -210,7 +210,7 @@ struct db_tree_view {
   struct arena mem;
   dyn(struct db_tree_node*) lst;
   unsigned long long *exp;
-  unsigned long long *sel;
+  struct tbl(struct db_tree_node*) sel;
 
   /* tree */
   struct db_tree_node root;
@@ -462,8 +462,8 @@ db_tree_begin(struct db_tree_view *t, struct sys *sys, struct arena *mem) {
   t->rev = (unsigned)-1;
   t->lst = arena_dyn(mem, sys, struct db_tree_node*, 128);
   t->exp = arena_set(mem, sys, 1024);
-  t->sel = arena_tbl(mem, sys, 256);
   t->fnd_buf = arena_dyn(mem, sys, char, MAX_FILTER);
+  arena_tbl(&t->sel, mem, sys, struct db_tree_node*, 256);
   gui.edt.buf.init(&t->fnd_ed);
 
   /* setup root node */
@@ -551,24 +551,24 @@ db_tree_qry_tbl(struct db_ui_view *d, struct db_tree_node *n,
   scp_mem(d->tmp_mem, &scp, sys) {
     struct db_tbl_col *cols = arena_dyn(d->tmp_mem, sys, struct db_tbl_col, 128);
     cols = db_tbl_qry_cols(d->con, 0, sys, n->name, cols, d->tmp_mem, d->tmp_mem);
-
     /* create node for each table column */
     struct db_tbl_col *col = 0;
     for_dyn(col, cols) {
       struct str sql = str_nil;
       if (col->not_null) {
-        sql = arena_fmt(d->tmp_mem, sys, "\"%.*s\" %.*s NOT NULL", strf(col->name),
-                        strf(col->type));
+        sql = arena_fmt(d->tmp_mem, sys, "\"%.*s\" %.*s NOT NULL",
+                        strf(col->name), strf(col->type));
       } else {
-        sql = arena_fmt(d->tmp_mem, sys, "\"%.*s\" %.*s", strf(col->name),
-                        strf(col->type));
+        sql = arena_fmt(d->tmp_mem, sys, "\"%.*s\" %.*s",
+                        strf(col->name), strf(col->type));
       }
-      struct db_tree_node_arg arg = {.sql = sql};
+      struct db_tree_node_arg arg = {0};
+      arg.sql = sql;
       arg.name = col->name;
       arg.type = col->type;
       arg.is_pk = col->pk;
       arg.is_fk = col->fk;
-      arg.id = fnv1a64(col->name.str, col->name.len, n->id);
+      arg.id = str__hash(col->name, n->id);
       db_tree_node_new(sys, mem, n, &arg);
     }
     dyn_free(cols, sys);
@@ -584,7 +584,7 @@ db_tree_end(struct db_ui_view *d, struct db_tree_view *t, struct arena *mem,
 
   /* setup table ui state */
   struct gui_split_lay_cfg tbl_cfg = {0};
-  tbl_cfg.size = sizeof(struct db_tbl_col_def);
+  tbl_cfg.size = szof(struct db_tbl_col_def);
   tbl_cfg.off = offsetof(struct db_tbl_col_def, ui);
   tbl_cfg.slots = db_tree_col_def;
   tbl_cfg.cnt = DB_TREE_COL_MAX;
@@ -611,7 +611,6 @@ db_tree_serial(struct db_tree_view *tree, struct db_tree_node *n,
   assert(n);
   assert(lst);
   assert(tree);
-
   if (n->parent) {
     dyn_add(lst, sys, n);
   }
@@ -819,7 +818,7 @@ db_tbl_setup(struct db_tbl_view *view, struct sys *sys, sqlite3 *con,
 
   /* setup filter list table */
   struct gui_split_lay_cfg tbl_cfg = {0};
-  tbl_cfg.size = sizeof(struct db_tbl_col_def);
+  tbl_cfg.size = szof(struct db_tbl_col_def);
   tbl_cfg.off = offsetof(struct db_tbl_col_def, ui);
   tbl_cfg.slots = db_tbl_fltr_def;
   tbl_cfg.cnt = DB_TBL_FLTR_MAX;
@@ -827,7 +826,7 @@ db_tbl_setup(struct db_tbl_view *view, struct sys *sys, sqlite3 *con,
 
   /* setup filter column table */
   struct gui_split_lay_cfg col_cfg = {0};
-  col_cfg.size = sizeof(struct db_tbl_col_def);
+  col_cfg.size = szof(struct db_tbl_col_def);
   col_cfg.off = offsetof(struct db_tbl_col_def, ui);
   col_cfg.slots = db_tbl_fltr_col_def;
   col_cfg.cnt = DB_TBL_FLTR_COL_MAX;
@@ -1120,7 +1119,7 @@ db_tab_open(struct db_ui_view *ui, struct db_tbl_view *v, struct sys *sys,
     }
   }
   for (; i < cnt; ++i) {
-    /* open each table in new tab */
+    /* open each following table in new tab */
     const struct db_tree_node *e = elms[i];
     if (e->kind != DB_TBL_LST_ELM_TBL &&
         e->kind != DB_TBL_LST_ELM_VIEW) {
@@ -2223,17 +2222,17 @@ ui_db_view_tree_sel(struct db_tree_view *t, struct gui_tbl *tbl,
   assert(tbl);
   assert(ctx);
   if (tbl->lst.sel.mut == GUI_LST_SEL_MOD_REPLACE) {
-    tbl_clr(t->sel);
+    tbl_clr(&t->sel);
   }
   for (int i = tbl->lst.sel.begin_idx; i < tbl->lst.sel.end_idx; ++i) {
     assert(i < dyn_cnt(t->lst));
     const struct db_tree_node *n = t->lst[i];
     switch (tbl->lst.sel.op) {
     case GUI_LST_SEL_OP_SET:
-      tbl_put(t->sel, ctx->sys, n->id, cast(long long, n));
+      tbl_put(&t->sel, ctx->sys, n->id, &n);
       break;
     case GUI_LST_SEL_OP_CLR:
-      tbl_del(t->sel, n->id);
+      tbl_del(&t->sel, n->id);
       break;
     }
   }
@@ -2273,7 +2272,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
       for_gui_tbl_lst(i,gui,&tbl) {
         struct gui_panel elm = {0};
         const struct db_tree_node *n = t->lst[i];
-        int is_sel = tbl_has(t->sel, n->id, dyn_cnt(t->lst));
+        int is_sel = tbl_has(&t->sel, n->id);
         if (ui_db_view_tree_elm(ctx, t, n, &tbl, tbl_cols, &elm, is_sel)) {
           d->tree_rev++;
         }
@@ -2308,12 +2307,12 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
   struct mem_scp scp = {0};
   scp_mem(ui->tmp_mem, &scp, ctx->sys) {
     struct db_tree_node **lst;
-    int cnt = tbl_cnt(ui->tree.sel);
+    int cnt = tbl_cnt(&ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
 
-    long long val = 0;
-    for_tbl(i, _, &val, ui->tree.sel) {
-      lst[i] = ptr(struct db_tree_node*, val);
+    struct db_tree_node **it = 0;
+    for_tbl(i, _, &it, &ui->tree.sel) {
+      lst[i] = *it;
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
   }
@@ -2343,7 +2342,7 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       ui_db_view_tree(ui, &ui->tree, ctx, &overview, pan);
 
       /* open tables */
-      int dis = tbl_empty(ui->tree.sel);
+      int dis = tbl_empty(&ui->tree.sel);
       scp_gui_disable_on(&gui, ctx, dis) {
         if (ui_btn_ico(ctx, &open, pan, strv("Open"), ICO_LIST, 0)) {
           ui_db_open_sel(ui, view, ctx);
@@ -2616,6 +2615,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       }
       if (del_tab) {
         /* close table view tab */
+        assert(dyn_cnt(d->tbls));
         assert(d->sel_tbl < dyn_cnt(d->tbls));
         struct db_tbl_view *view = d->tbls[d->sel_tbl];
         dyn_rm(d->tbls, d->sel_tbl);

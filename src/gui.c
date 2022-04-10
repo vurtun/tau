@@ -5225,12 +5225,10 @@ gui_tbl_lst_elm_col(struct gui_box *box, struct gui_ctx *ctx,
   assert(box);
   assert(ctx);
   assert(tbl);
-  unused(ctx);
 
-  struct gui_box sep = {0};
   if (tbl->idx) {
     gui_clip_end(ctx, &tbl->col_clip);
-    sep = gui_cut_lhs(&tbl->col_lay, lay[((tbl->idx - 1) << 1) + 1], 0);
+    gui_cut_lhs(&tbl->col_lay, lay[((tbl->idx - 1) << 1) + 1], 0);
   }
   *box = gui_cut_lhs(&tbl->col_lay, lay[(tbl->idx << 1)], 0);
   gui_clip_begin(&tbl->col_clip, ctx, gui_unbox(box));

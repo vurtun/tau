@@ -18,9 +18,12 @@
 #define stringify(s) tostring(s)
 
 #define flag(n) ((1u) << (n))
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a,b) ((a) < (b) ? (a) : (b))
+#define max(a,b) ((a) > (b) ? (a) : (b))
+#define min3i(a,b,c) min(a,min(b,c))
+#define max3i(a,b,c) max(a,max(b,c))
 #define clamp(a, v, b) (max(min(b, v), a))
+#define clamp01(v) clamp(0,v,1)
 #define zero(d, sz) memset(d, 0, (size_t)(sz))
 #define offsetof(st, m) ((int)((uintptr_t) & (((st *)0)->m)))
 #define containerof(ptr, type, member)                           \
@@ -108,5 +111,12 @@ struct lst_elm {
 struct color {
   unsigned char r, g, b, a;
 };
+
 #define dyn(T) T*
+struct tbl_hdr {
+  int cnt, cap;
+  struct mem_blk *blk;
+  unsigned long long *keys;
+};
+#define tbl(T) {struct tbl_hdr hdr; T *vals;}
 
