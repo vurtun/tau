@@ -210,7 +210,7 @@ struct db_tree_view {
   struct arena mem;
   dyn(struct db_tree_node*) lst;
   unsigned long long *exp;
-  struct tbl(struct db_tree_node*) sel;
+  tbl(struct db_tree_node*) sel;
 
   /* tree */
   struct db_tree_node root;
@@ -2226,7 +2226,7 @@ ui_db_view_tree_sel(struct db_tree_view *t, struct gui_tbl *tbl,
   }
   for (int i = tbl->lst.sel.begin_idx; i < tbl->lst.sel.end_idx; ++i) {
     assert(i < dyn_cnt(t->lst));
-    const struct db_tree_node *n = t->lst[i];
+    struct db_tree_node *n = t->lst[i];
     switch (tbl->lst.sel.op) {
     case GUI_LST_SEL_OP_SET:
       tbl_put(&t->sel, ctx->sys, n->id, &n);
@@ -2309,10 +2309,8 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
     struct db_tree_node **lst;
     int cnt = tbl_cnt(&ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
-
-    struct db_tree_node **it = 0;
-    for_tbl(i, _, &it, &ui->tree.sel) {
-      lst[i] = *it;
+    for_tbl(slot, idx, &ui->tree.sel) {
+      lst[idx] = tbl_val(&ui->tree.sel, slot);
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
   }

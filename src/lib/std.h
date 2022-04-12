@@ -118,5 +118,5 @@ struct tbl_hdr {
   struct mem_blk *blk;
   unsigned long long *keys;
 };
-#define tbl(T) {struct tbl_hdr hdr; T *vals;}
+#define tbl(T) struct {struct tbl_hdr hdr; T *vals;}
 

@@ -331,7 +331,7 @@ hflt4(flt4 f) {
 #define eerp(r,a,b,t) powa(a,1-t) * powa(b,t) // useful for scaling or zooming
 #define eerp_inv(a,b,v) (logf((a)/(v))/logf((a)/(b)))
 #define sincosa(a,s,c) *s = sina(a), *c = cosa(a)
-#define repeat(v,len) clamp((v) - floorf((v)/(len)) * (len), 0.0f, len) // repeats the given value in the interval specified by len
+#define repeat(v,len) clamp(0.0f, (v) - floorf((v)/(len)) * (len), len) // repeats the given value in the interval specified by len
 #define pingpong(t,len) len - absf(repat(t,len * 2f)-len) // repeats a value within a range, going back and forth
 #define triwave(t,period) (1.0f-absf(2.0f*(((t)/(period))-floorf(((t)/(period))))-1.0f))
 #define smooth01(x) ((x)*(x)*(3-2*(x)))
@@ -709,9 +709,9 @@ atana(float a) {
     float t6 = (t5 * s - 0.3333314528f);
     s = - ((t6 * s) + 1.0f) * a;
     if ( a < 0.0f ) {
-        return s - FLT_HALF_PI;
+      return s - FLT_HALF_PI;
     } else {
-        return s + FLT_HALF_PI;
+      return s + FLT_HALF_PI;
     }
   } else {
     s = a * a;
@@ -2409,8 +2409,9 @@ ut_set(struct sys *sys) {
 #define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put(&(t)->hdr,(t)->vals,k,v,szof((t)->vals[0])))
 #define tbl__key(k) set__key(k)
 #define tbl__val(vals,i,s) (cast(unsigned char*, vals) + s * i)
+#define tbl__is_uniq(t,k) (!(t)->hdr.cap || !tbl__fnd(&(t)->hdr,(t)->vals,k,szof((t)->vals[0])))
+#define tbl__chk_val(t,v) if (0){(t)->vals[(t)->hdr.cap]=*(v);}
 
-#define tbl_free(t,s) do {if((t)->hdr.cap > 0){(s)->mem.free((t)->hdr.blk);}memset(t,0,sizeof(*t));} while(0)
 #define tbl_clr(t) do{(t)->hdr.cnt = 0; memset((t)->hdr.keys, 0, abs((t)->hdr.cap) * szof(unsigned long long));} while(0)
 #define tbl_cnt(t) ((t)->hdr.cnt)
 #define tbl_cap(t) ((t)->hdr.cap < 0 ? -(t)->hdr.cap:(t)->hdr.cap)
@@ -2418,20 +2419,18 @@ ut_set(struct sys *sys) {
 #define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_any(t) (tbl_cnt(t) > 0)
 #define tbl_empty(t) (tbl_cnt(t) == 0)
-#define tbl_put(t,s,k,v) ((!(t)->hdr.cap || !tbl__fnd(&(t)->hdr,(t)->vals,k,szof((t)->vals[0]))) ? tbl__add(t,s,k,v) : 0)
+#define tbl_put(t,s,k,v) do {if (tbl__is_uniq(t,k)) {tbl__add(t,s,k,v); tbl__chk_val(t,v);}} while(0)
 #define tbl_fnd(t,k) (!(t)->hdr.cnt) ? 0: tbl__fnd(&(t)->hdr, (t)->vals, k, szof((t)->vals[0]))
-#define for_tbl(i,n,v,t)\
-  for (int n = tbl__nxt_idx(&(t)->hdr,(t)->vals,(void**)v,szof((t)->vals[0]),0), i = 0;\
-       n < tbl_cap(t);\
-       n = tbl__nxt_idx(&(t)->hdr,(t)->vals,(void**)v,szof((t)->vals[0]),n+1), i = i + 1)
+#define tbl_free(t,s) do {if((t)->hdr.cap > 0){(s)->mem.free((t)->hdr.blk);}memset(t,0,sizeof(*t));} while(0)
+#define for_tbl(n,i,t) for (int n = tbl__nxt_idx(&(t)->hdr,0), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(&(t)->hdr,n+1), ++i)
+#define tbl_val(t,n) (t)->vals[n]
 // clang-format on
 
 static int
-tbl__nxt_idx(struct tbl_hdr *tbl, void *vals, void **val, int val_siz, int i) {
+tbl__nxt_idx(struct tbl_hdr *tbl, int i) {
   int cnt = abs(tbl->cap);
   for (; i < cnt; ++i) {
     if (tbl__key(tbl->keys[i])) {
-      *val = tbl__val(vals,i,val_siz);
       return i;
     }
   }
@@ -2511,15 +2510,14 @@ ut_tbl(struct sys *sys) {
   static const unsigned long long h = STR_HASH8("Command");
   int val = 1337;
 
-  struct tbl(int) t = {0};
+  tbl(int) t = {0};
 
   int *v = tbl_fnd(&t, h);
   assert(v == 0);
 
-  int *at = tbl_put(&t, sys, h, &val);
+  tbl_put(&t, sys, h, &val);
   assert(tbl_cnt(&t) == 1);
   assert(tbl_cap(&t) == 64);
-  assert(*at == val);
 
   v = tbl_fnd(&t, h);
   assert(v);
@@ -2532,10 +2530,9 @@ ut_tbl(struct sys *sys) {
   assert(tbl_cnt(&t) == 0);
   assert(tbl_cap(&t) > 0);
 
-  int *at2 = tbl_put(&t, sys, h, &val);
+  tbl_put(&t, sys, h, &val);
   assert(tbl_cnt(&t) == 1);
   assert(tbl_cap(&t) > 0);
-  assert(at == at2);
 
   tbl_free(&t, sys);
   assert(t.hdr.blk == 0);
