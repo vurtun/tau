@@ -1809,11 +1809,12 @@ lck_rel(struct lck *lck) {
 #define ARENA_BLOCK_SIZE KB(64)
 
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
-#define arena_arr(a, s, T, n) cast(T *, arena_alloc(a, s, szof(T) * n))
+#define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
 #define arena_dyn(a, s, T, n) \
-  cast(T *, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
+  cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
-#define arena_tbl(t, a, s, T, n) (t)->vals = (T*)tbl__static(&(t)->hdr, s, sizeof(T), n);
+#define arena_tbl(a, s, T, n)\
+  cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, n))
 
 #define scp_mem(a,s,sys)\
   for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
@@ -2026,7 +2027,7 @@ struct dyn_hdr {
 #define dyn_add(b, s, ...) dyn__add(b, s, (__VA_ARGS__))
 #define dyn_pop(b) ((b) ? dyn__hdr(b)->cnt = max(0, dyn__hdr(b)->cnt - 1): 0)
 #define dyn_clr(b) ((b) ? dyn__hdr(b)->cnt = 0 : 0)
-#define dyn_del(b, i) (dyn_cnt(b) ? (b)[i] = (b)[--dyn_hdr(b)->cnt] : 0);
+#define dyn_del(b, i) (dyn_cnt(b) ? (b)[i] = (b)[--dyn__hdr(b)->cnt] : 0);
 #define dyn_rm(a, i) (dyn_cnt(a) ? memmove(&((a)[i]), &((a)[i+1]),(size_t)((--(dyn__hdr(a)->cnt)) - i) * sizeof((a)[0])) :0)
 #define dyn_fmt(b, s, fmt, ...) ((b) = dyn__fmt((b), (s), (fmt), __VA_ARGS__))
 #define dyn_free(b,s) ((!(b))?0:(dyn__hdr(b)->cap <= 0) ? (b) = 0 : ((s)->mem.free(dyn__hdr(b)->blk), (b) = 0))
@@ -2405,139 +2406,132 @@ ut_set(struct sys *sys) {
  */
 // clang-format off
 #define tbl__fits(t,n) ((n) < (int)(((float)tbl_cap(t)) * SET_FULL_PERCENT))
-#define tbl__fit(t,s,n) (tbl__fits(t, n) ? 0 : ((t)->vals = tbl__grow(&(t)->hdr,s,(t)->vals,szof((t)->vals[0]),n)))
-#define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put(&(t)->hdr,(t)->vals,k,v,szof((t)->vals[0])))
+#define tbl__fit(t,s,n) (tbl__fits(t, n) ? 0 : ((t) = tbl__grow((t),s,szof(*(t)),n)))
+#define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put((t),k,v,szof(*(t))))
 #define tbl__key(k) set__key(k)
 #define tbl__val(vals,i,s) (cast(unsigned char*, vals) + s * i)
-#define tbl__is_uniq(t,k) (!(t)->hdr.cap || !tbl__fnd(&(t)->hdr,(t)->vals,k,szof((t)->vals[0])))
-#define tbl__chk_val(t,v) if (0){(t)->vals[(t)->hdr.cap]=*(v);}
+#define tbl__is_uniq(t,k) (!tbl_cap(t)|| !tbl__fnd(t,k,szof(*(t))))
+#define tbl__chk_val(t,v) if (0){(t)[tbl_cap(t)]=*(v);}
+#define tbl__keys(t,s)((unsigned long long*)align_down_ptr(((unsigned char*)(void*)(t)) + ((dyn__hdr(t))->cap)*(s) + 16,16))
 
-#define tbl_clr(t) do{(t)->hdr.cnt = 0; memset((t)->hdr.keys, 0, abs((t)->hdr.cap) * szof(unsigned long long));} while(0)
-#define tbl_cnt(t) ((t)->hdr.cnt)
-#define tbl_cap(t) ((t)->hdr.cap < 0 ? -(t)->hdr.cap:(t)->hdr.cap)
-#define tbl_del(t,k) tbl__del(&(t)->hdr, k)
-#define tbl_has(t,k) (tbl_fnd(t, k) != 0)
+#define tbl_cnt(t) dyn_cnt(t)
+#define tbl_cap(t) dyn_cap(t)
 #define tbl_any(t) (tbl_cnt(t) > 0)
 #define tbl_empty(t) (tbl_cnt(t) == 0)
 #define tbl_put(t,s,k,v) do {if (tbl__is_uniq(t,k)) {tbl__add(t,s,k,v); tbl__chk_val(t,v);}} while(0)
-#define tbl_fnd(t,k) (!(t)->hdr.cnt) ? 0: tbl__fnd(&(t)->hdr, (t)->vals, k, szof((t)->vals[0]))
-#define tbl_free(t,s) do {if((t)->hdr.cap > 0){(s)->mem.free((t)->hdr.blk);}memset(t,0,sizeof(*t));} while(0)
-#define for_tbl(n,i,t) for (int n = tbl__nxt_idx(&(t)->hdr,0), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(&(t)->hdr,n+1), ++i)
-#define tbl_val(t,n) (t)->vals[n]
+#define tbl_fnd(t,k) (!tbl_cnt(t)) ? 0: tbl__fnd(t, k, szof(*(t)))
+#define tbl_has(t,k) (tbl_fnd(t, k) != 0)
+#define tbl_del(t,k) tbl__del(t, k, szof(*(t)))
+#define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; memset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
+#define tbl_free(t,s) do {if(tbl_cap(t)){(s)->mem.free(dyn__hdr(t)->blk); (t) = 0;}} while(0)
+#define for_tbl(n,i,t) for (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
 // clang-format on
 
 static int
-tbl__nxt_idx(struct tbl_hdr *tbl, int i) {
-  int cnt = abs(tbl->cap);
+tbl__nxt_idx(void *tbl, int i, int type_siz) {
+  unsigned long long *keys = tbl__keys(tbl,type_siz);
+  int cnt = tbl_cap(tbl);
   for (; i < cnt; ++i) {
-    if (tbl__key(tbl->keys[i])) {
+    if (tbl__key(keys[i])) {
       return i;
     }
   }
   return cnt;
 }
 static void*
-tbl__put(struct tbl_hdr *tbl, void *vals, unsigned long long key,
-         void *val, int val_siz) {
+tbl__put(void *tbl, unsigned long long key, void *val, int val_siz) {
   unsigned long long h = set__hash(key);
-  long long i = set__slot(tbl->keys, vals, abs(tbl->cap), h, val, val_siz);
-  if (i < abs(tbl->cap)) {
-    tbl->cnt++;
-    return tbl__val(vals,i,val_siz);
+  unsigned long long *keys = tbl__keys(tbl, val_siz);
+  long long i = set__slot(keys, tbl, tbl_cap(tbl), h, val, val_siz);
+  if (i < tbl_cap(tbl)) {
+    dyn__hdr(tbl)->cnt++;
+    return tbl__val(tbl,i,val_siz);
   }
   return 0;
 }
 static void*
-tbl__fnd(struct tbl_hdr *tbl, void *vals,
-         unsigned long long key, int val_siz) {
-  long long i = set__fnd(tbl->keys, key, abs(tbl->cap));
-  if(i >= abs(tbl->cap)) {
+tbl__fnd(void *tbl, unsigned long long key, int val_siz) {
+  unsigned long long *keys = tbl__keys(tbl, val_siz);
+  long long i = set__fnd(keys, key, tbl_cap(tbl));
+  if (i >= tbl_cap(tbl)) {
     return 0;
   }
-  return cast(unsigned char*, vals) + i * val_siz;
+  return cast(unsigned char*, tbl) + i * val_siz;
 }
 static void
-tbl__del(struct tbl_hdr *tbl, unsigned long long key) {
+tbl__del(void *tbl, unsigned long long key, int val_siz) {
   assert(tbl);
-  if (!tbl->cap) return;
-  long long i = set__fnd(tbl->keys, key, abs(tbl->cap));
-  if(i < abs(tbl->cap)) {
-    tbl->keys[i] |= 0x8000000000000000llu;
-    tbl->cnt--;
+  if (!tbl_cap(tbl)) return;
+  unsigned long long *keys = tbl__keys(tbl, val_siz);
+  long long i = set__fnd(keys, key, tbl_cap(tbl));
+  if(i < tbl_cap(tbl)) {
+    keys[i] |= 0x8000000000000000llu;
+    dyn__hdr(tbl)->cnt--;
   }
 }
+static int
+tbl__resv(int val_siz, int cap) {
+  int siz = szof(unsigned long long) * cap + val_siz * (cap + 1);
+  return siz + szof(struct dyn_hdr) + 16;
+}
 static void*
-tbl__grow(struct tbl_hdr *tbl, struct sys *sys,
-          void *vals, int val_siz, int n) {
-  int cap = set__new_cap(abs(tbl->cap), n);
-  int siz = szof(unsigned long long) * cap + val_siz * (cap + 1) + 16;
+tbl__setup(void *mem, struct mem_blk *blk, int cap) {
+  struct dyn_hdr *hdr = cast(struct dyn_hdr*, mem);
+  hdr->blk = blk;
+  hdr->cap = cap;
+  hdr->cnt = 0;
+  return hdr + 1;
+}
+static void*
+tbl__grow(void *tbl, struct sys *sys, int val_siz, int n) {
+  int cap = set__new_cap(tbl_cap(tbl), n);
+  int siz = tbl__resv(val_siz, cap);
   struct mem_blk *blk = sys->mem.alloc(0, siz, SYS_MEM_GROWABLE, 0);
+  void *new_tbl = tbl__setup(blk->base, blk, cap);
 
-  int val_off = szof(unsigned long long) * cap + 16;
-  void *new_ualgn = cast(unsigned char*, blk->base) + val_off;
-  void *new_vals = align_down_ptr(new_ualgn, 16u);
-
-  struct tbl_hdr new_tbl = {.blk = blk, .cap = cap, .cnt = tbl->cnt};
-  new_tbl.keys = cast(unsigned long long*, cast(void*, blk->base));
-  for (int i = 0; i < abs(tbl->cap); ++i) {
-    if (set__key(tbl->keys[i])) {
-      void *val = tbl__val(vals,i,val_siz);
-      tbl__put(&new_tbl, new_vals, tbl->keys[i], val, val_siz);
+  unsigned long long *keys = tbl__keys(new_tbl,val_siz);
+  for (int i = 0; i < tbl_cap(tbl); ++i) {
+    if (set__key(keys[i])) {
+      void *val = tbl__val(tbl,i,val_siz);
+      tbl__put(new_tbl, keys[i], val, val_siz);
     }
   }
-  if (tbl->cap > 0) {
-    sys->mem.free(tbl->blk);
+  if (tbl && dyn__hdr(tbl)->blk) {
+    sys->mem.free(dyn__hdr(tbl)->blk);
   }
-  *tbl = new_tbl;
-  return new_vals;
-}
-static void*
-tbl__static(struct tbl_hdr *hdr, struct sys *sys, int val_siz, int n) {
-  memset(hdr, 0, sizeof(*hdr));
-  hdr->cap = -n;
-  int siz = szof(unsigned long long) * n + val_siz * (n + 1) + 16;
-
-  hdr->blk = sys->mem.alloc(0, siz, 0, 0);
-  void *mem = hdr->blk->base;
-  hdr->keys = cast(unsigned long long*, mem);
-
-  int val_off = szof(unsigned long long) * n + 16;
-  void *new_ualgn = cast(unsigned char*, mem) + val_off;
-  return align_down_ptr(new_ualgn, 16u);
+  return new_tbl;
 }
 static void
 ut_tbl(struct sys *sys) {
   static const unsigned long long h = STR_HASH8("Command");
   int val = 1337;
 
-  tbl(int) t = {0};
-
+  tbl(int) t = 0;
   int *v = tbl_fnd(&t, h);
   assert(v == 0);
 
-  tbl_put(&t, sys, h, &val);
-  assert(tbl_cnt(&t) == 1);
-  assert(tbl_cap(&t) == 64);
+  tbl_put(t, sys, h, &val);
+  assert(tbl_cnt(t) == 1);
+  assert(tbl_cap(t) == 64);
 
-  v = tbl_fnd(&t, h);
+  v = tbl_fnd(t, h);
   assert(v);
   assert(*v == val);
 
-  v = tbl_fnd(&t, h + 1);
+  v = tbl_fnd(t, h + 1);
   assert(v == 0);
 
-  tbl_del(&t, h);
-  assert(tbl_cnt(&t) == 0);
-  assert(tbl_cap(&t) > 0);
+  tbl_del(t, h);
+  assert(tbl_cnt(t) == 0);
+  assert(tbl_cap(t) > 0);
 
-  tbl_put(&t, sys, h, &val);
-  assert(tbl_cnt(&t) == 1);
-  assert(tbl_cap(&t) > 0);
+  tbl_put(t, sys, h, &val);
+  assert(tbl_cnt(t) == 1);
+  assert(tbl_cap(t) > 0);
 
-  tbl_free(&t, sys);
-  assert(t.hdr.blk == 0);
-  assert(tbl_cnt(&t) == 0);
-  assert(tbl_cap(&t) == 0);
+  tbl_free(t, sys);
+  assert(tbl_cnt(t) == 0);
+  assert(tbl_cap(t) == 0);
 }
 
 /* ---------------------------------------------------------------------------

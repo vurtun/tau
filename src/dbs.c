@@ -463,7 +463,7 @@ db_tree_begin(struct db_tree_view *t, struct sys *sys, struct arena *mem) {
   t->lst = arena_dyn(mem, sys, struct db_tree_node*, 128);
   t->exp = arena_set(mem, sys, 1024);
   t->fnd_buf = arena_dyn(mem, sys, char, MAX_FILTER);
-  arena_tbl(&t->sel, mem, sys, struct db_tree_node*, 256);
+  t->sel = arena_tbl(mem, sys, struct db_tree_node*, 256);
   gui.edt.buf.init(&t->fnd_ed);
 
   /* setup root node */
@@ -2222,17 +2222,17 @@ ui_db_view_tree_sel(struct db_tree_view *t, struct gui_tbl *tbl,
   assert(tbl);
   assert(ctx);
   if (tbl->lst.sel.mut == GUI_LST_SEL_MOD_REPLACE) {
-    tbl_clr(&t->sel);
+    tbl_clr(t->sel);
   }
   for (int i = tbl->lst.sel.begin_idx; i < tbl->lst.sel.end_idx; ++i) {
     assert(i < dyn_cnt(t->lst));
     struct db_tree_node *n = t->lst[i];
     switch (tbl->lst.sel.op) {
     case GUI_LST_SEL_OP_SET:
-      tbl_put(&t->sel, ctx->sys, n->id, &n);
+      tbl_put(t->sel, ctx->sys, n->id, &n);
       break;
     case GUI_LST_SEL_OP_CLR:
-      tbl_del(&t->sel, n->id);
+      tbl_del(t->sel, n->id);
       break;
     }
   }
@@ -2272,7 +2272,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
       for_gui_tbl_lst(i,gui,&tbl) {
         struct gui_panel elm = {0};
         const struct db_tree_node *n = t->lst[i];
-        int is_sel = tbl_has(&t->sel, n->id);
+        int is_sel = tbl_has(t->sel, n->id);
         if (ui_db_view_tree_elm(ctx, t, n, &tbl, tbl_cols, &elm, is_sel)) {
           d->tree_rev++;
         }
@@ -2307,10 +2307,10 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
   struct mem_scp scp = {0};
   scp_mem(ui->tmp_mem, &scp, ctx->sys) {
     struct db_tree_node **lst;
-    int cnt = tbl_cnt(&ui->tree.sel);
+    int cnt = tbl_cnt(ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
-    for_tbl(slot, idx, &ui->tree.sel) {
-      lst[idx] = tbl_val(&ui->tree.sel, slot);
+    for_tbl(slot, idx, ui->tree.sel) {
+      lst[idx] = ui->tree.sel[slot];
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
   }

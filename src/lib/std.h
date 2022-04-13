@@ -113,12 +113,5 @@ struct color {
 };
 
 #define dyn(T) T*
-struct tbl_hdr {
-  int cnt, cap;
-  struct mem_blk *blk;
-  unsigned long long *keys;
-};
-#define tbl(T) struct {struct tbl_hdr hdr; T *vals;}
-#define def_tbl(n,T) n {struct tbl_hdr hdr; T *vals;}
-
+#define tbl(T) T*
 
