@@ -196,23 +196,11 @@ app_view_init(struct app_view *view, struct sys *sys, struct str path) {
 }
 static void
 app_open_files(struct app *app, struct sys *sys, const struct str *files, int cnt) {
-  int i = 0;
   assert(app);
   assert(sys);
   assert(files);
-  if (cnt && app->views[app->sel_tab]->state == APP_STATE_FILE) {
-    /* open first database in place */
-    struct app_view *view = app->views[app->sel_tab];
-    for (; i < cnt && !view->db; ++i) {
-      view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
-      if (view->db) {
-        app_view_init(view, sys, files[i]);
-        i++;
-        break;
-      }
-    }
-  }
-  for (; i < cnt; ++i) {
+
+  for (int i = 0; i < cnt; ++i) {
     /* open each database in new tab */
     struct app_view *view = app_view_new(app, sys);
     view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
@@ -221,8 +209,8 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
       continue;
     }
     app_view_init(view, sys, files[i]);
-    dyn_put(app->views, sys, 0, &view, 1);
-    app->sel_tab = 0;
+    app->sel_tab = dyn_cnt(app->views);
+    dyn_add(app->views, sys, view);
   }
 }
 static void
@@ -348,6 +336,11 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
         struct str file_path = dyn_str(view->file_path);
         view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
         view->state = APP_STATE_DB;
+        if (view->db) {
+          struct app_view *new_view = app_view_new(app, sys);
+          app_view_setup(new_view, sys);
+          dyn_add(app->views, sys, new_view);
+        }
       }
     } break;
     case APP_STATE_DB:
@@ -486,8 +479,8 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       if (gui.btn.ico(ctx, &add, &hdr.pan, ICO_FOLDER_PLUS)) {
         /* new open file view tab */
         struct app_view *view = app_view_new(app, ctx->sys);
-        dyn_put(app->views, ctx->sys, 0, &view, 1);
-        app->sel_tab = 0;
+        app->sel_tab = dyn_cnt(app->views);
+        dyn_add(app->views, ctx->sys, view);
       }
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};

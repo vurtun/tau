@@ -2313,6 +2313,9 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
       lst[idx] = ui->tree.sel[slot];
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
+
+    struct db_tbl_view *new_view = db_tbl_view_new(ui, ctx->sys);
+    dyn_add(ui->tbls, ctx->sys, new_view);
   }
 }
 static void
