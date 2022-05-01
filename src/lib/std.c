@@ -2539,179 +2539,148 @@ ut_tbl(struct sys *sys) {
  */
 // clang-format off
 typedef unsigned(*sort_conv_f)(const void *p);
-#define sort_int(a, siz, n, off, mem,sys) sort__base(a, siz, n, off, sort__cast_int, mem, sys)
-#define sort_flt(a, siz, n , off, mem,sys) sort__base(a, siz, n, off, sort__cast_float, mem, sys)
-#define isort_int(out, a, siz, n, off, mem,sys) isort__base(out, a, siz, n, off, sort__cast_int, mem, sys)
-#define isort_flt(out, a, siz, n, off, mem,sys) isort__base(out, a, siz, n, off, sort__cast_flt, mem, sys)
+typedef void*(sort_access_f)(const void *data, void *usr);
+
+#define sort_int(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_int, 0)
+#define sort_uint(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_uint, 0)
+#define sort_flt(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_flt, 0)
+#define sort_int_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_int, 0)
+#define sort_uint_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_uint, 0)
+#define sort_flt_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_flt, 0)
+#define sort_str(tmp, tmp2, tmp3, a, n, siz, off) sort__str(tmp, tmp2, tmp3, a, n, siz, off, 0, 0, 0)
+
+#define sort__access(a,usr,access,conv,off) access ? conv(access(a + off, usr)) : conv(a + off)
+#define sort__char_at(s,d) (((d) < (s)->len) ? (s)->str[d] : -1)
+#define sort__str_get(a,access,usr) (struct str*)((access) ? (access(a, usr)) : (a))
+static inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
+static inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; unsigned u;} v = {.i = *(const int*)p}; return v.u ^ (1u << 31u);}
+static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);}return v.u ^ (1u << 31u);}
 // clang-format on
 
-static inline int
-sort__str_max(const unsigned char *a, int siz, int n, int off) {
-  int max = ((const struct str*)(const void*)(a + off))->len;
-  for (int i = 1; i < n; i++) {
-    const struct str *s = 0;
-    s = ((const struct str*)(const void*)(a + ((i * siz) + off)));
-    if (s->len > max) max = s->len;
-  }
-  return max;
-}
-static inline void
-sort__str_cnt(unsigned char *a, unsigned char *b,
-              int siz, int n, int off, int k){
-  int c[257] = {0};
-  for (int i = 0; i < n; i++){
-    unsigned char *asrc = a + (siz * i);
-    struct str *ai = (struct str*)(void*)(asrc + off);
-    c[(k < ai->len) ? ai->str[k] + 1 : 0]++;
-  }
-  for (int i = 1; i < 257; ++i){
-    c[i] += c[i - 1];
-  }
-  for (int i = n - 1; i >= 0; --i) {
-    unsigned char *asrc = a + (siz * i);
-    struct str *ai = (struct str*)(void*)(asrc + off);
-    int idx = (k < ai->len) ? ai->str[k] + 1 : 0;
-    unsigned char* bdst = b + (--c[idx] * siz);
-    memcpy(bdst, asrc, siz);
-  }
-  memcpy(a,b, siz*n);
-}
-static inline void
-sort_str(void *a, int siz, int n, int off, struct arena *mem, struct sys *sys) {
-  if (!n) return;
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
-    unsigned char *b = arena_alloc(mem, sys, siz * n);
-    int max = sort__str_max(a, siz, n, off);
-    for (int digit = max - 1; digit >= 0; --digit){
-      sort__str_cnt(a, b, siz, n, off, digit);
+#define SORT_RADIX_BITS   8
+#define SORT_RADIX_SIZE   (1 << SORT_RADIX_BITS)
+#define SORT_RADIX_MASK   (SORT_RADIX_SIZE-1)
+#define SORT_MAX_PASSES   4
+#define SORT_H0_OFF       0
+#define SORT_H1_OFF       (SORT_RADIX_SIZE*1)
+#define SORT_H2_OFF       (SORT_RADIX_SIZE*2)
+#define SORT_H3_OFF       (SORT_RADIX_SIZE*3)
+
+static inline int*
+sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
+           void *usr, sort_access_f access, sort_conv_f conv, int init) {
+  unsigned h[SORT_RADIX_SIZE * SORT_MAX_PASSES] = {0};
+  unsigned *lnk[SORT_RADIX_SIZE];
+  {
+    /* build histogram for all passes */
+    unsigned char *p = a;
+    unsigned *h0 = &h[SORT_H0_OFF];
+    unsigned *h1 = &h[SORT_H1_OFF];
+    unsigned *h2 = &h[SORT_H2_OFF];
+    unsigned *h3 = &h[SORT_H3_OFF];
+
+    int is_sorted = 1;
+    if (!init) for (int i = 0; i < n; ++i) rnk[i] = i;
+    unsigned last = sort__access(p, usr, access, conv, off);
+    for (int i = 0; i < n; ++i) {
+      unsigned v = sort__access(p + rnk[i] * siz, usr, access, conv, off);
+      if (v < last) is_sorted = 0;
+      h0[(v >> (SORT_RADIX_BITS * 0)) & SORT_RADIX_MASK]++;
+      h1[(v >> (SORT_RADIX_BITS * 1)) & SORT_RADIX_MASK]++;
+      h2[(v >> (SORT_RADIX_BITS * 2)) & SORT_RADIX_MASK]++;
+      h3[(v >> (SORT_RADIX_BITS * 3)) & SORT_RADIX_MASK]++;
+      last = v;
+    }
+    if (is_sorted) {
+      return rnk; /* already sorted so early out */
     }
   }
-}
-static inline void
-isort__str_cnt(int *a, int *b, const unsigned char *elm,
-               int siz, int n, int off, int k){
-  int c[257] = {0};
-  for (int j = 0, i = a[j]; j < n; i = a[++j]){
-    const unsigned char *asrc = elm + (siz * i);
-    const struct str *ai = (const struct str*)(const void*)(asrc + off);
-    c[(k < ai->len) ? ai->str[k] + 1 : 0]++;
-  }
-  for (int i = 1; i < 257; ++i){
-    c[i] += c[i - 1];
-  }
-  for (int j = n - 1, i = a[j]; j >= 0; i = a[--j]) {
-    const unsigned char *asrc = elm + (siz * i);
-    const struct str *ai = (const struct str*)(const void*)(asrc + off);
-    int idx = (k < ai->len) ? ai->str[k] + 1 : 0;
-    b[--c[idx]] = a[j];
-  }
-  memcpy(a,b, sizeof(int) * cast(size_t,n));
-}
-static inline void
-isort_str(int *out, const void *a, int siz, int n, int off,
-          struct arena *mem, struct sys *sys) {
-  if (!n) return;
-  struct mem_scp scp = {0};
-  for (int i = 0; i < n; ++i) out[i] = i;
-  scp_mem(mem, &scp, sys) {
-    int *tmp = arena_arr(mem, sys, int, n);
-    int max = sort__str_max(a, siz, n, off);
-    for (int digit = max - 1; digit >= 0; --digit) {
-      isort__str_cnt(out, tmp, a, siz, n, off, digit);
+  unsigned char *p = a;
+  for (unsigned i = 0; i < SORT_MAX_PASSES; ++i) {
+    unsigned* pass_cnt = &h[i << SORT_RADIX_BITS];
+    unsigned uniq_val = sort__access(p, usr, access, conv, off);
+    unsigned slot = (uniq_val >> (i * SORT_RADIX_BITS)) & SORT_RADIX_MASK;
+    if (pass_cnt[slot] == (unsigned)n) {
+      continue; /* all values in pass are the same, so skip pass */
     }
+    // create offsets
+    lnk[0] = (unsigned*)rnk2;
+    for (int j = 1; j < SORT_RADIX_SIZE; ++j) {
+      lnk[j] = lnk[j-1] + pass_cnt[j-1];
+    }
+    // perform radix sort
+    unsigned shift = i * SORT_RADIX_BITS;
+    for (unsigned j = 0; i < (unsigned)n; ++i) {
+      int id = rnk[j];
+      unsigned v = sort__access(p + id * siz, usr, access, conv, off);
+      unsigned d = (v >> shift) & SORT_RADIX_MASK;
+      *lnk[d]++ = cast(unsigned,id);
+    }
+    int *tmp = rnk;
+    rnk = rnk2;
+    rnk2 = tmp;
   }
+  return rnk;
 }
-static inline unsigned
-sort__cast_int(const void *p) {
-  const int *i = (const int*)p;
-  union bit_castu {int i; unsigned u;} v = {.i = *i};
-  return v.u ^ (1u << 31u);
+static char
+sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
+  struct str * s = sort__str_get(p, access, usr);
+  return sort__char_at(s,d);
 }
-static inline unsigned
-sort__cast_float(const void *p) {
-  const float *f = (const float*)p;
-  union bit_castu {float f; unsigned u;} v = {.f = *f};
-  if ((v.u >> 31) == 1) {
-    v.u *= (unsigned)-1;
-    v.u ^= (1u << 31u);
+static void
+sort__str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
+              sort_access_f access, void *usr) {
+  if (hi <= lo) return;
+  unsigned char *p = a;
+  int lt = lo, gt = hi, i = lo + 1;
+  int v = sort__str_at(p + rnk[lo] * siz + off, d, access, usr);
+  while (i <= gt) {
+    int t = sort__str_at(p + rnk[i] * siz + off, d, access, usr);
+    if (t < v) {int tmp = rnk[lt]; rnk[lt++] = rnk[i]; rnk[i++] = tmp;}
+    else if(t > v) {int tmp = rnk[i]; rnk[i] = rnk[gt]; rnk[gt--] = tmp;}
+    else i++;
   }
-  return v.u ^ (1u << 31u);
+  sort__str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
+  if (v >= 0)  sort__str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
+  sort__str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
 }
-static inline unsigned
-sort__max(unsigned char *a, int siz, int n, int off, sort_conv_f conv) {
-  unsigned max = conv(a + off);
-  for (int i = 1; i < n; ++i) {
-    unsigned v = conv(a + siz * i + off);
-    if (v > max) max = v;
+static int*
+sort__str_base(int *r, int *r2, short *o, void *a, int n, int siz, int off,
+               int lo, int hi, sort_access_f fn, void *u, int d) {
+  unsigned char * p = a;
+  if (n < 32) {
+    sort__str_q3s(r, a, lo, hi, d, siz, off, fn, u);
+    return r;
   }
-  return max;
-}
-static inline void
-sort__cnt(unsigned char *a, unsigned char *b, int siz, int n, int off, int k,
-          sort_conv_f conv){
-  int c[10] = {0};
+  int c[257] = {0};
+  for (int i = 0; i < n; ++i)
+    o[i] = sort__str_at(p + r[i] * siz + off, d, fn, u);
   for (int i = 0; i < n; ++i) {
-    unsigned v = conv(a + i * siz + off);
-    c[(v / cast(unsigned, k)) % 10]++;
+    ++c[o[i] + 1];
   }
-  for (int i = 1; i < cntof(c); ++i) {
-    c[i] += c[i-1];
+  int idx[257];
+  idx[0] = idx[1] = 0;
+  for (int i = 1; i < 256; ++i)
+    idx[i+1] = idx[i] + c[i];
+  for (int i = 0; i < n; ++i)
+    r2[idx[o[i]+1]++] = r[i];
+  int *tmp = r; r = r2; r2 = tmp;
+
+  int bsum = c[1];
+  for (int i = 1; i < 256; ++i) {
+    if (c[i + 1] == 0) continue;
+    lo = bsum, hi = bsum + c[i+1]-1;
+    int *res = sort__str_base(r, r2, o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
+    if (res != r) tmp = r, r = r2, r2 = tmp;
+    bsum += c[i+1];
   }
-  for (int i = n - 1; i >= 0; --i) {
-    const unsigned char *asrc = a + (siz * i);
-    unsigned v = conv(asrc + off);
-    unsigned idx = (v / cast(unsigned,k)) % 10;
-    unsigned char* bdst = b + (--c[idx] * siz);
-    memcpy(bdst, asrc, siz);
-  }
-  memcpy(a,b,siz*n);
+  return r;
 }
-static inline void
-sort__base(void *a, int siz, int n, int off, sort_conv_f conv,
-           struct arena *mem, struct sys *sys) {
-  if (!n) return;
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
-    unsigned m = sort__max(a, siz, n, off, conv);
-    unsigned char *b = arena_alloc(mem, sys, siz * n);
-    for (int exp = 1; m / cast(unsigned,exp) > 0; exp *= 10) {
-      sort__cnt(a, b, siz, n, off, exp, conv);
-    }
-  }
-}
-static inline void
-isort__cnt(int *a, int *b, unsigned char *elm, int siz, int n, int off,
-           int k, sort_conv_f conv){
-  int c[10] = {0};
-  for (int j = 0, i = a[j]; j < n; i = a[++j]) {
-    unsigned v = conv(elm + i * siz + off);
-    c[(v / cast(unsigned,k)) % 10]++;
-  }
-  for (int i = 1; i < cntof(c); ++i) {
-    c[i] += c[i-1];
-  }
-  for (int j = n - 1, i = a[j]; j >= 0; i = a[--j]) {
-    const unsigned char *asrc = elm + (siz * i);
-    unsigned v = conv(asrc + off);
-    int idx = (v / cast(unsigned,k)) % 10;
-    b[--c[idx]] = a[j];
-  }
-  memcpy(a,b, sizeof(int) * cast(size_t,n));
-}
-static inline void
-isort__base(int *out, void *a, int siz, int n, int off, sort_conv_f conv,
-            struct arena *mem, struct sys *sys) {
-  if (!n) return;
-  for (int i = 0; i < n; ++i) out[i] = i;
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
-    int *tmp = arena_arr(mem, sys, int, n);
-    unsigned m = sort__max(a, siz, n, off, conv);
-    for (int exp = 1; m / cast(unsigned,exp) > 0; exp *= 10) {
-      isort__cnt(out, tmp, a, siz, n, off, exp, conv);
-    }
-  }
+static int*
+sort__str(int *r, int *r2, short *o, void *a, int n, int siz, int off,
+          sort_access_f fn, void *u, int d) {
+  for (int i = 0; i < n; ++i) r[i] = i;
+  return sort__str_base(r, r2, o, a, n, siz, off, 0, n-1, fn, u, d);
 }
 
 /* ---------------------------------------------------------------------------
