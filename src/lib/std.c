@@ -2541,15 +2541,17 @@ ut_tbl(struct sys *sys) {
 typedef unsigned(*sort_conv_f)(const void *p);
 typedef void*(sort_access_f)(const void *data, void *usr);
 
-#define sort_int(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_int, 0)
-#define sort_uint(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_uint, 0)
-#define sort_flt(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_flt, 0)
-#define sort_int_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_int, 0)
-#define sort_uint_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_uint, 0)
-#define sort_flt_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_flt, 0)
-#define sort_str(tmp, tmp2, tmp3, a, n, siz, off) sort__str(tmp, tmp2, tmp3, a, n, siz, off, 0, 0, 0)
+#define sort_int(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_int)
+#define sort_uint(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_uint)
+#define sort_flt(rnk, rnk2, a, siz, n, off) sort__base(rnk, rnk2, a, siz, n, off, 0, 0, sort__cast_flt)
+#define sort_str(tmp, tmp2, tmp3, a, n, siz, off) sort__str(tmp, tmp2, tmp3, a, n, siz, off, 0, 0)
 
-#define sort__access(a,usr,access,conv,off) access ? conv(access(a + off, usr)) : conv(a + off)
+#define sort_int_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_int)
+#define sort_uint_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_uint)
+#define sort_flt_cb(rnk, rnk2, a, siz, n, off, cb, usr) sort__base(rnk, rnk2, a, siz, n, off, usr, cb, sort__cast_flt)
+#define sort_str_cb(tmp, tmp2, tmp3, a, n, siz, off, cb, usr) sort__str(tmp, tmp2, tmp3, a, n, siz, off, usr, cb)
+
+#define sort__access(a,usr,access,conv,off) ((access) ? (conv)((access)(a + off, usr)) : (conv)(a + off))
 #define sort__char_at(s,d) (((d) < (s)->len) ? (s)->str[d] : -1)
 #define sort__str_get(a,access,usr) (struct str*)((access) ? (access(a, usr)) : (a))
 static inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
@@ -2557,18 +2559,55 @@ static inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; un
 static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);}return v.u ^ (1u << 31u);}
 // clang-format on
 
-#define SORT_RADIX_BITS   8
-#define SORT_RADIX_SIZE   (1 << SORT_RADIX_BITS)
-#define SORT_RADIX_MASK   (SORT_RADIX_SIZE-1)
-#define SORT_MAX_PASSES   4
-#define SORT_H0_OFF       0
-#define SORT_H1_OFF       (SORT_RADIX_SIZE*1)
-#define SORT_H2_OFF       (SORT_RADIX_SIZE*2)
-#define SORT_H3_OFF       (SORT_RADIX_SIZE*3)
-
+static void
+sort_q3(int *rnk, void *arr, int siz, int n, int off, int lo, int hi,
+        void *usr, sort_access_f access, sort_conv_f conv) {
+  unsigned char *a = (unsigned char*)arr;
+  int i = lo - 1, j = hi;
+  if (hi <= lo) {
+    return;
+  }
+  int p = lo - 1, q = hi;
+  unsigned v = sort__access(a + rnk[hi] * siz, usr, access, conv, off);
+  while (1) {
+    while (sort__access(a + rnk[++i] * siz, usr, access, conv, off) < v);
+    while (v < sort__access(a + rnk[--j] * siz, usr, access, conv, off) && j != lo);
+    if (i >= j) break;
+    {int tmp = rnk[i]; rnk[i] = rnk[j]; rnk[j] = tmp;}
+    if (sort__access(a + rnk[i] * siz, usr, access, conv, off) == v) {
+      int tmp = rnk[p]; rnk[p] = rnk[i]; rnk[p] = tmp;
+      p++;
+    }
+    if (sort__access(a + rnk[j] * siz, usr, access, conv, off) == v) {
+      int tmp = rnk[q]; rnk[q] = rnk[j]; rnk[q] = tmp;
+      q--;
+    }
+  }
+  j = i - 1;
+  {int tmp = rnk[i]; rnk[i] = rnk[hi]; rnk[hi] = tmp;}
+  for (int k = lo; k < p; k++, j--) {
+    int tmp = rnk[k]; rnk[k] = rnk[j]; rnk[j] = tmp;
+  }
+  i = i + 1;
+  for (int k = hi - 1; k > q; k--, i++) {
+    int tmp = rnk[k]; rnk[k] = rnk[i]; rnk[i] = tmp;
+  }
+  sort_q3(rnk, a, siz, n, off, lo, j, usr, access, conv);
+  sort_q3(rnk, a, siz, n, off, i, hi, usr, access, conv);
+}
 static inline int*
-sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
-           void *usr, sort_access_f access, sort_conv_f conv, int init) {
+sort_radix(int *rnk, int *rnk2, void *a, int siz, int n, int off,
+           void *usr, sort_access_f access, sort_conv_f conv) {
+  enum sort_defs {
+    SORT_RADIX_BITS = 8,
+    SORT_RADIX_SIZE = (1 << SORT_RADIX_BITS),
+    SORT_RADIX_MASK = (SORT_RADIX_SIZE-1),
+    SORT_MAX_PASSES = 4,
+    SORT_H0_OFF     = (SORT_RADIX_SIZE*0),
+    SORT_H1_OFF     = (SORT_RADIX_SIZE*1),
+    SORT_H2_OFF     = (SORT_RADIX_SIZE*2),
+    SORT_H3_OFF     = (SORT_RADIX_SIZE*3),
+  };
   unsigned h[SORT_RADIX_SIZE * SORT_MAX_PASSES] = {0};
   unsigned *lnk[SORT_RADIX_SIZE];
   {
@@ -2580,7 +2619,6 @@ sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
     unsigned *h3 = &h[SORT_H3_OFF];
 
     int is_sorted = 1;
-    if (!init) for (int i = 0; i < n; ++i) rnk[i] = i;
     unsigned last = sort__access(p, usr, access, conv, off);
     for (int i = 0; i < n; ++i) {
       unsigned v = sort__access(p + rnk[i] * siz, usr, access, conv, off);
@@ -2610,7 +2648,7 @@ sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
     }
     // perform radix sort
     unsigned shift = i * SORT_RADIX_BITS;
-    for (unsigned j = 0; i < (unsigned)n; ++i) {
+    for (unsigned j = 0; i < cast(unsigned,n); ++i) {
       int id = rnk[j];
       unsigned v = sort__access(p + id * siz, usr, access, conv, off);
       unsigned d = (v >> shift) & SORT_RADIX_MASK;
@@ -2622,13 +2660,22 @@ sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
   }
   return rnk;
 }
+static inline int*
+sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
+           void *usr, sort_access_f access, sort_conv_f conv) {
+  for (int i = 0; i < n; ++i) rnk[i] = i;
+  if (n < 64) {
+    sort_q3(rnk, a, siz, n, off, 0, n-1, usr, access, conv);
+    return rnk;
+  } else return sort_radix(rnk, rnk2, a, siz, n, off, usr, access, conv);
+}
 static char
 sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
   struct str * s = sort__str_get(p, access, usr);
   return sort__char_at(s,d);
 }
 static void
-sort__str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
+sort_str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
               sort_access_f access, void *usr) {
   if (hi <= lo) return;
   unsigned char *p = a;
@@ -2640,16 +2687,16 @@ sort__str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
     else if(t > v) {int tmp = rnk[i]; rnk[i] = rnk[gt]; rnk[gt--] = tmp;}
     else i++;
   }
-  sort__str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
-  if (v >= 0)  sort__str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
-  sort__str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
+  sort_str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
+  if (v >= 0)  sort_str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
+  sort_str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
 }
 static int*
 sort__str_base(int *r, int *r2, short *o, void *a, int n, int siz, int off,
                int lo, int hi, sort_access_f fn, void *u, int d) {
   unsigned char * p = a;
   if (n < 32) {
-    sort__str_q3s(r, a, lo, hi, d, siz, off, fn, u);
+    sort_str_q3s(r, a, lo, hi, d, siz, off, fn, u);
     return r;
   }
   int c[257] = {0};
