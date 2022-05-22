@@ -63,23 +63,6 @@ typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
   int lo, hi, step, cnt;
 };
-union flt {
-  unsigned u;
-  float f;
-  struct {
-    unsigned mant : 23;
-    unsigned expo : 8;
-    unsigned sign : 1;
-  };
-};
-union hflt {
-  unsigned short u;
-  struct {
-    unsigned mant : 10;
-    unsigned Expo : 5;
-    unsigned sign : 1;
-  };
-};
 struct str {
   const char *str;
   const char *end;

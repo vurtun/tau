@@ -79,6 +79,7 @@ struct app {
   struct res res;
   struct gui_ctx gui;
   struct sys *sys;
+  struct mem_blk *db_mem;
 
   int quit;
   unsigned long ops[bits_to_long(APP_KEY_CNT)];
@@ -97,6 +98,7 @@ static void app_op_profiler(struct app* app, const union app_param *arg);
 #include "cfg.h"
 #include "lib/fmt.c"
 #include "lib/std.c"
+#include "lib/math.c"
 
 static struct res_api res;
 static struct gui_api gui;
@@ -104,6 +106,7 @@ static struct file_picker_api file;
 static struct db_api db;
 
 #ifdef RELEASE_MODE
+#define SQLITE_ENABLE_MEMSYS5 1
 #include "lib/fnt.c"
 #include "lib/img.h"
 #include "lib/img.c"
@@ -203,7 +206,7 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
   for (int i = 0; i < cnt; ++i) {
     /* open each database in new tab */
     struct app_view *view = app_view_new(app, sys);
-    view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
+    view->db = db.new(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);
     if (!view->db) {
       app_view_del(app, view, sys);
       continue;
@@ -228,6 +231,8 @@ app_init(struct app *app, struct sys *sys) {
 
   res.init(&app->res, &args);
   gui.init(&app->gui, sys->mem.arena, CFG_COLOR_SCHEME);
+  app->db_mem = sys->mem.alloc(0, CFG_DB_MAX_MEMORY, 0, 0);
+  db.init(app->db_mem);
 
   app->fs = file.init(sys, &app->gui, sys->mem.arena, sys->mem.tmp);
   app->views = arena_dyn(sys->mem.arena, sys, struct app_view*, 16);
@@ -242,15 +247,16 @@ static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
   assert(sys);
-  file.shutdown(app->fs, sys);
 
+  file.shutdown(app->fs, sys);
   fori_dyn(i, app->views) {
     struct app_view *view = app->views[i];
-    db.shutdown(view->db, sys);
+    db.del(view->db, sys);
     dyn_free(view->file_path, sys);
     app_view_del(app, view, sys);
   }
   dyn_free(app->views, sys);
+  sys->mem.free(app->db_mem);
 }
 static int
 ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
@@ -334,7 +340,7 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
       struct sys *sys = ctx->sys;
       if (file.ui(&view->file_path, app->fs, ctx, &bdy, pan)) {
         struct str file_path = dyn_str(view->file_path);
-        view->db = db.init(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
+        view->db = db.new(&app->gui, sys->mem.arena, sys->mem.tmp, file_path);
         view->state = APP_STATE_DB;
         if (view->db) {
           struct app_view *new_view = app_view_new(app, sys);

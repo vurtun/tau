@@ -20,6 +20,7 @@
 #include "sys.h"
 #include "../lib/fmt.c"
 #include "../lib/std.c"
+#include "../lib/math.c"
 #endif
 
 #define REN_CEL_X 80

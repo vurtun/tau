@@ -22,6 +22,7 @@
 #include "sys/ren.h"
 #include "sys/sys.h"
 #include "lib/std.c"
+#include "lib/math.c"
 
 /* app */
 #include "res.h"
@@ -402,7 +403,8 @@ gui_lay_item(struct gui_lay *lay, const int *items) {
  * ---------------------------------------------------------------------------
  */
 static void
-gui_panel_hot(struct gui_ctx *ctx, struct gui_panel *p, struct gui_panel *parent) {
+gui_panel_hot(struct gui_ctx *ctx, struct gui_panel *p,
+              struct gui_panel *parent) {
   assert(ctx && p);
   const struct gui_box *b = &p->box;
   p->is_focused = p->id == ctx->focused;

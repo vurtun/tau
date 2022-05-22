@@ -36,6 +36,7 @@
 #include "ren.h"
 #include "sys.h"
 #include "../lib/std.c"
+#include "../lib/math.c"
 
 #ifdef RELEASE_MODE
 #include "../app.h"

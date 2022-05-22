@@ -14,6 +14,8 @@
 #define CFG_COLOR_TEXT          0xFF101010
 #endif
 
+#define CFG_DB_MAX_MEMORY       MB(1)
+
 /* shortcuts  */
 static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_ACT]                = {.key = {SYS_KEY_RETURN, 0}},

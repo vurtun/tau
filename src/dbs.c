@@ -14,6 +14,7 @@
 #include <time.h>
 
 /* sys */
+#define SQLITE_ENABLE_MEMSYS5 1
 #include "sys/cpu.h"
 #include "lib/fmt.h"
 #include "lib/fmt.c"
@@ -22,6 +23,7 @@
 #include "sys/ren.h"
 #include "sys/sys.h"
 #include "lib/std.c"
+#include "lib/math.c"
 #include "lib/sql.h"
 #include "lib/sql.c"
 #include "lib/img.h"
@@ -1142,9 +1144,14 @@ db_tbl_fltrs_enabled(struct db_tbl_fltr_view *fltr) {
   }
   return 1;
 }
+static int
+db_init(struct mem_blk *blk) {
+  int rc = sqlite3_config(SQLITE_CONFIG_HEAP, blk->base, blk->size, 64);
+  return rc == 0;
+}
 static struct db_ui_view*
 db_setup(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem,
-          struct str path) {
+         struct str path) {
   assert(db);
   assert(ctx);
   assert(mem);
@@ -2661,9 +2668,10 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
  */
 extern void dlExport(void *export, void *import);
 static const struct db_api db_api = {
-  .init = db_setup,
+  .init = db_init,
+  .new = db_setup,
   .update = db_update,
-  .shutdown = db_free,
+  .del = db_free,
   .ui = ui_db_explr,
 };
 static void

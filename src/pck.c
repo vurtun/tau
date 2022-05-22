@@ -22,6 +22,7 @@
 #include "sys/ren.h"
 #include "sys/sys.h"
 #include "lib/std.c"
+#include "lib/math.c"
 
 /* app */
 #include "res.h"

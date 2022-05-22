@@ -158,6 +158,7 @@ struct gui_box_cut {
   enum gui_box_cut_side side;
   int gap;
 };
+
 /* panel */
 struct gui_ctx;
 #define gui_id(ptr) ((unsigned long long)(ptr))
@@ -227,7 +228,6 @@ struct gui_icon {
   unsigned pressed : 1;
   unsigned released : 1;
 };
-
 
 enum gui_chk_state {
   GUI_CHK_UNSELECTED,

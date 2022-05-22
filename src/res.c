@@ -21,6 +21,7 @@
 #include "sys/ren.h"
 #include "sys/sys.h"
 #include "lib/std.c"
+#include "lib/math.c"
 
 #include "res.h"
 #include "lib/fnt.c"
