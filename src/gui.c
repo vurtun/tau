@@ -135,7 +135,7 @@ gui_shrink(const struct gui_bnd *x, int p) {
 static struct gui_bnd
 gui_div(const struct gui_bnd *b, int gap, int cnt, int idx) {
   int space = max(0, b->ext - (gap * cnt));
-  int s = floori(cast(float, space) / cast(float, cnt));
+  int s = math_floori(cast(float, space) / cast(float, cnt));
   idx = clamp(0, idx, max(0, cnt - 1));
   int at = b->min + (s + gap) * idx;
   return gui_min_ext(at, s);
@@ -290,7 +290,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
       continue;
     }
     const float s = cast(float, -slots[i]);
-    ret[i] = floori((s / sol->weight) * cast(float, sol->dyn_siz));
+    ret[i] = math_floori((s / sol->weight) * cast(float, sol->dyn_siz));
     ret[i] = con ? clamp(con[i*2+0], ret[i], con[i*2+1]) : ret[i];
     def_dyn_siz += ret[i];
   }
@@ -317,7 +317,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
         }
         if (!con || ret[i] < con[i*2+1]) {
           float s = cast(float, -slots[i]);
-          int siz = floori((s / weight) * cast(float, grow_siz));
+          int siz = math_floori((s / weight) * cast(float, grow_siz));
           if (con && ret[i] + siz > con[i*2+1]) {
             nxt_siz += ret[i] + siz - con[i*2+1];
             ret[i] = con[i*2+1];
@@ -1827,11 +1827,11 @@ gui__scrl_cur_lay(int *off, struct gui_panel *cur, const struct gui_scrl *s,
   assert(pan);
 
   const struct gui_box *p = &pan->box;
-  int w = ceili((s->size[0] / s->total[0]) * (double)p->x.ext);
+  int w = math_ceili((s->size[0] / s->total[0]) * (double)p->x.ext);
   if (w > 0 && w < s->min[0]) {
     w = off[0] = s->min[0];
   }
-  int h = ceili((s->size[1] / s->total[1]) * (double)p->y.ext);
+  int h = math_ceili((s->size[1] / s->total[1]) * (double)p->y.ext);
   if (h > 0 && h < s->min[1]) {
     h = off[1] = s->min[1];
   }
@@ -1843,8 +1843,8 @@ gui__scrl_cur_lay(int *off, struct gui_panel *cur, const struct gui_scrl *s,
   space[0] = (double)(p->x.ext - off[0]);
   space[1] = (double)(p->y.ext - off[1]);
 
-  int x = floori((double)p->x.min + ratio[0] * space[0]);
-  int y = floori((double)p->y.min + ratio[1] * space[1]);
+  int x = math_floori((double)p->x.min + ratio[0] * space[0]);
+  int y = math_floori((double)p->y.min + ratio[1] * space[1]);
   cur->box = gui_box(x, y, w, h);
 }
 static void
@@ -3277,7 +3277,7 @@ gui_spin_cur(struct gui_box *cur, const struct gui_spin_val *spin,
 
   float r = gui_spin_cur_ratio(spin);
   cur->x = gui_shrink(&s->pan.box.x, 2);
-  cur->x = gui_min_ext(cur->x.min, floori(r * cast(float, cur->x.ext)));
+  cur->x = gui_min_ext(cur->x.min, math_floori(r * cast(float, cur->x.ext)));
   cur->y = gui_shrink(&s->pan.box.y, 2);
 }
 static int
@@ -3426,7 +3426,7 @@ gui_spin_abs_drag(struct sys *sys, struct gui_spin_val *spin,
   switch (spin->typ) {
   case GUI_SPIN_INT: {
     float off = cast(float, spin->max.i - spin->min.i) * r;
-    int val = roundi(off) + spin->min.i;
+    int val = math_roundi(off) + spin->min.i;
     spin->val.i = clamp(spin->min.i, val, spin->max.i);
   } break;
   case GUI_SPIN_FLT: {
@@ -3757,8 +3757,8 @@ gui_reg_begin(struct gui_ctx *ctx, struct gui_reg *d,
                    d->space.x.max, d->space.y.max);
   }
   /* apply scroll offset to area body */
-  int off_x = floori(d->off[0]);
-  int off_y = floori(d->off[1]);
+  int off_x = math_floori(d->off[0]);
+  int off_y = math_floori(d->off[1]);
 
   b->x = gui_min_max(d->space.x.min - off_x, d->space.x.max - off_x);
   b->y = gui_min_max(d->space.y.min - off_y, d->space.y.max - off_y);
@@ -3790,8 +3790,8 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
     gui_clip_end(ctx, &d->clip_rect);
   }
-  int off_x = floori(d->off[0]);
-  int off_y = floori(d->off[1]);
+  int off_x = math_floori(d->off[0]);
+  int off_y = math_floori(d->off[1]);
 
   /* mouse wheel scrolling */
   if (sys->mouse.scrl[1]) {
@@ -3833,7 +3833,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
     d->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
 
     gui_vscrl(ctx, &d->vscrl, pan);
-    if (absf(d->off[1] - d->vscrl.off) >= 1.0f) {
+    if (math_abs(d->off[1] - d->vscrl.off) >= 1.0f) {
       d->off[1] = d->vscrl.off;
       d->scrolled = 1;
     }
@@ -3855,7 +3855,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
     d->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
 
     gui_hscrl(ctx, &d->hscrl, pan);
-    if (absf(d->off[0] - d->hscrl.off) >= 1.0f) {
+    if (math_abs(d->off[0] - d->hscrl.off) >= 1.0f) {
       d->off[0] = d->hscrl.off;
       d->scrolled = 1;
     }
@@ -3887,14 +3887,14 @@ gui_lst_lay_init(struct gui_lst_lay *lst) {
 
     lst->space[0] = max(0, lst->box.x.ext - (lst->pad[0] << 1));
     lst->space[1] = max(0, lst->box.y.ext - lst->pad[1]);
-    lst->cnt[0] = max(1, floori(space / slot));
-    lst->off = roundi(lst->offset / cast(float, lst->slot[1]));
+    lst->cnt[0] = max(1, math_floori(space / slot));
+    lst->off = math_roundi(lst->offset / cast(float, lst->slot[1]));
     lst->off_idx = lst->off * lst->cnt[0];
     lst->lay.y = gui_min_max(lst->lay.y.min, INT_MAX);
 
     lst->cnt[1] = 0;
     lst->view_cnt = lst->cnt[0];
-    lst->page = roundi(cast(float, lst->space[1]) / cast(float, lst->slot[1]));
+    lst->page = math_roundi(cast(float, lst->space[1]) / cast(float, lst->slot[1]));
     lst->page_cnt = lst->page * lst->cnt[0];
   } else {
     float space = cast(float, lst->space[1]);
@@ -3902,14 +3902,14 @@ gui_lst_lay_init(struct gui_lst_lay *lst) {
 
     lst->space[0] = max(0, lst->box.x.ext - lst->pad[0]);
     lst->space[1] = max(0, lst->box.y.ext - (lst->pad[1] << 1));
-    lst->cnt[1] = max(1, floori(space / slot));
-    lst->off = roundi(lst->offset / cast(float, lst->slot[0]));
+    lst->cnt[1] = max(1, math_floori(space / slot));
+    lst->off = math_roundi(lst->offset / cast(float, lst->slot[0]));
     lst->off_idx = lst->off * lst->cnt[1];
     lst->lay.x = gui_min_max(lst->lay.x.min, INT_MAX);
 
     lst->cnt[0] = 0;
     lst->view_cnt = lst->cnt[1];
-    lst->page = roundi(cast(float, lst->space[0]) / cast(float, lst->slot[0]));
+    lst->page = math_roundi(cast(float, lst->space[0]) / cast(float, lst->slot[0]));
     lst->page_cnt = lst->page * lst->cnt[1];
   }
   lst->total = lst->lay;
@@ -4385,7 +4385,7 @@ gui_lst_view(struct gui_lst_view *v, const struct gui_lst_lay *lay) {
   const int total = max(1, v->total_cnt) - 1;
   if (lay->orient == GUI_VERTICAL) {
     double cnt = cast(double, max(1, lay->cnt[0]));
-    v->cnt[1] = max(1, ceili(cast(double, total) / cnt));
+    v->cnt[1] = max(1, math_ceili(cast(double, total) / cnt));
     v->cnt[0] = lay->cnt[0];
 
     v->begin = lay->off_idx;
@@ -4396,7 +4396,7 @@ gui_lst_view(struct gui_lst_view *v, const struct gui_lst_lay *lay) {
     v->at[1] = lay->lay.y.min + lay->off * lay->slot[1];
   } else {
     double cnt = cast(double, max(1, lay->cnt[1]));
-    v->cnt[0] = max(1, ceili(cast(double, total) / cnt));
+    v->cnt[0] = max(1, math_ceili(cast(double, total) / cnt));
     v->cnt[1] = lay->cnt[1];
 
     v->begin = lay->off_idx;
@@ -4551,6 +4551,7 @@ gui_lst_elm_end(struct gui_ctx *ctx, struct gui_lst *lst,
   assert(ctx);
   assert(pan);
   assert(lst);
+
   unused(lst);
   gui_panel_end(ctx, pan, parent);
 }
@@ -5064,8 +5065,8 @@ gui_tbl_hdr_begin(struct gui_ctx *ctx, struct gui_tbl *tbl, int *items, int *s) 
   tbl->cnt = toc.col_cnt;
   tbl->hdr_h = ctx->cfg.item;
 
-  int offx = floori(tbl->reg.off[0]);
-  int offy = floori(tbl->reg.off[1]);
+  int offx = math_floori(tbl->reg.off[0]);
+  int offy = math_floori(tbl->reg.off[1]);
   tbl->spt.box.x = gui_min_ext(pan->box.x.min, pan->box.x.ext + offx);
   tbl->spt.box.y = gui_min_ext(pan->box.y.min + offy, ctx->cfg.item);
   gui_split_begin(ctx, &tbl->spt, pan, GUI_SPLIT_EXP, GUI_HORIZONTAL, items, s);
@@ -5195,8 +5196,8 @@ gui_tbl_lst_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui_lst_begin(ctx, &tbl->lst, &lst_cfg);
   gui_reg_apply_lst(&tbl->reg, &tbl->lst, cfg->lay.scrl_mult);
 
-  int cx = lst.x.min + floori(tbl->reg.off[0]);
-  int cy = tbl->lst.box.y.min + floori(tbl->lst.lay.offset) + cfg->lay.pad[1];
+  int cx = lst.x.min + math_floori(tbl->reg.off[0]);
+  int cy = tbl->lst.box.y.min + math_floori(tbl->lst.lay.offset) + cfg->lay.pad[1];
   gui_clip_begin(&tbl->clip, ctx, cx, cy, cx + lst.x.ext, cy + lst.y.ext);
 
   tbl->lst.begin = tbl->lst.view.begin;
@@ -5331,7 +5332,7 @@ gui_tbl_lst_tm(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
 }
 
 /* ---------------------------------------------------------------------------
- *                              Drop Down
+ *                              Picker
  * ---------------------------------------------------------------------------
  */
 static void
@@ -5346,7 +5347,8 @@ gui_pckr_begin(struct gui_ctx *ctx, struct gui_combo *com,
   pan->focusable = 1;
 
   gui_panel_begin(ctx, pan, parent);
-  if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
+  if (ctx->pass == GUI_RENDER &&
+      pan->state != GUI_HIDDEN) {
     gui_edit_drw(ctx, pan);
   }
   struct gui_btn btn = {0};
@@ -5363,7 +5365,8 @@ gui_pckr_end(struct gui_ctx *ctx, struct gui_combo *com,
                   struct gui_panel *parent) {
   assert(ctx);
   assert(com);
-  if (ctx->pass == GUI_RENDER && com->pan.state == GUI_FOCUSED) {
+  if (ctx->pass == GUI_RENDER &&
+      com->pan.state == GUI_FOCUSED) {
     struct gui_box hdr = com->hdr;
     hdr.x = gui_min_max(com->box.x.min, hdr.x.max);
     gui_focus_drw(ctx, &hdr, 1);
@@ -5640,12 +5643,10 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *b, unsigned flags,
               int off_x, int off_y) {
   assert(b);
   assert(ctx);
-
   int s = ctx->cfg.grid;
   struct sys *sys = ctx->sys;
   sys->ren.drw.line_style(ctx->ren, 1);
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
-
   if (flags & GUI_GRID_X) {
     int x = (off_x < 0) ? (abs(off_x) % s) : (s - (off_x % s));
     for (; x < b->x.ext; x += s) {
@@ -5674,8 +5675,8 @@ gui_grid_begin(struct gui_ctx *ctx, struct gui_grid *g,
   gui_panel_begin(ctx, &g->pan, parent);
   memcpy(g->off, off, sizeof(g->off));
 
-  int off_x = floori(g->off[0]);
-  int off_y = floori(g->off[1]);
+  int off_x = math_floori(g->off[0]);
+  int off_y = math_floori(g->off[1]);
 
   /* calculate clip area */
   struct gui_box *b = &g->pan.box;

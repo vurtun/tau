@@ -175,91 +175,99 @@ struct cpu_info {
 #define CPU_SIMD_128
 #endif
 
-#define chr16 __m128i
-#define chr16_ld(p) _mm_loadu_si128((const __m128i *)(const void*)p)
-#define chr16_eq(a,b) _mm_cmpeq_epi8(a,b)
+#define chr16               __m128i
+#define chr16_ld(p)         _mm_loadu_si128((const __m128i *)(const void*)p)
+#define chr16_eq(a,b)       _mm_cmpeq_epi8(a,b)
 #define chr16_tst_all_ones(a) _mm_test_all_ones(a)
 #define chr16_tst_all_zero(a) _mm_test_all_zero(a,_mm_set1_epi8(0xff))
-#define chr16_or(a,b) _mm_or_si128(a,b)
+#define chr16_or(a,b)       _mm_or_si128(a,b)
 
-#define bigreg __m128i
-#define bigreg_u8(c) _mm_set1_epi8(c)
-#define bigreg_ld(v,ptr) (v)=_mm_load_si128(((__m128i*)(ptr)))
+#define bigreg              __m128i
+#define bigreg_u8(c)        _mm_set1_epi8(c)
+#define bigreg_ld(v,ptr)    (v)=_mm_load_si128(((__m128i*)(ptr)))
 #define bigreg_str(ptr,val) _mm_store_si128(((__m128i*)(ptr)),val)
 #define bigreg_stru(ptr,val) _mm_storeu_si128( ((__m128i*)(ptr)),val)
 
-#define flt4 __m128
-#define flt4_flt(a) _mm_set_ps1(a)
-#define flt4_str(d,r) _mm_storeu_ps(((float*)(d)),r)
-#define flt4_max(a,b) _mm_max_ps(a,b)
-#define flt4_mul(a,b) _mm_mul_ps(a,b)
-#define flt4_add(a,b) _mm_add_ps(a,b)
-#define flt4_cmp_gt(a,b) _mm_castps_si128(_mm_cmpgt_ps(a,b))
-#define flt4_and(a,b) _mm_and_ps(a,b)
-#define flt4_xor(a,b) _mm_xor_ps(a,b)
-#define flt4_zip_lo32(a,b) _mm_unpacklo_ps(a,b)
-#define flt4_zip_hi32(a,b) _mm_unpackhi_ps(a,b)
-#define flt4_zip_lo64(a,b) _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
-#define flt4_zip_hi64(a,b) _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
-#define flt4_int4(a) _mm_castsi128_ps(a)
-#define flt4_cmpu(a,b) _mm_cmpunord_ps(a,b)
-#define flt4_rsqrt(a) _mm_rsqrt_ps(a)
-#define flt4_strs(d,a) _mm_store_ss(d,a)
+#define flt4                __m128
+#define flt4_flt(a)         _mm_set_ps1(a)
+#define flt4_str(d,r)       _mm_storeu_ps(((float*)(d)),r)
+#define flt4_max(a,b)       _mm_max_ps(a,b)
+#define flt4_mul(a,b)       _mm_mul_ps(a,b)
+#define flt4_add(a,b)       _mm_add_ps(a,b)
+#define flt4_cmp_gt(a,b)    _mm_castps_si128(_mm_cmpgt_ps(a,b))
+#define flt4_and(a,b)       _mm_and_ps(a,b)
+#define flt4_xor(a,b)       _mm_xor_ps(a,b)
+#define flt4_zip_lo32(a,b)  _mm_unpacklo_ps(a,b)
+#define flt4_zip_hi32(a,b)  _mm_unpackhi_ps(a,b)
+#define flt4_zip_lo64(a,b)  _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
+#define flt4_zip_hi64(a,b)  _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
+#define flt4_int4(a)        _mm_castsi128_ps(a)
+#define flt4_cmpu(a,b)      _mm_cmpunord_ps(a,b)
+#define flt4_rsqrt(a)       _mm_rsqrt_ps(a)
+#define flt4_strs(d,a)      _mm_store_ss(d,a)
+#define flt4_hflt4(s)       _mm_cvtph_ps(s)
 
-#define int4 __m128i
-#define int4_ld(p) _mm_loadu_si128((const __m128i*)(const void*)p)
-#define int4_set(x,y,z,w) _mm_setr_epi32(x,y,z,w)
-#define int4_str(p,i) _mm_storeu_si128((__m128i*)(void*)p, i)
-#define int4_char(i) _mm_set1_epi8(i)
-#define int4_int(i) _mm_set1_epi32(i)
-#define int4_uint(i) _mm_set1_epi32(i)
-#define int4_sll(v,i) _mm_slli_epi32(v,i)
-#define int4_srl(v,i) _mm_srli_epi32(v,i)
-#define int4_sra(v,i) _mm_srai_epi32(v,i)
-#define int4_and(a,b) _mm_and_si128(a, b)
-#define int4_andnot(a,b) _mm_andnot_si128(a, b)
-#define int4_or(a,b) _mm_or_si128(a, b)
-#define int4_add(a,b) _mm_add_epi32(a, b)
-#define int4_sub(a,b) _mm_sub_epi32(a, b)
-#define int4_mul(a,b) _mm_mullo_epi32(a, b)
-#define int4_blend(a,b,m) _mm_blendv_epi8(a,b,m)
-#define int4_flt4(a) _mm_castps_si128(a)
-#define int4_cmp_gt(a,b) _mm_cmpgt_epi32(a,b)
+typedef struct hflt4_t {unsigned short[4];} hflt4;
+static hflt4
+hflt4_flt4(flt4 in) {
+  unsigned int sse_align d[4] = {0};
+  int4_str(d, _mm_cvtps_ph(s,_MM_FROUND_TO_NEAREST_INT));
+  return (hflt4){d[0],d[1],d[2],d[3]};
+}
+
+#define int4                __m128i
+#define int4_ld(p)          _mm_loadu_si128((const __m128i*)(const void*)p)
+#define int4_set(x,y,z,w)   _mm_setr_epi32(x,y,z,w)
+#define int4_str(p,i)       _mm_storeu_si128((__m128i*)(void*)p, i)
+#define int4_char(i)        _mm_set1_epi8(i)
+#define int4_int(i)         _mm_set1_epi32(i)
+#define int4_uint(i)        _mm_set1_epi32(i)
+#define int4_sll(v,i)       _mm_slli_epi32(v,i)
+#define int4_srl(v,i)       _mm_srli_epi32(v,i)
+#define int4_sra(v,i)       _mm_srai_epi32(v,i)
+#define int4_and(a,b)       _mm_and_si128(a, b)
+#define int4_andnot(a,b)    _mm_andnot_si128(a, b)
+#define int4_or(a,b)        _mm_or_si128(a, b)
+#define int4_add(a,b)       _mm_add_epi32(a, b)
+#define int4_sub(a,b)       _mm_sub_epi32(a, b)
+#define int4_mul(a,b)       _mm_mullo_epi32(a, b)
+#define int4_blend(a,b,m)   _mm_blendv_epi8(a,b,m)
+#define int4_flt4(a)        _mm_castps_si128(a)
+#define int4_cmp_gt(a,b)    _mm_cmpgt_epi32(a,b)
 
 /* simd 256-bit */
 #ifdef USE_SIMD_256
 #define CPU_SIMD_256
 #endif
 
-#define int8 __m256i
-#define flt8 __m256
-
-#define int8_ld(p) _mm256_loadu_si256((const __m256i*)(const void*)p)
-#define int8_store(p,i) _mm256_storeu_si256((__m256i*)(void*)p, i)
-#define int8_char(i) _mm256_set1_epi8(i)
-#define int8_int(i) _mm256_set1_epi32(i)
-#define int8_sll(v,i) _mm256_slli_epi32(v,i)
-#define int8_srl(v,i) _mm256_srli_epi32(v,i)
-#define int8_and(a,b) _mm256_and_si256(a, b)
-#define int8_andnot(a,b) _mm256_andnot_si256(a, b)
-#define int8_or(a,b) _mm256_or_si256(a, b)
-#define int8_add(a,b) _mm256_add_epi32(a, b)
-#define int8_sub(a,b) _mm256_sub_epi32(a, b)
-#define int8_mul(a,b) _mm256_mullo_epi32(a, b)
+#define flt8                __m256
+#define int8                __m256i
+#define int8_ld(p)          _mm256_loadu_si256((const __m256i*)(const void*)p)
+#define int8_store(p,i)     _mm256_storeu_si256((__m256i*)(void*)p, i)
+#define int8_char(i)        _mm256_set1_epi8(i)
+#define int8_int(i)         _mm256_set1_epi32(i)
+#define int8_sll(v,i)       _mm256_slli_epi32(v,i)
+#define int8_srl(v,i)       _mm256_srli_epi32(v,i)
+#define int8_and(a,b)       _mm256_and_si256(a, b)
+#define int8_andnot(a,b)    _mm256_andnot_si256(a, b)
+#define int8_or(a,b)        _mm256_or_si256(a, b)
+#define int8_add(a,b)       _mm256_add_epi32(a, b)
+#define int8_sub(a,b)       _mm256_sub_epi32(a, b)
+#define int8_mul(a,b)       _mm256_mullo_epi32(a, b)
 
 /* aes */
 #define aes128 __m128i
-#define aes128_load(p) _mm_loadu_si128((const __m128i *)(const void*)p)
-#define aes128_dec(a,key) _mm_aesdec_si128(a, key)
-#define aes128_and(a,b) _mm_and_si128(a, b)
-#define aes128_xor(a,b) _mm_xor_si128(a, b)
-#define aes128_eq(a, b) (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
-#define aes128_int(a) _mm_set1_epi32(a)
-#define aes128_zero() _mm_set1_epi32(0)
-#define aes128_lane_int(v) _mm_cvtsi128_si32(v);
+#define aes128_load(p)      _mm_loadu_si128((const __m128i *)(const void*)p)
+#define aes128_dec(a,key)   _mm_aesdec_si128(a, key)
+#define aes128_and(a,b)     _mm_and_si128(a, b)
+#define aes128_xor(a,b)     _mm_xor_si128(a, b)
+#define aes128_eq(a, b)     (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
+#define aes128_int(a)       _mm_set1_epi32(a)
+#define aes128_zero()       _mm_set1_epi32(0)
+#define aes128_lane_int(v)  _mm_cvtsi128_si32(v);
 
 /* misc */
-#define yield() _mm_pause()
+#define yield()             _mm_pause()
 
 static void
 cpu__id(unsigned *eax, unsigned *ebx, unsigned *ecx, unsigned *edx) {
@@ -334,12 +342,12 @@ cpu_info(struct cpu_info *cpu) {
 #define CPU_SIMD_128
 #endif
 
-#define chr16 uint8x16_t
-#define chr16_ld(p) vld1q_u8((const unsigned char*)(const void*)p)
-#define chr16_eq(a,b) vceqq_u8(a,b)
-#define chr16_or(a,b) vorrq_u8(a,b)
-#define chr16_str(p,v) vst1q_u8( ((const unsigned char*)(p)),v)
-#define chr16_stru(p,v) vst1q_u8( ((const unsigned char*)(p)),v)
+#define chr16             uint8x16_t
+#define chr16_ld(p)       vld1q_u8((const unsigned char*)(const void*)p)
+#define chr16_eq(a,b)     vceqq_u8(a,b)
+#define chr16_or(a,b)     vorrq_u8(a,b)
+#define chr16_str(p,v)    vst1q_u8( ((const unsigned char*)(p)),v)
+#define chr16_stru(p,v)   vst1q_u8( ((const unsigned char*)(p)),v)
 
 static inline int
 chr16_tst_all_ones(chr16 a) {
@@ -354,28 +362,29 @@ chr16_tst_all_zero(chr16 a) {
   return (lo | hi) == 0u;
 }
 
-#define bigreg uint8x16_t
-#define bigreg_u8(c) vdupq_n_u8(c)
-#define bigreg_ld(val,ptr) (val)=vld1q_u8((const unsigned char*)(const void*)(ptr))
+#define bigreg              uint8x16_t
+#define bigreg_u8(c)        vdupq_n_u8(c)
+#define bigreg_ld(val,ptr)  (val)=vld1q_u8((const unsigned char*)(const void*)(ptr))
 #define bigreg_str(ptr,val) vst1q_u8((void*)(ptr),val)
 #define bigreg_stru(ptr,val) vst1q_u8(((bigreg*)(void*)(ptr)),val)
 
-#define flt4 float32x4_t
-#define flt4_flt(a) vdupq_n_f32(a)
-#define flt4_str(d,r) vst1q_f32((float*)d, r)
-#define flt4_max(a,b) vmaxnmq_f32(a,b)
-#define flt4_mul(a,b) vmulq_f32(a,b)
-#define flt4_add(a,b) vaddq_f32(a,b)
-#define flt4_cmp_gt(a,b) vcgtq_f32(a,b)
-#define flt4_and(a,b) vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
-#define flt4_xor(a,b) vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
-#define flt4_zip_lo32(a,b) vzip1q_f32(a,b)
-#define flt4_zip_hi32(a,b) vzip2q_f32(a,b)
-#define flt4_zip_lo64(a,b) vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
-#define flt4_zip_hi64(a,b) vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
-#define flt4_int4(a) vreinterpretq_f32_s32(a)
-#define flt4_rsqrt(a) vrsqrteq_f32(a)
-#define flt4_strs(d,a) vst1q_lane_f32(d,a,0)
+#define flt4                float32x4_t
+#define flt4_flt(a)         vdupq_n_f32(a)
+#define flt4_str(d,r)       vst1q_f32((float*)d, r)
+#define flt4_max(a,b)       vmaxnmq_f32(a,b)
+#define flt4_mul(a,b)       vmulq_f32(a,b)
+#define flt4_add(a,b)       vaddq_f32(a,b)
+#define flt4_cmp_gt(a,b)    vcgtq_f32(a,b)
+#define flt4_and(a,b)       vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
+#define flt4_xor(a,b)       vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
+#define flt4_zip_lo32(a,b)  vzip1q_f32(a,b)
+#define flt4_zip_hi32(a,b)  vzip2q_f32(a,b)
+#define flt4_zip_lo64(a,b)  vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
+#define flt4_zip_hi64(a,b)  vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
+#define flt4_int4(a)        vreinterpretq_f32_s32(a)
+#define flt4_rsqrt(a)       vrsqrteq_f32(a)
+#define flt4_strs(d,a)      vst1q_lane_f32(d,a,0)
+#define flt4_hflt4(a)       vcvt_f32_f16(a)
 
 static inline flt4
 flt4_cmpu(flt4 a, flt4 b) {
@@ -384,24 +393,27 @@ flt4_cmpu(flt4 a, flt4 b) {
   return vreinterpretq_f32_u32(vmvnq_u32(vandq_u32(f32a, f32b)));
 }
 
-#define int4 int32x4_t
-#define int4_ld(p) vld1q_s32((const int*)(const void*)p)
-#define int4_str(p,i) vst1q_s32((int*)(void*)p, i)
-#define int4_char(i) vreinterpretq_s32_s8(vdupq_n_s8(i))
-#define int4_int(i) vdupq_n_s32(i)
-#define int4_uint(i) vreinterpretq_s32_u32(vdupq_n_u32(i))
-#define int4_and(a,b) vandq_s32(a,b)
-#define int4_andnot(a,b) vbicq_s32(b,a)
-#define int4_or(a,b) vorrq_s32(a,b)
-#define int4_add(a,b) vaddq_s32(a,b)
-#define int4_sub(a,b) vsubq_s32(a,b)
-#define int4_mul(a,b) vmulq_s32(a,b)
-#define int4_sll(a,i) vshlq_s32(a, vdupq_n_s32(i))
-#define int4_srl(a,i) vshlq_s32(a, vdupq_n_s32(-i))
-#define int4_sra(v,i) vshlq_s32(v, vdupq_n_s32(-i))
+#define hflt4               float16x4_t
+#define hflt4_flt4(s)       vcvt_f16_f32(s)
+
+#define int4                int32x4_t
+#define int4_ld(p)          vld1q_s32((const int*)(const void*)p)
+#define int4_str(p,i)       vst1q_s32((int*)(void*)p, i)
+#define int4_char(i)        vreinterpretq_s32_s8(vdupq_n_s8(i))
+#define int4_int(i)         vdupq_n_s32(i)
+#define int4_uint(i)        vreinterpretq_s32_u32(vdupq_n_u32(i))
+#define int4_and(a,b)       vandq_s32(a,b)
+#define int4_andnot(a,b)    vbicq_s32(b,a)
+#define int4_or(a,b)        vorrq_s32(a,b)
+#define int4_add(a,b)       vaddq_s32(a,b)
+#define int4_sub(a,b)       vsubq_s32(a,b)
+#define int4_mul(a,b)       vmulq_s32(a,b)
+#define int4_sll(a,i)       vshlq_s32(a, vdupq_n_s32(i))
+#define int4_srl(a,i)       vshlq_s32(a, vdupq_n_s32(-i))
+#define int4_sra(v,i)       vshlq_s32(v, vdupq_n_s32(-i))
 #define int4_blend(a,b,msk) vbslq_s32(msk, b, a)
-#define int4_flt4(a) vreinterpretq_s32_f32(a)
-#define int4_cmp_gt(a,b) vreinterpretq_s32_u32(vcgtq_s32(a,b))
+#define int4_flt4(a)        vreinterpretq_s32_f32(a)
+#define int4_cmp_gt(a,b)    vreinterpretq_s32_u32(vcgtq_s32(a,b))
 
 static inline int4
 int4_set(int i3, int i2, int i1, int i0) {

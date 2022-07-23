@@ -431,13 +431,13 @@ typedef char fnt__check_size32[sizeof(fnt_int32) == 4 ? 1 : -1];
 typedef char fnt__check_size16[sizeof(fnt_int16) == 2 ? 1 : -1];
 
 // e.g. #define your own FNT_ifloor/FNT_iceil() to avoid math.h
-#define FNT_ifloor(x) floori(x)
-#define FNT_iceil(x) ceili(x)
-#define FNT_sqrt(x) sqrta(x)
-#define FNT_pow(x, y) powa(x, y)
-#define FNT_fmod(x, y) mod(x, y)
-#define FNT_cos(x) cosa(x)
-#define FNT_fabs(x) absf(x)
+#define FNT_ifloor(x) math_floori(x)
+#define FNT_iceil(x) math_ceili(x)
+#define FNT_sqrt(x) math_sqrt(x)
+#define FNT_pow(x, y) math_pow(x, y)
+#define FNT_fmod(x, y) math_fmod(x, y)
+#define FNT_cos(x) math_cos(x)
+#define FNT_fabs(x) math_abs(x)
 
 // #define your own functions "FNT_malloc" / "FNT_free" to avoid malloc.h
 #ifndef FNT_malloc

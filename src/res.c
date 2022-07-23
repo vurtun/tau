@@ -402,7 +402,7 @@ retry:;
   int scaled_ascent = cast(int, cast(float, ascent) * scale + 0.5f);
   for (int i = 0; i < 256; i++) {
     set->glyphs[i].yoff += cast(float, scaled_ascent);
-    set->glyphs[i].xadvance = cast(float, roundi(set->glyphs[i].xadvance));
+    set->glyphs[i].xadvance = cast(float, math_roundi(set->glyphs[i].xadvance));
   }
   /* convert 8bit data to 32bit */
   for (int i = w * h - 1; i >= 0; i--) {
@@ -444,7 +444,7 @@ res_fnt_new(struct res *r, struct arena *a, void *data, float pntsiz) {
   fnt->scale = fnt_scale_for_mapping_em_to_pixels(&fnt->stbfont, pntsiz);
 
   float total_h = cast(float, ascent - descent + linegap);
-  fnt->height = ceili(total_h * fnt->scale);
+  fnt->height = math_ceili(total_h * fnt->scale);
   return fnt;
 
 fail:
@@ -470,20 +470,20 @@ res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
     assert(g->yoff >= SCHAR_MIN && g->yoff <= SCHAR_MAX);
 
     run->off[run->len] = cast(unsigned char, n);
-    ext += ceili(g->xadvance);
+    ext += math_ceili(g->xadvance);
     run->ext[run->len * 2 + 0] = cast(unsigned char, g->x1 - g->x0);
     run->ext[run->len * 2 + 1] = cast(unsigned char, g->y1 - g->y0);
     run->coord[run->len * 2 + 0] = g->x0;
     run->coord[run->len * 2 + 1] = g->y0;
-    run->pad[run->len * 2 + 0] = cast(signed char, roundi(g->xoff));
-    run->pad[run->len * 2 + 1] = cast(signed char, roundi(g->yoff));
+    run->pad[run->len * 2 + 0] = cast(signed char, math_roundi(g->xoff));
+    run->pad[run->len * 2 + 1] = cast(signed char, math_roundi(g->yoff));
     run->tex_id[run->len] = set->texid;
 
     if (rest.len) {
       unsigned nxt = utf_get(rest);
       int k = fnt_get_codepoint_kern_advance(&fnt->stbfont,
         cast(int, rune), cast(int, nxt));
-      ext += ceili(fnt->scale * cast(float, k));
+      ext += math_ceili(fnt->scale * cast(float, k));
     }
     run->adv[run->len++] = cast(unsigned short, ext);
     if (run->len >= RES_FNT_MAX_RUN) {
@@ -583,8 +583,8 @@ res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
   int w = g->x1 - g->x0;
   int h = g->y1 - g->y0;
 
-  int at_x = x + roundi(g->xoff);
-  int at_y = y + roundi(g->yoff);
+  int at_x = x + math_roundi(g->xoff);
+  int at_y = y + math_roundi(g->yoff);
   sys->ren.drw.img(buf, at_x, at_y, sx, sy, w, h, set->texid);
   return g;
 }
@@ -650,12 +650,12 @@ static void
 res_init(struct res *r, const struct res_args *args) {
   struct sys *sys = r->sys;
   static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f};
-  float pnt_siz = floori(sys->fnt_pnt_size * sys->ui_scale);
+  float pnt_siz = math_floori(sys->fnt_pnt_size * sys->ui_scale);
 
   double best_d = 10000.0;
   r->fnt_pnt_size = 16.0f;
   fori_arrv(i, fnt_pnt_siz) {
-    double d = absf(pnt_siz - fnt_pnt_siz[i]);
+    double d = math_abs(pnt_siz - fnt_pnt_siz[i]);
     if (d < best_d) {
       r->fnt_pnt_size = fnt_pnt_siz[i];
       best_d = d;

@@ -88,9 +88,9 @@ enum gui_mouse_btn_id {
   GUI_MOUSE_BTN_CNT
 };
 enum gui_mouse_btn_mask {
-  GUI_BTN_LEFT = 1 << GUI_MOUSE_LEFT,
-  GUI_BTN_RIGHT = 1 << GUI_MOUSE_RIGHT,
-  GUI_BTN_MIDDLE = 1 << GUI_MOUSE_MIDDLE,
+  GUI_BTN_LEFT    = 1 << GUI_MOUSE_LEFT,
+  GUI_BTN_RIGHT   = 1 << GUI_MOUSE_RIGHT,
+  GUI_BTN_MIDDLE  = 1 << GUI_MOUSE_MIDDLE,
 };
 struct gui_mouse_btn {
   unsigned clk : 1;

@@ -128,9 +128,9 @@ struct sys_mac {
   struct sys_mac_module mods[SYS_MAC_MAX_MODS];
 
   NSWindow* win;
-  NSTrackingArea* track_area;
-  sys__mac_app_delegate* app_dlg;
-  sys__mac_window_delegate* win_dlg;
+  NSTrackingArea *track_area;
+  sys__mac_app_delegate *app_dlg;
+  sys__mac_window_delegate *win_dlg;
   sys__mac_view *view;
   sys__mac_view_delegate *view_dlg;
   struct sys_mac_metal metal;

@@ -473,7 +473,7 @@ file_cmp_time_desc(const void *a, const void *b) {
 }
 static struct lst_elm*
 file_tree_node_sort_after_elm(struct file_tree_node *n,
-                                  struct file_tree_node *s) {
+                              struct file_tree_node *s) {
   assert(s);
   assert(n);
 
@@ -489,7 +489,7 @@ file_tree_node_sort_after_elm(struct file_tree_node *n,
 }
 static void
 file_tree_node_lnk(struct file_tree_node *n,
-                       struct file_tree_node *s) {
+                   struct file_tree_node *s) {
   assert(s);
   assert(n);
 

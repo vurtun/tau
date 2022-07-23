@@ -1717,7 +1717,7 @@ ut_tbl(struct sys *sys) {
   int val = 1337;
 
   tbl(int) t = 0;
- int *v = tbl_fnd(t, h);
+  int *v = tbl_fnd(t, h);
   assert(v == 0);
 
   tbl_put(t, sys, h, &val);
@@ -1948,6 +1948,29 @@ sort__str(int *r, int *r2, short *o, void *a, int n, int siz, int off,
           sort_access_f fn, void *u, int d) {
   for (int i = 0; i < n; ++i) r[i] = i;
   return sort__str_base(r, r2, o, a, n, siz, off, 0, n-1, fn, u, d);
+}
+/* ---------------------------------------------------------------------------
+ *                                  Search
+ * ---------------------------------------------------------------------------
+ */
+static int
+sorted_search(const void *vals, int cnt, int siz, void *val,
+              int(*cmp_less)(const void *a, const void *b)) {
+  int nleft = cnt;
+  const unsigned char *base = vals;
+  for (;;) {
+    int half = nleft >> 1;
+    if (half <= 0) {
+      break;
+    }
+    const unsigned char *mid = base + half * siz;
+    base = cmp_less(mid, val) ? mid : base;
+    nleft -= half;
+  }
+  if (nleft == 1) {
+    base += cmp_less(base, val) ? siz : 0;
+  }
+  return cast(int, (base - cast(const unsigned char*, vals)))/siz;
 }
 
 /* ---------------------------------------------------------------------------
