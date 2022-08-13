@@ -1397,7 +1397,6 @@ path_ext(struct str path) {
  *                                  Set
  * ---------------------------------------------------------------------------
  */
-
 #define SET_MIN_SIZE 64
 #define SET_GROW_FACTOR 2.8f
 #define SET_FULL_PERCENT 0.85f
@@ -1780,7 +1779,9 @@ sort_q3(int *rnk, void *arr, int siz, int n, int off, int lo, int hi,
     unsigned alo = sort__access(a + rnk[lo] * siz, usr, access, conv, off);
     unsigned ahi = sort__access(a + rnk[hi] * siz, usr, access, conv, off);
     if (ahi < alo) {
-      int tmp = rnk[lo]; rnk[lo] = rnk[hi]; rnk[hi] = tmp;
+      int tmp = rnk[lo];
+      rnk[lo] = rnk[hi];
+      rnk[hi] = tmp;
     }
     i = lo, j = hi;
   } else {
@@ -1854,8 +1855,8 @@ sort_radix(int *rnk, int *rnk2, void *a, int siz, int n, int off,
     }
     /* perform radix sort */
     unsigned shift = i * SORT_RADIX_BITS;
-    for (unsigned j = 0; i < cast(unsigned,n); ++i) {
-      int id = rnk[j];
+    for (unsigned k = 0; k < cast(unsigned,n); ++k) {
+      int id = rnk[k];
       unsigned v = sort__access(p + id * siz, usr, access, conv, off);
       unsigned d = (v >> shift) & SORT_RADIX_MASK;
       *lnk[d]++ = cast(unsigned,id);

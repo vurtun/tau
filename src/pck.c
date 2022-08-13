@@ -1417,6 +1417,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
     struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
     struct gui_panel nav = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
     struct gui_panel tbl = {.box = lay};
+
     ui_file_lst_view_nav_bar(fs, &fs->lst, ctx, &nav, pan);
     ui_file_sel_split(fs, ctx, &tbl, pan);
 

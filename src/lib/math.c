@@ -87,9 +87,8 @@ math_ceili(double x) {
   }
 }
 static inline int
-math_flteq(float a, float b) {
+math_flteq(float a, float b, int epsilon) {
   /* http://realtimecollisiondetection.net/blog/?p=89 */
-  static const float epsilon = 0.0001f;
   return math_abs(a - b) < epsilon * max(1.0f, max(math_abs(a), math_abs(b)));
 }
 static float
@@ -524,7 +523,7 @@ hflt(float in) {
 #define opN(r,e,a,p,b,i,s,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     op((r)[uniqid(_i_)],e,(a)[uniqid(_i_)],p,(b)[uniqid(_i_)],i,s)
-#define opNs(r,e,a,p,b,i,s,N)\
+#define opNs(r,e,a,p,s,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     op((r)[uniqid(_i_)],e,(0),+,(a)[uniqid(_i_)],p,s)
 #define lerpN(r,a,b,t,N)\
@@ -539,17 +538,24 @@ hflt(float in) {
 #define map3N(r,fn,a,b,c,N)\
   for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
     (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)],(c)[uniqid(_i_)])
+#define dotN(r,a,b,N)\
+  do {r = 0; for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
+      r += (a)[uniqid(_i_)] * (b)[uniqid(_i_)];\
+  } while(0);
+#define lenN(r,a,N)\
+  do {float uniqid(_l_); dotN(uniqid(_l_),a,a,N);\
+    (r) = math_sqrt(uniqid(_l_));} while(0);
 
 #define minN(r,a,b,N) map2N(r,min,a,b,N)
 #define maxN(r,a,b,N) map2N(r,max,a,b,N)
 #define clampN(r,i,v,x,N) map3N(r,clamp,i,v,x,N)
 
 #define op2(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,2)
-#define op2s(r,e,a,p,s) opNs(r,e,a,p,b,i,s,2)
+#define op2s(r,e,a,p,s) opNs(r,e,a,p,s,2)
 #define op3(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,3)
-#define op3s(r,e,a,p,s) opNs(r,e,a,p,b,i,s,3)
+#define op3s(r,e,a,p,s) opNs(r,e,a,p,s,3)
 #define op4(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,4)
-#define op4s(r,e,a,p,s) opNs(r,e,a,p,b,i,s,4)
+#define op4s(r,e,a,p,s) opNs(r,e,a,p,s,4)
 
 /* vector 2D */
 #define set2(d,x,y)     (d)[0] = x, (d)[1] = y
@@ -921,6 +927,362 @@ qst_slerp(float *restrict qres, const float *restrict qfull_swing,
 }
 
 /* ---------------------------------------------------------------------------
+ *                                Bspline
+ * ---------------------------------------------------------------------------
+ */
+#define bspline_linear_len(ctrl_cnt) cast(float,((ctrl_cnt-1)/3))
+#define bspline_is_key(ctrl_idx) ((ctrl_idx % 3) == 0u)
+#define bspline_is_after_key(pnt_idx) ((ctrl_idx % 3) == 1u)
+#define bspline_is_before_key(pnt_idx) ((ctrl_idx % 3) == 2u)
+
+#define bspline_arc_len2(cvs,cnt)\
+  bspline_arc_len(cvs,cnt,2)
+#define bspline_pos2(pos, linear_pos, cvs, cnt, is_closed)\
+  bspline_pos(pos, linear_pos, cvs, cnt, is_closed,2)
+#define bspline_tangent2(tangetn, linear_pos, cvs, cnt, is_closed)\
+  bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed,2)
+
+#define bspline_arc_len3(cvs,cnt)\
+  bspline_arc_len(cvs,cnt,3)
+#define bspline_pos3(pos, linear_pos, cvs, cnt, is_closed)\
+  bspline_pos(pos, linear_pos, cvs, cnt, is_closed,3)
+#define bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed)\
+  bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed,3)
+
+static float
+bspline__arc_len(const float *restrict p0, const float *restrict p1,
+                 const float *restrict p2, const float *restrict p3, int dim) {
+  assert(p0);
+  assert(p1);
+  assert(p2);
+  assert(p3);
+  assert(dim > 0);
+
+  float d[dim]; opN(d,=,p0,-,p3,+,0,dim);
+  float len; lenN(len, d, dim);
+  float a[dim]; opN(a,=,p0,-,p1,+,0,dim);
+  float b[dim]; opN(b,=,p1,-,p2,+,0,dim);
+  float c[dim]; opN(c,=,p2,-,p3,+,0,dim);
+
+  float a_len; lenN(a_len, a, dim);
+  float b_len; lenN(b_len, b, dim);
+  float c_len; lenN(c_len, c, dim);
+  float o_len = a_len + b_len + c_len;
+  if (o_len < 0.001f || (o_len / len) <= 1.001f) {
+    return (o_len + len) * 0.5f;
+  }
+  /* Subdivide the given spline.
+    Use the following scheme :
+    *---h---*
+    |  / \  |
+    | #-+-# |
+    x/     \x
+    |       |
+    *       *
+
+    * - original control vertices (p0 - p3, input)
+    h - helper control vertex at half between p1 and p2
+    x - at half between p0 and p1 (np1, control vertex of output) and half between p2 and p3 (np5, control vertex of output)
+    # - at half between x and h (np2 and np4, control vertices of output)
+    + - at half between np2 and np4 (np3, control vertex of output)
+  */
+  float h[dim]; opN(h,=,p1,+,p2,*,0.5f,dim);
+  float np1[dim]; opN(np1,=,p0,+,p1,*,0.5f,dim);
+  float np5[dim]; opN(np5,=,p2,+,p3,*,0.5f,dim);
+  float np2[dim]; opN(np2,=,np1,+,h,*,0.5f,dim);
+  float np4[dim]; opN(np4,=,h,+,np5,*,0.5f,dim);
+  float np3[dim]; opN(np3,=,np2,+,np4,*,0.5f,dim);
+  return bspline__arc_len(p0, np1, np2, np3,dim) + bspline__arc_len(np3, np4, np5, p3,dim);
+}
+static float
+bspline_arc_len(const float *cvs, int cnt, int dim) {
+  float sum = 0;
+  for (int i = 0; i + 1 < cnt; i += 3) {
+    const float *p0 = cvs + (i + 0) * dim;
+    const float *p1 = cvs + (i + 1) * dim;
+    const float *p2 = cvs + (i + 2) * dim;
+    const float *p3 = cvs + (i + 3) * dim;
+    sum += bspline__arc_len(p0, p1, p2, p3, dim);
+  }
+  return sum;
+}
+static void
+bspline_pos(float *pos, float linear_pos, const float *cvs, int cnt,
+            int is_closed, int dim) {
+  assert(pos);
+  assert(cvs);
+  assert(dim > 0);
+  assert(cnt > 0);
+
+  float val = cast(float, cast(int, linear_pos));
+  int idx = cast(int, val) * 3;
+  if (idx + 1 >= cnt) {
+    /* reached the end.. */
+    if (is_closed) {
+      idx = idx % (cnt-1);
+    } else {
+      memcpy(pos, cvs + (cnt - 1) * dim, szof(float) * dim);
+      return;
+    }
+  }
+  assert(idx <= cnt);
+  assert(idx + 3 <= cnt);
+
+  /* calculate parameters */
+  float u[4];
+  float pos_frac = linear_pos - val;
+  u[0] = ((1.0f - pos_frac) * (1.0f - pos_frac)) * (1.0f - pos_frac);
+  u[1] = ((3.0f * pos_frac) * ((1.0f - pos_frac) * (1.0f - pos_frac)));
+  u[2] = ((3.0f * pos_frac) * (pos_frac * (1.0f - pos_frac)));
+  u[3] = pos_frac * pos_frac * pos_frac;
+
+  /* calculate point */
+  opNs(pos, =,cvs+(idx+0)*dim,*,u[0],dim);
+  opNs(pos,+=,cvs+(idx+1)*dim,*,u[1],dim);
+  opNs(pos,+=,cvs+(idx+2)*dim,*,u[2],dim);
+  opNs(pos,+=,cvs+(idx+3)*dim,*,u[3],dim);
+}
+static void
+bspline_tangent(float *tangent, float linear_pos, const float *cvs, int cnt,
+                int is_closed, int dim) {
+  assert(cvs);
+  assert(dim > 0);
+  assert(cnt > 0);
+  assert(tangent);
+
+  float val = cast(float, cast(int, linear_pos));
+  int idx = cast(int, val) * 3;
+  if (idx + 1 >= cnt) {
+    /* reached the end.. */
+    if (is_closed) {
+      idx = idx % (cnt - 1);
+    } else {
+      assert(cnt >= 4);
+      idx = max(4, cnt) - 4;
+    }
+  }
+  assert(idx < cnt);
+  assert(idx + 3 <= cnt);
+  float pos_frac = linear_pos - val;
+
+  /* now calculate tangent: -3 (a (x-1) + b (-1 + 4x - 3x) + c(-2+3x)x - dx) */
+  float a = (pos_frac - 1.0f) * (pos_frac - 1.0f);
+  float b = -1.0f + (4.0f * pos_frac) - ((3.0f * pos_frac * pos_frac));
+  float c = ((-2.0f + (3.0f * pos_frac)) * pos_frac);
+  float d = -(pos_frac * pos_frac);
+
+  memset(tangent,0,szof(float) * dim);
+  opNs(tangent,+=,cvs+((idx+0)%cnt)*dim,*,a,dim);
+  opNs(tangent,+=,cvs+((idx+1)%cnt)*dim,*,b,dim);
+  opNs(tangent,+=,cvs+((idx+2)%cnt)*dim,*,c,dim);
+  opNs(tangent,+=,cvs+((idx+3)%cnt)*dim,*,d,dim);
+  opNs(tangent, =,tangent,*,-3.0f,dim);
+}
+static float
+bspline_nearest_cv(const float *restrict cvs, int cnt,
+                   const float *restrict pos, int dim) {
+  assert(cvs);
+  assert(pos);
+  assert(dim > 0);
+  assert(cnt > 0);
+
+  float r = 0.0f;
+  float dist, best_dist = 10000.0f*10000.0f;
+  for (int i = 0; i < cnt; i++) {
+    float v[dim]; opN(v,=,cvs +(i*dim),+,pos,+,0,dim);
+    lenN(dist, v, dim);
+    if (dist < best_dist) {
+      best_dist = dist;
+      r = cast(float, i) / 3.0f;
+    }
+  }
+  return r;
+}
+static float
+bspline__sqr_dist(const float *restrict p0, const float *restrict p1, int dim) {
+  assert(p0);
+  assert(p1);
+
+  float d[dim]; opN(d,=,p0,-,p1,+,0,dim);
+  float len2; dotN(len2,d,d,dim);
+  return len2;
+}
+static float
+bspline_nearest_pnt(const float *restrict cvs, int cnt,
+                    const float* restrict pos, int is_closed, int dim) {
+  assert(cvs);
+  assert(cnt > 0);
+  assert(dim > 0);
+  assert(pos);
+
+  int it_cnt = 0;
+  float off = 0.0f;
+  float scale = 1.0f;
+  float linear_len = bspline_linear_len(cnt);
+  float near_pos = bspline_nearest_cv(cvs, cnt, pos, dim);
+  do {
+    float bpos[dim]; bspline_pos(bpos, near_pos, cvs, cnt, is_closed, dim);
+    float tan[dim]; bspline_tangent(tan, near_pos, cvs, cnt, is_closed, dim);
+    float len2; dotN(len2,tan,tan,dim);
+    if (len2 <= FLT_EPSILON) {
+      return bspline_nearest_cv(cvs, cnt, pos, dim);
+    }
+    float old_off = off;
+    float to_pos[dim]; opN(to_pos,=,pos,-,bpos,+,0,dim);
+    float dot; dotN(dot,tan, to_pos,dim);
+    off = dot / len2;
+    float off_diff = (float)math_abs(old_off - off);
+    if (it_cnt > 0 && off_diff > FLT_EPSILON) {
+      scale = scale * ((float)math_abs(old_off) / off_diff);
+    }
+    float new_pos = near_pos + off * scale;
+    if (is_closed) {
+      while (new_pos < 0.0f) {
+        new_pos += linear_len;
+      }
+      while (new_pos > linear_len) {
+        new_pos -= linear_len;
+      }
+    } else {
+      new_pos = clamp( 0.0f, new_pos, linear_len);
+    }
+    /* take point if closer */
+    float new_bpos[dim];
+    bspline_pos(new_bpos, new_pos, cvs, cnt, is_closed, dim);
+    if (bspline__sqr_dist(new_bpos, pos,dim) < bspline__sqr_dist(bpos, pos,dim)) {
+      near_pos = new_pos;
+    } else {
+      break;
+    }
+  } while(math_abs(off) > 0.001f && ++it_cnt < 4);
+  return near_pos;
+}
+static float
+bspline_len_ratio(int idx, const float *restrict cvs, int cnt, float len, int dim) {
+  assert(cvs);
+  assert(cnt > 0);
+  assert(dim > 0);
+  if (idx >= cnt - 3) {
+    return 1.0f;
+  }
+  const float *p0 = cvs + (idx + 0) * dim;
+  const float *p1 = cvs + (idx + 1) * dim;
+  const float *p2 = cvs + (idx + 2) * dim;
+  const float *p3 = cvs + (idx + 3) * dim;
+  return bspline__arc_len(p0, p1, p2, p3, dim) / len;
+}
+static float
+bspline_calc_const_speed_time(const float *restrict cvs, int cnt,
+                              float norm_time, int is_closed, int dim) {
+  assert(cvs);
+  assert(dim > 0);
+  assert(cnt > 0);
+  if (cnt < 4) {
+    return 0.0f;
+  }
+  assert(norm_time >= 0.0f && norm_time <= 1.0f);
+  if (norm_time <= 0.0f) {
+    return 0.0f;
+  }
+  float linear_len = bspline_linear_len(cnt);
+  float dst_arc_len = bspline_arc_len(cvs, cnt, dim) * norm_time;
+  if (norm_time >= 1.0f) {
+    return linear_len;
+  }
+  float start_time = 0.0f;
+  float cur_arc_len = 0.0f;
+  float sample_interval = 0.0001f;
+
+  float v0[dim]; bspline_pos(v0, start_time, cvs, cnt, is_closed, dim);
+  float cur_time = start_time;
+  float end_time = linear_len + sample_interval;
+  while (cur_time <= end_time) {
+    float v1[dim]; bspline_pos(v1, cur_time, cvs, cnt, is_closed, dim);
+    float dist[dim]; opN(dist,=,v1,-,v0,+,0,dim);
+
+    float cur_step; lenN(cur_step, dist, dim);
+    float delta = cur_arc_len + cur_step - dst_arc_len;
+    if (delta >= 0.0f) {
+      float lerp_fac = (math_abs(cur_step) < FLT_EPSILON) ? 0.0f : delta / cur_step;
+      return cur_time + sample_interval * lerp_fac;
+    }
+    cur_time += sample_interval;
+    cur_arc_len += cur_step;
+    memcpy(v0, v1, dim * szof(float));
+  }
+  return linear_len;
+}
+static void
+bspline_pos_const(float *restrict pos, float norm_time,
+                  const float *restrict cvs, int cnt, int is_closed, int dim) {
+  assert(cvs);
+  assert(dim > 0);
+  assert(cnt > 0);
+  norm_time = clamp01(norm_time);
+  float lin_time = bspline_calc_const_speed_time(cvs, cnt, norm_time, is_closed, dim);
+  bspline_pos(pos, lin_time, cvs, cnt, is_closed, dim);
+}
+static void
+bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
+                            const float *restrict cvs, int cnt, int is_closed,
+                            int dim) {
+  /* calculate modification of old helper points */
+  float fac = linear_pos - math_floori(linear_pos);
+  float val = cast(float, cast(int, linear_pos ));
+  int idx = cast(int, val) * 3;
+
+  float h[dim]; opN(h,=,cvs+(1*dim),-,cvs+(0*dim),*,fac,dim);
+  float len1; lenN(len1, h, dim);
+  opN(new_pnts+(0*dim),=,h,+,cvs+(idx*dim),+,0,dim);
+
+  opN(h,=,cvs+(2*dim),-,cvs+(3*dim),*,(1.0f-fac),dim);
+  float len2; lenN(len2, h, dim);
+  opN(new_pnts+(4*dim),=,h,+,cvs+((idx+3)*dim),+,0,dim);
+
+  /* calculate new point at linear position */
+  bspline_pos(new_pnts+(2*dim), linear_pos, cvs, cnt, is_closed, dim);
+  // calculate new helper points
+  bspline_tangent(h, linear_pos, cvs, cnt, is_closed, dim);
+  float rlen; lenN(rlen,h,dim); rlen = math_rsqrt(rlen);
+  opNs(h,=,h,*,rlen,dim);
+
+  memcpy(new_pnts+(1*dim), new_pnts+(2*dim), szof(float) * dim);
+  memcpy(new_pnts+(3*dim), new_pnts+(2*dim), szof(float) * dim);
+
+  opNs(new_pnts+(1*dim),+=,h,*,(-len1 * 0.5f),dim);
+  opNs(new_pnts+(3*dim),+=,h,*,(len2 * 0.5f),dim);
+}
+static void
+bspline_calc_new_pnts_del(float *restrict new_pnts, int idx,
+                          const float *restrict cvs, int cnt,
+                          int dim) {
+  assert(cvs);
+  assert(cnt > 0);
+  assert(new_pnts);
+  if (idx < 3 || idx + 3 >= cnt || !bspline_is_key(idx)) {
+    return;
+  }
+  const float *a = cvs + (idx - 3 * dim);
+  const float *b = cvs + (idx - 2 * dim);
+  const float *c = cvs + (idx - 1 * dim);
+  const float *d = cvs + (idx - 0 * dim);
+  const float *e = cvs + (idx + 1 * dim);
+  const float *f = cvs + (idx + 2 * dim);
+  const float *g = cvs + (idx + 3 * dim);
+
+  float arc_len_1 = bspline__arc_len(a,b,c,d,dim);
+  float arc_len_2 = bspline__arc_len(d,e,f,g,dim);
+  float len = arc_len_1 + arc_len_2;
+
+  float h[dim];
+  opN(h,=,cvs+((idx-2)*dim),-,cvs+((idx-3)*dim),*,len/arc_len_1,dim);
+  opN(new_pnts,=,h,+,cvs+((idx-3) * dim),+,0,dim);
+
+  opN(h,=,cvs+((idx+2)*dim),-,cvs+((idx+3)*dim),*,len/arc_len_2,dim);
+  opN(new_pnts+dim,=,h,+,cvs+((idx+3) * dim),+,0,dim);
+}
+
+/* ---------------------------------------------------------------------------
  *                                  Color
  * ---------------------------------------------------------------------------
  */
@@ -1058,16 +1420,33 @@ enum cam_output_z_range {
   CAM_NEG_ONE_TO_ZERO,
   CAM_ZERO_TO_ONE
 };
+enum cam_mode {
+  CAM_PERSP,
+  CAM_ORTHO,
+};
+struct cam_persp {
+  float fov;
+  float aspect_ratio;
+};
+struct cam_ortho {
+  int left;
+  int right;
+  int bottom;
+  int top;
+};
 struct cam {
   /* in: */
   enum cam_output_z_range zout;
   enum cam_orient orient;
 
   /* proj */
-  float fov;
-  float near, far;
-  float aspect_ratio;
+  enum cam_mode mode;
   float z_range_epsilon;
+  float near, far;
+  union {
+    struct cam_persp persp;
+    struct cam_ortho ortho;
+  };
 
   /* view */
   float pos[3];
@@ -1091,15 +1470,17 @@ struct cam {
   float up[3];
 };
 #define cam_move(c,t) cam_movef(c, t[0], t[1], t[2])
-#define cam_lookat(c, eye, ctr, up) cam_lookatf((c), (eye)[0], (eye)[1], (eye)[2], (ctr)[0], (ctr)[1], (ctr)[2], (up)[0], (up)[1], (up)[2])
+#define cam_lookat(c, eye, ctr, up)\
+  cam_lookatf((c), (eye)[0], (eye)[1], (eye)[2], (ctr)[0], (ctr)[1], (ctr)[2], (up)[0], (up)[1], (up)[2])
 
 static void
 cam_init(struct cam *c) {
   static const float qid[] = {0,0,0,1};
   static const float m4id[] = {1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 
-  c->aspect_ratio = 3.0f/2.0f;
-  c->fov = FLT_PI / 4.0f;
+  c->mode = CAM_PERSP;
+  c->persp.aspect_ratio = 3.0f/2.0f;
+  c->persp.fov = FLT_PI / 4.0f;
   c->near = 0.01f;
   c->far = 10000;
 
@@ -1110,7 +1491,7 @@ cam_init(struct cam *c) {
   memcpy(c->proj_inv, m4id, sizeof(m4id));
 }
 static void
-cam_build(struct cam *c) {
+cam__calc_view(struct cam *c) {
   assert(c);
   /* convert orientation matrix into quaternion */
   if (c->orient == CAM_MAT) {
@@ -1347,6 +1728,38 @@ cam_build(struct cam *c) {
   c->view[0][3] = 0; c->view[1][3] = 0;
   c->view[2][3] = 0; c->view[3][3] = 1.0f;
 
+  /* fill vectors with data */
+  c->loc[0] = c->view_inv[3][0];
+  c->loc[1] = c->view_inv[3][1];
+  c->loc[2] = c->view_inv[3][2];
+
+  c->right[0] = c->view_inv[0][0];
+  c->right[1] = c->view_inv[0][1];
+  c->right[2] = c->view_inv[0][2];
+
+  c->left[0] = -c->view_inv[0][0];
+  c->left[1] = -c->view_inv[0][1];
+  c->left[2] = -c->view_inv[0][2];
+
+  c->up[0] = c->view_inv[1][0];
+  c->up[1] = c->view_inv[1][1];
+  c->up[2] = c->view_inv[1][2];
+
+  c->down[0] = -c->view_inv[1][0];
+  c->down[1] = -c->view_inv[1][1];
+  c->down[2] = -c->view_inv[1][2];
+
+  c->forward[0] = c->view_inv[2][0];
+  c->forward[1] = c->view_inv[2][1];
+  c->forward[2] = c->view_inv[2][2];
+
+  c->backward[0] = -c->view_inv[2][0];
+  c->backward[1] = -c->view_inv[2][1];
+  c->backward[2] = -c->view_inv[2][2];
+}
+static void
+cam__calc_proj(struct cam *c) {
+  assert(c);
   /*  Projection matrix
   While the view matrix transforms from world space to local camera space,
   tranforms the perspective projection matrix from camera space to screen space.
@@ -1354,48 +1767,41 @@ cam_build(struct cam *c) {
   The actual work for the transformation is from eye coordinates camera
   frustum far plane to a cube with coordinates (-1,1), (0,1), (-1,0) depending on
   argument `out_z_range` in this particual implementation.
+  */
+  c->proj[0][1] = c->proj[0][2] = c->proj[0][3] = 0;
+  c->proj[1][0] = c->proj[1][2] = c->proj[1][3] = 0;
+  c->proj[2][0] = c->proj[2][1] = 0;
+  c->proj[3][0] = c->proj[3][1] = c->proj[3][3] = 0;
 
-  To actually build the projection matrix we need:
-    - Vertical field of view angle
-    - Screen aspect ratio which controls the horizontal view angle in
-        contrast to the field of view.
-    - Z coordinate of the frustum near clipping plane
-    - Z coordinate of the frustum far clipping plane
+  switch (c->mode) {
+  case CAM_PERSP: {
+    /*To actually build the perspective projection matrix we need:
+      - Vertical field of view angle
+      - Screen aspect ratio which controls the horizontal view angle in
+          contrast to the field of view.
+      - Z coordinate of the frustum near clipping plane
+      - Z coordinate of the frustum far clipping plane
 
-  While I will explain how to incooperate the near,far z clipping
-  plane I would recommend reading [7] for the other values since it is quite
-  hard to do understand without visual aid and he is probably better in
-  explaining than I would be.*/
-  float hfov = math_tan((c->fov*0.5f));
-  c->proj[0][0] = 1.0f/(c->aspect_ratio * hfov);
-  c->proj[0][1] = 0;
-  c->proj[0][2] = 0;
-  c->proj[0][3] = 0;
-
-  c->proj[1][0] = 0;
-  c->proj[1][1] = 1.0f/hfov;
-  c->proj[1][2] = 0;
-  c->proj[1][3] = 0;
-
-  c->proj[2][0] = 0;
-  c->proj[2][1] = 0;
-  c->proj[2][3] = -1.0f;
-
-  c->proj[3][0] = 0;
-  c->proj[3][1] = 0;
-  c->proj[3][3] = 0;
-
+    While I will explain how to incooperate the near,far z clipping
+    plane I would recommend reading [7] for the other values since it is quite
+    hard to do understand without visual aid and he is probably better in
+    explaining than I would be.*/
+    float hfov = math_tan((c->persp.fov*0.5f));
+    c->proj[0][0] = 1.0f/(c->persp.aspect_ratio * hfov);
+    c->proj[1][1] = 1.0f/hfov;
+    c->proj[2][3] = -1.0f;
+  } break;
+  case CAM_ORTHO: {
+    c->proj[0][0] = 2.0f / (c->ortho.right - c->ortho.left);
+    c->proj[1][1] = 2.0f / (c->ortho.top - c->ortho.bottom);
+    c->proj[3][0] = - (c->ortho.right + c->ortho.left) / (c->ortho.right - c->ortho.left);
+    c->proj[3][1] = - (c->ortho.top + c->ortho.bottom) / (c->ortho.top - c->ortho.bottom);
+  } break;
+  }
   if (c->far >= 0) {
-    /* Up to this point we got perspective matrix:
-
-        |1/aspect*hfov  0       0  0|
-        |0              1/hfov  0  0|
-        |0              0       A  B|
-        |0              0       -1 0|
-
-    but we are still missing A and B to map between the frustum near/far
+    /* We are still missing A and B to map between the frustum near/far
     and the clipping cube near/far value. So we take the lower right part
-    of the matrix and multiply by a vector containing the missing
+    of our perspective matrix and multiply by a vector containing the missing
     z and w value, which gives us the resulting clipping cube z;
 
         |A  B|   |z|    |Az + B |           B
@@ -1475,6 +1881,7 @@ cam_build(struct cam *c) {
       c->proj[3][2] = (c->z_range_epsilon - 1.0f) * c->near;
     } break;}
   }
+
   /* Invert projection [2][3]:
   Since perspective matrices have a fixed layout, it makes sense
   to calculate the specific perspective inverse instead of relying on a default
@@ -1500,7 +1907,9 @@ cam_build(struct cam *c) {
       |x8*a x9*b x10*c+x11*e x10*d|   |0 0 1 0|
       |x12*a x13*b x14*c+x15*e x14*d| |0 0 0 1|
 
-  3.) Finally substitute each x value: e.g: x0*a = 1 => x0 = 1/a so I(p) at column 0, row 0 is 1/a.
+  3.) Finally substitute each x value:
+      e.g: x0*a = 1 => x0 = 1/a
+      so I(p) at column 0, row 0 is 1/a.
 
               |1/a 0 0 0|
       I(p) =  |0 1/b 0 0|
@@ -1512,40 +1921,29 @@ cam_build(struct cam *c) {
   automatically generate inversion matrices without any fuss or possible
   human calculation errors. */
   memset(c->proj_inv, 0, sizeof(c->proj_inv));
-  c->proj_inv[0][0] = 1.0f/c->proj[0][0];
-  c->proj_inv[1][1] = 1.0f/c->proj[1][1];
-  c->proj_inv[2][3] = 1.0f/c->proj[3][2];
-  c->proj_inv[3][2] = 1.0f/c->proj[2][3];
-  c->proj_inv[3][3] = -c->proj[2][2]/(c->proj[3][2] * c->proj[2][3]);
-
-  /* fill vectors with data */
-  c->loc[0] = c->view_inv[3][0];
-  c->loc[1] = c->view_inv[3][1];
-  c->loc[2] = c->view_inv[3][2];
-
-  c->right[0] = c->view_inv[0][0];
-  c->right[1] = c->view_inv[0][1];
-  c->right[2] = c->view_inv[0][2];
-
-  c->left[0] = -c->view_inv[0][0];
-  c->left[1] = -c->view_inv[0][1];
-  c->left[2] = -c->view_inv[0][2];
-
-  c->up[0] = c->view_inv[1][0];
-  c->up[1] = c->view_inv[1][1];
-  c->up[2] = c->view_inv[1][2];
-
-  c->down[0] = -c->view_inv[1][0];
-  c->down[1] = -c->view_inv[1][1];
-  c->down[2] = -c->view_inv[1][2];
-
-  c->forward[0] = c->view_inv[2][0];
-  c->forward[1] = c->view_inv[2][1];
-  c->forward[2] = c->view_inv[2][2];
-
-  c->backward[0] = -c->view_inv[2][0];
-  c->backward[1] = -c->view_inv[2][1];
-  c->backward[2] = -c->view_inv[2][2];
+  switch (c->mode) {
+  case CAM_PERSP: {
+    c->proj_inv[0][0] = 1.0f/c->proj[0][0];
+    c->proj_inv[1][1] = 1.0f/c->proj[1][1];
+    c->proj_inv[2][3] = 1.0f/c->proj[3][2];
+    c->proj_inv[3][2] = 1.0f/c->proj[2][3];
+    c->proj_inv[3][3] = -c->proj[2][2]/(c->proj[3][2] * c->proj[2][3]);
+  } break;
+  case CAM_ORTHO: {
+    c->proj_inv[0][0] = 1.0f/c->proj[0][0];
+    c->proj_inv[1][1] = 1.0f/c->proj[1][1];
+    c->proj_inv[2][2] = 1.0f/c->proj[2][2];
+    c->proj_inv[3][0] = -c->proj[3][0]/c->proj[0][0];
+    c->proj_inv[3][1] = -c->proj[3][1]/c->proj[1][1];
+    c->proj_inv[3][2] = -c->proj[3][2]/c->proj[2][2];
+    c->proj_inv[3][3] = 1.0f;
+  } break;
+  }
+}
+static void
+cam_build(struct cam *c) {
+  cam__calc_view(c);
+  cam__calc_proj(c);
 }
 static void
 cam_lookatf(struct cam *c,
@@ -1590,7 +1988,7 @@ cam_lookatf(struct cam *c,
   enum cam_orient orient = c->orient;
   c->orient = CAM_MAT;
   memset(c->ear, 0, sizeof(c->ear));
-  cam_build(c);
+  cam__calc_view(c);
   c->orient = orient;
 }
 static void

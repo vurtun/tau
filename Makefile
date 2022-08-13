@@ -16,7 +16,7 @@ debug: CFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch -Wno-switch-
 debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
 debug: CFLAGS += -Wc++-compat -Wno-unused-function
 debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough
-debug: CFLAGS += -Wno-atomic-implicit-seq-cst
+debug: CFLAGS += -Wno-atomic-implicit-seq-cst -Wno-vla
 debug: CFLAGS += -DDEBUG_MODE
 debug: OBJCFLAGS = -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
 debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-missing-field-initializers
@@ -36,9 +36,9 @@ debug: bin/pck.so
 debug: bin/dbs.so
 
 .PHONY: release
-release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto
+release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
 release: CFLAGS += -DRELEASE_MODE
-release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto
+release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
 release: OBJCFLAGS += -DRELEASE_MODE
 release: CC = clang
 release: $(BIN)
