@@ -1752,21 +1752,23 @@ ut_tbl(struct sys *sys) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-typedef unsigned(*sort_conv_f)(const void *p);
 typedef void*(sort_access_f)(const void *data, void *usr);
-
 #define sort__access(a,usr,access,conv,off) ((access) ? (conv)((access)(a + off, usr)) : (conv)(a + off))
 #define sort__char_at(s,d) (((d) < (s)->len) ? (s)->str[d] : -1)
 #define sort__str_get(a,access,usr) (struct str*)((access) ? (access(a, usr)) : (a))
 
+/* conversion functions from type -> sortable unsigned short/integer representation */
+typedef unsigned(*sort_conv_f)(const void *p);
 static inline unsigned sort__cast_ushort(const void *p) {return *(const unsigned short*)p;}
 static inline unsigned sort__cast_short(const void *p) {union bit_castu {short i; unsigned short u;} v = {.i = *(const short*)p}; return v.u ^ (1u << 15u);}
+static inline unsigned sort__cast_hflt(const void *p) {unsigned short u = *(const unsigned short*)p; if ((u >> 15u) == 1u) {u *= (unsigned short)-1; u ^= (1u << 15u);} return u ^ (1u << 15u);}
 static inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
 static inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; unsigned u;} v = {.i = *(const int*)p}; return v.u ^ (1u << 31u);}
-static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);}return v.u ^ (1u << 31u);}
+static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);} return v.u ^ (1u << 31u);}
 
 #define sort_short(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_short)
 #define sort_ushort(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_ushort)
+#define sort_hflt(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_hflt)
 #define sort_int(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_int)
 #define sort_uint(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_uint)
 #define sort_flt(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_flt)
@@ -1774,6 +1776,7 @@ static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; 
 
 #define sort_shorts(out,a,n) sort_short(out,a,szof(short),n,0)
 #define sort_ushorts(out,a,n) sort_ushort(out,a,szof(unsigned short),n,0)
+#define sort_hflts(out,a,n) sort_hflt(out,a,szof(unsigned short),n,0)
 #define sort_ints(out,a,n) sort_int(out,a,szof(int), n,0)
 #define sort_uints(out,a,n) sort_uint(out,a,szof(unsigned),n,0)
 #define sort_flts(out,a,n) sort_flt(out,a,szof(float),n,0)
@@ -1788,13 +1791,22 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   unsigned *buf = out + 2 * n;
   unsigned *restrict h[] = {buf, buf + 256};
   const unsigned char *b = cast(const unsigned char*, a);
-  const unsigned char *e = cast(const unsigned char*, a) + n * siz;
+  if (!n) {
+    return;
+  }
   /* build histogram */
+  int is_sorted = 1;
   memset(buf, 0, 512 * sizeof(unsigned));
-  for (const unsigned char *it = b; it < e; it += siz) {
-    unsigned k = sort__access(it, usr, access, conv, off);
+  unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
+  for_cnt(i, n) {
+    unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
     h[0][k & 0xff]++;
     h[1][(k >> 8) & 0xff]++;
+    is_sorted = (k < lst) ? 0 : is_sorted;
+    lst = k;
+  }
+  if (is_sorted) {
+    return; /* already sorted so early out */
   }
   /* convert histogram into offset table */
   unsigned sum[2] = {0};
@@ -1804,10 +1816,10 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* sort 8-bit at a time */
   unsigned *restrict idx[] = {out, out + n};
-  for (int p = 0, d = 1, s = 0; p < 2; ++p, d = !d, s = !s) {
-    for (unsigned i = 0u; i != cast(unsigned,n); ++i) {
-      unsigned at = idx[s][i];
-      unsigned k = sort__access(b + at * (unsigned)siz, usr, access, conv, off);
+  for (int p = 0, s = 0, d = 1; p < 2; ++p, d = !d, s = !s) {
+    for_cnt(i, n) {
+      unsigned off = idx[s][i] * cast(unsigned, siz);
+      unsigned k = sort__access(b + off, usr, access, conv, off);
       idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
     }
   }
@@ -1829,15 +1841,24 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   unsigned *buf = out + 2 * n;
   unsigned *restrict h[] = {buf, buf + 256, buf + 512, buf + 768};
   const unsigned char *b = cast(const unsigned char*, a);
-  const unsigned char *e = cast(const unsigned char*, a) + n * siz;
+  if (!n) {
+    return;
+  }
   /* build histogram */
+  int is_sorted = 1;
   memset(buf,0,1024*sizeof(unsigned));
-  for (const unsigned char *it = b; it < e; it += siz) {
-    unsigned k = sort__access(it, usr, access, conv, off);
+  unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
+  for_cnt(i,n) {
+    unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
     h[0][(k & 0xff)]++;
     h[1][(k >> 8) & 0xff]++;
     h[2][(k >> 16) & 0xff]++;
     h[3][(k >> 24)]++;
+    is_sorted = (k < lst) ? 0 : is_sorted;
+    lst = k;
+  }
+  if (is_sorted) {
+    return; /* already sorted so early out */
   }
   /* convert histogram into offset table */
   unsigned sum[4] = {0};
@@ -1849,11 +1870,11 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* sort 8-bit at a time */
   unsigned *restrict idx[] = {out, out + n};
-  for (int p = 0, d = 1, s = 0; p < 4; ++p, d = !d, s = !s) {
-    for (unsigned i = 0u; i != cast(unsigned,n); ++i) {
-      unsigned at = idx[s][i];
-      unsigned k = sort__access(b + at * (unsigned)siz, usr, access, conv, off);
-      idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
+  for (int p = 0, s = 0, d = 1; p < 4; ++p, d = !d, s = !s) {
+    for_cnt(i, n) {
+      unsigned off = idx[s][i] * cast(unsigned, siz);
+      unsigned k = sort__access(b + off, usr, access, conv, off);
+      idx[d][h[p][(k>>(8*p))&0xff]++] = at;
     }
   }
 }
