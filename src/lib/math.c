@@ -1435,20 +1435,18 @@ struct cam_ortho {
   int top;
 };
 struct cam {
-  /* in: */
-  enum cam_output_z_range zout;
-  enum cam_orient orient;
-
-  /* proj */
+  /* in: proj */
   enum cam_mode mode;
-  float z_range_epsilon;
-  float near, far;
   union {
     struct cam_persp persp;
     struct cam_ortho ortho;
   };
+  enum cam_output_z_range zout;
+  float near, far;
+  float z_range_epsilon;
 
-  /* view */
+  /* in: view */
+  enum cam_orient orient;
   float pos[3];
   float off[3];
   float ear[3];

@@ -575,8 +575,7 @@ file_view_tree_build(struct file_tree_view *tree,
   if (n->parent && !set_fnd(tree->exp, n->parent->id)) {
     return upt;
   }
-  struct mem_scp scp = {0};
-  scp_mem(tmp, &scp, sys) {
+  scp_mem(tmp, sys) {
     unsigned long long *set = arena_set(tmp, sys, 1024);
     struct lst_elm *elm = 0;
     for_lst(elm, &n->sub) {
@@ -609,7 +608,6 @@ file_view_tree_build(struct file_tree_view *tree,
     }
     set_free(set, sys);
   }
-
   /* recurse child directory nodes */
   struct lst_elm *it = 0;
   for_lst(it, &n->sub) {
@@ -806,9 +804,8 @@ file_view_cd(struct file_view *fs, struct sys *sys, struct str path) {
   assert(fs);
   assert(sys);
 
-  struct mem_scp scp = {0};
   struct arena *tmp = fs->tmp_arena;
-  scp_mem(tmp, &scp, sys) {
+  scp_mem(tmp, sys) {
     struct str sys_path = arena_str(tmp, sys, path);
     file_lst_view_clr(&fs->lst, sys);
     dyn_asn_str(fs->lst.full_path, sys, sys_path);

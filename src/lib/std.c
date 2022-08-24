@@ -1019,17 +1019,21 @@ lck_rel(struct lck *lck) {
 #define ARENA_ALIGNMENT 8
 #define ARENA_BLOCK_SIZE KB(64)
 
+// clang-format off
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
 #define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
-#define arena_dyn(a, s, T, n) \
-  cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
+#define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
-#define arena_tbl(a, s, T, n)\
-  cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, n))
+#define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, n))
 
-#define scp_mem(a,s,sys)\
+#define scp__mem(a,s,sys)\
   for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
     uniqid(_i_) = (mem_scp_end(s,a,sys), 1))
+#define scp_mem(a,sys)\
+  struct mem_scp uniqid(_arena_mem_scp_);\
+  for (int uniqid(_i_) = (mem_scp_begin(&uniqid(_arena_mem_scp_),a), 0); uniqid(_i_) < 1;\
+    uniqid(_i_) = (mem_scp_end(&uniqid(_arena_mem_scp_),a,sys), 1))
+// clang-format on
 
 static int
 arena_align_off(struct arena *a, int align) {
@@ -1221,7 +1225,7 @@ struct dyn_hdr {
   int cnt, cap;
   char buf[];
 };
-// clang-format off
+// clang-format on
 #define dyn__hdr(b) ((struct dyn_hdr *)(void *)((char *)(b)-offsetof(struct dyn_hdr, buf)))
 #define dyn__fits(b, n) (dyn_cnt(b) + (n) <= dyn_cap(b))
 #define dyn_req_siz(type_size) (szof(struct dyn_hdr) + (type_size) + DYN_ALIGN)
@@ -1277,7 +1281,7 @@ struct dyn_hdr {
   memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
   dyn__hdr(b)->cnt -= (n);                                              \
 } while (0)
-// clang-format on
+// clang-format off
 
 static void *
 dyn__grow(void *buf, struct sys *sys, int new_len, int elem_size) {
@@ -1751,144 +1755,115 @@ ut_tbl(struct sys *sys) {
 typedef unsigned(*sort_conv_f)(const void *p);
 typedef void*(sort_access_f)(const void *data, void *usr);
 
-#define sort_int(rnk, s, mem, a, siz, n, off) sort__base_mem(rnk, s, mem, a, siz, n, off, 0, 0, sort__cast_int)
-#define sort_uint(rnk, s, mem, a, siz, n, off) sort__base_mem(rnk, s, mem, a, siz, n, off, 0, 0, sort__cast_uint)
-#define sort_flt(rnk, s, mem, a, siz, n, off) sort__base_mem(rnk, s, mem, a, siz, n, off, 0, 0, sort__cast_flt)
-#define sort_str(tmp, tmp2, tmp3, a, n, siz, off) sort__str(tmp, tmp2, tmp3, a, n, siz, off, 0, 0)
-
-#define sort_int_cb(rnk, s, mem, a, siz, n, off, cb, usr) sort__base_mem(rnk, s, mem, a, siz, n, off, usr, cb, sort__cast_int)
-#define sort_uint_cb(rnk, s, mem, a, siz, n, off, cb, usr) sort__base_mem(rnk, s, mem, a, siz, n, off, usr, cb, sort__cast_uint)
-#define sort_flt_cb(rnk, s, mem, a, siz, n, off, cb, usr) sort__base_mem(rnk, s,, mem, a, siz, n, off, usr, cb, sort__cast_flt)
-#define sort_str_cb(tmp, tmp2, tmp3, a, n, siz, off, cb, usr) sort__str(tmp, tmp2, tmp3, a, n, siz, off, usr, cb)
-
 #define sort__access(a,usr,access,conv,off) ((access) ? (conv)((access)(a + off, usr)) : (conv)(a + off))
 #define sort__char_at(s,d) (((d) < (s)->len) ? (s)->str[d] : -1)
 #define sort__str_get(a,access,usr) (struct str*)((access) ? (access(a, usr)) : (a))
+
+static inline unsigned sort__cast_ushort(const void *p) {return *(const unsigned short*)p;}
+static inline unsigned sort__cast_short(const void *p) {union bit_castu {short i; unsigned short u;} v = {.i = *(const short*)p}; return v.u ^ (1u << 15u);}
 static inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
 static inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; unsigned u;} v = {.i = *(const int*)p}; return v.u ^ (1u << 31u);}
 static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);}return v.u ^ (1u << 31u);}
+
+#define sort_short(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_short)
+#define sort_ushort(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_ushort)
+#define sort_int(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_int)
+#define sort_uint(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_uint)
+#define sort_flt(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_flt)
+#define sort_str(out,a,n,siz,off) sort__str(out,a,n,siz,off,0,0)
+
+#define sort_shorts(out,a,n) sort_short(out,a,szof(short),n,0)
+#define sort_ushorts(out,a,n) sort_ushort(out,a,szof(unsigned short),n,0)
+#define sort_ints(out,a,n) sort_int(out,a,szof(int), n,0)
+#define sort_uints(out,a,n) sort_uint(out,a,szof(unsigned),n,0)
+#define sort_flts(out,a,n) sort_flt(out,a,szof(float),n,0)
 // clang-format on
 
 static void
-sort_q3(int *rnk, void *arr, int siz, int n, int off, int lo, int hi,
-        void *usr, sort_access_f access, sort_conv_f conv) {
-  int i, j, l = lo, h = hi;
-  unsigned char *a = arr;
-  if (lo >= hi) return;
-  if (hi - lo <= 1) {
-    unsigned alo = sort__access(a + rnk[lo] * siz, usr, access, conv, off);
-    unsigned ahi = sort__access(a + rnk[hi] * siz, usr, access, conv, off);
-    if (ahi < alo) {
-      int tmp = rnk[lo];
-      rnk[lo] = rnk[hi];
-      rnk[hi] = tmp;
-    }
-    i = lo, j = hi;
-  } else {
-    int mid = lo;
-    unsigned pivot = sort__access(a + rnk[hi] * siz, usr, access, conv, off);
-    while (mid <= hi) {
-      unsigned amid = sort__access(a + rnk[mid] * siz, usr, access, conv, off);
-      if (amid < pivot) {
-        int tmp = rnk[lo]; rnk[lo++] = rnk[mid]; rnk[mid++] = tmp;
-      } else if (amid == pivot) {
-        mid++;
-      } else if (amid > pivot) {
-        int tmp = rnk[mid]; rnk[mid] = rnk[hi]; rnk[hi--] = tmp;
-      }
-    }
-    i = lo - 1, j = mid;
+sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
+             void *usr, sort_access_f access, sort_conv_f conv) {
+  assert(a);
+  assert(out);
+  /* <!> out needs to be at least size: 2*n+512 <!> */
+  unsigned *buf = out + 2 * n;
+  unsigned *restrict h[] = {buf, buf + 256};
+  const unsigned char *b = cast(const unsigned char*, a);
+  const unsigned char *e = cast(const unsigned char*, a) + n * siz;
+  /* build histogram */
+  memset(buf, 0, 512 * sizeof(unsigned));
+  for (const unsigned char *it = b; it < e; it += siz) {
+    unsigned k = sort__access(it, usr, access, conv, off);
+    h[0][k & 0xff]++;
+    h[1][(k >> 8) & 0xff]++;
   }
-  sort_q3(rnk, arr, siz, n, off, l, i, usr, access, conv);
-  sort_q3(rnk, arr, siz, n, off, j, h, usr, access, conv);
+  /* convert histogram into offset table */
+  unsigned sum[2] = {0};
+  for_cnt(i,256) {
+    unsigned t0 = h[0][i] + sum[0]; h[0][i] = sum[0], sum[0] = t0;
+    unsigned t1 = h[1][i] + sum[1]; h[1][i] = sum[1], sum[1] = t1;
+  }
+  /* sort 8-bit at a time */
+  unsigned *restrict idx[] = {out, out + n};
+  for (int p = 0, d = 1, s = 0; p < 2; ++p, d = !d, s = !s) {
+    for (unsigned i = 0u; i != cast(unsigned,n); ++i) {
+      unsigned at = idx[s][i];
+      unsigned k = sort__access(b + at * (unsigned)siz, usr, access, conv, off);
+      idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
+    }
+  }
 }
-static inline int*
-sort_radix(int *rnk, int *rnk2, void *a, int siz, int n, int off,
-           void *usr, sort_access_f access, sort_conv_f conv) {
-  enum sort_defs {
-    SORT_RADIX_BITS = 8,
-    SORT_RADIX_SIZE = (1 << SORT_RADIX_BITS),
-    SORT_RADIX_MASK = (SORT_RADIX_SIZE-1),
-    SORT_MAX_PASSES = 4,
-    SORT_H0_OFF     = (SORT_RADIX_SIZE*0),
-    SORT_H1_OFF     = (SORT_RADIX_SIZE*1),
-    SORT_H2_OFF     = (SORT_RADIX_SIZE*2),
-    SORT_H3_OFF     = (SORT_RADIX_SIZE*3),
-  };
-  unsigned h[SORT_RADIX_SIZE * SORT_MAX_PASSES] = {0};
-  unsigned *lnk[SORT_RADIX_SIZE];
-  {
-    /* build histogram for all passes */
-    unsigned char *p = a;
-    unsigned *h0 = &h[SORT_H0_OFF];
-    unsigned *h1 = &h[SORT_H1_OFF];
-    unsigned *h2 = &h[SORT_H2_OFF];
-    unsigned *h3 = &h[SORT_H3_OFF];
-
-    int is_sorted = 1;
-    unsigned last = sort__access(p, usr, access, conv, off);
-    for (int i = 0; i < n; ++i) {
-      unsigned v = sort__access(p + rnk[i] * siz, usr, access, conv, off);
-      if (v < last) is_sorted = 0;
-      h0[(v >> (SORT_RADIX_BITS * 0)) & SORT_RADIX_MASK]++;
-      h1[(v >> (SORT_RADIX_BITS * 1)) & SORT_RADIX_MASK]++;
-      h2[(v >> (SORT_RADIX_BITS * 2)) & SORT_RADIX_MASK]++;
-      h3[(v >> (SORT_RADIX_BITS * 3)) & SORT_RADIX_MASK]++;
-      last = v;
-    }
-    if (is_sorted) {
-      return rnk; /* already sorted so early out */
-    }
-  }
-  unsigned char *p = a;
-  for (unsigned i = 0; i < SORT_MAX_PASSES; ++i) {
-    unsigned* pass_cnt = &h[i << SORT_RADIX_BITS];
-    unsigned uniq_val = sort__access(p, usr, access, conv, off);
-    unsigned slot = (uniq_val >> (i * SORT_RADIX_BITS)) & SORT_RADIX_MASK;
-    if (pass_cnt[slot] == (unsigned)n) {
-      continue; /* all values in pass are the same, so skip pass */
-    }
-    /* create offsets */
-    lnk[0] = (unsigned*)rnk2;
-    for (int j = 1; j < SORT_RADIX_SIZE; ++j) {
-      lnk[j] = lnk[j-1] + pass_cnt[j-1];
-    }
-    /* perform radix sort */
-    unsigned shift = i * SORT_RADIX_BITS;
-    for (unsigned k = 0; k < cast(unsigned,n); ++k) {
-      int id = rnk[k];
-      unsigned v = sort__access(p + id * siz, usr, access, conv, off);
-      unsigned d = (v >> shift) & SORT_RADIX_MASK;
-      *lnk[d]++ = cast(unsigned,id);
-    }
-    int *tmp = rnk;
-    rnk = rnk2;
-    rnk2 = tmp;
-  }
-  return rnk;
+static void
+sort_radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
+             void *usr, sort_access_f access, sort_conv_f conv) {
+  assert(a);
+  assert(out);
+  for_cnt(i,n) {out[i] = cast(unsigned,i);}
+  sort__radix16(out, a, siz, n, off, usr, access, conv);
 }
-static inline int*
-sort__base(int *rnk, int *rnk2, void *a, int siz, int n, int off,
-           void *usr, sort_access_f access, sort_conv_f conv) {
-  for (int i = 0; i < n; ++i) rnk[i] = i;
-  if (n < 64) {
-    sort_q3(rnk, a, siz, n, off, 0, n-1, usr, access, conv);
-    return rnk;
-  } else return sort_radix(rnk, rnk2, a, siz, n, off, usr, access, conv);
-}
-static inline void
-sort__base_mem(int *rnk, struct sys *s, struct arena *mem,
-               void *a, int siz, int n, int off,
-               void *usr, sort_access_f access, sort_conv_f conv) {
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, s) {
-    int *tmp = arena_arr(mem, s, int, n);
-    if (sort__base(rnk, tmp, a, siz, n, off, usr, access, conv) != rnk) {
-      for (int i = 0; i < n; ++i) {
-        rnk[i] = tmp[i];
-      }
+static void
+sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
+             void *usr, sort_access_f access, sort_conv_f conv) {
+  assert(a);
+  assert(out);
+  /* <!> out needs to be at least size: 2*n+1024 <!> */
+  unsigned *buf = out + 2 * n;
+  unsigned *restrict h[] = {buf, buf + 256, buf + 512, buf + 768};
+  const unsigned char *b = cast(const unsigned char*, a);
+  const unsigned char *e = cast(const unsigned char*, a) + n * siz;
+  /* build histogram */
+  memset(buf,0,1024*sizeof(unsigned));
+  for (const unsigned char *it = b; it < e; it += siz) {
+    unsigned k = sort__access(it, usr, access, conv, off);
+    h[0][(k & 0xff)]++;
+    h[1][(k >> 8) & 0xff]++;
+    h[2][(k >> 16) & 0xff]++;
+    h[3][(k >> 24)]++;
+  }
+  /* convert histogram into offset table */
+  unsigned sum[4] = {0};
+  for_cnt(i,256) {
+    unsigned t0 = h[0][i] + sum[0]; h[0][i] = sum[0], sum[0] = t0;
+    unsigned t1 = h[1][i] + sum[1]; h[1][i] = sum[1], sum[1] = t1;
+    unsigned t2 = h[2][i] + sum[2]; h[2][i] = sum[2], sum[2] = t2;
+    unsigned t3 = h[3][i] + sum[3]; h[3][i] = sum[3], sum[3] = t3;
+  }
+  /* sort 8-bit at a time */
+  unsigned *restrict idx[] = {out, out + n};
+  for (int p = 0, d = 1, s = 0; p < 4; ++p, d = !d, s = !s) {
+    for (unsigned i = 0u; i != cast(unsigned,n); ++i) {
+      unsigned at = idx[s][i];
+      unsigned k = sort__access(b + at * (unsigned)siz, usr, access, conv, off);
+      idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
     }
   }
+}
+static void
+sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
+             void *usr, sort_access_f access, sort_conv_f conv) {
+  assert(a);
+  assert(out);
+  for_cnt(i,n) {out[i] = cast(unsigned,i);}
+  sort__radix32(out, a, siz, n, off, usr, access, conv);
 }
 static char
 sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
@@ -1896,7 +1871,7 @@ sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
   return sort__char_at(s,d);
 }
 static void
-sort_str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
+sort__str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
               sort_access_f access, void *usr) {
   if (hi <= lo) return;
   unsigned char *p = a;
@@ -1908,16 +1883,19 @@ sort_str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
     else if(t > v) {int tmp = rnk[i]; rnk[i] = rnk[gt]; rnk[gt--] = tmp;}
     else i++;
   }
-  sort_str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
-  if (v >= 0)  sort_str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
-  sort_str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
+  sort__str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
+  if (v >= 0)  sort__str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
+  sort__str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
 }
 static int*
-sort__str_base(int *r, int *r2, short *o, void *a, int n, int siz, int off,
-               int lo, int hi, sort_access_f fn, void *u, int d) {
+sort__radix_str(int *o, void *a, int n, int siz, int off,
+                int lo, int hi, sort_access_f fn, void *u, int d) {
+  /* <!> out needs to be at least size: 3*n <!> */
+  /* <!> returned pointer will either be be beginnning or middle of out <!> */
+  int *r = o + n, *r2 = o + 2 * n;
   unsigned char * p = a;
   if (n < 32) {
-    sort_str_q3s(r, a, lo, hi, d, siz, off, fn, u);
+    sort__str_q3s(r, a, lo, hi, d, siz, off, fn, u);
     return r;
   }
   int c[257] = {0};
@@ -1938,18 +1916,21 @@ sort__str_base(int *r, int *r2, short *o, void *a, int n, int siz, int off,
   for (int i = 1; i < 256; ++i) {
     if (c[i + 1] == 0) continue;
     lo = bsum, hi = bsum + c[i+1]-1;
-    int *res = sort__str_base(r, r2, o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
+    int *res = sort__radix_str(o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
     if (res != r) tmp = r, r = r2, r2 = tmp;
     bsum += c[i+1];
   }
   return r;
 }
 static int*
-sort__str(int *r, int *r2, short *o, void *a, int n, int siz, int off,
+sort__str(int *out, void *a, int n, int siz, int off,
           sort_access_f fn, void *u, int d) {
-  for (int i = 0; i < n; ++i) r[i] = i;
-  return sort__str_base(r, r2, o, a, n, siz, off, 0, n-1, fn, u, d);
+  /* <!> out needs to be at least size: 2*n <!> */
+  /* <!> returned pointer will either be be beginnning or middle of out <!> */
+  for (int i = 0; i < n; ++i) out[i] = i;
+  return sort__radix_str(out, a, n, siz, off, 0, n-1, fn, u, d);
 }
+
 /* ---------------------------------------------------------------------------
  *                                  Search
  * ---------------------------------------------------------------------------

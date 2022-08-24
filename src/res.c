@@ -661,15 +661,14 @@ res_init(struct res *r, const struct res_args *args) {
       best_d = d;
     }
   }
-  struct mem_scp scp;
-  scp_mem(sys->mem.tmp, &scp, sys) {
+  scp_mem(sys->mem.tmp, sys) {
     int fnt_siz = 0;
     void *mem = res_default_fnt(&fnt_siz, sys, sys->mem.arena, sys->mem.tmp);
     r->fnt = res_fnt_new(r, sys->mem.arena, mem, r->fnt_pnt_size);
     assert(r->fnt);
   }
   int ico_siz = 0;
-  scp_mem(sys->mem.tmp, &scp, sys) {
+  scp_mem(sys->mem.tmp, sys) {
     void *mem = res_icon_fnt(&ico_siz, sys, sys->mem.arena, sys->mem.tmp);
     r->ico = res_fnt_new(r, sys->mem.arena, mem, 16.0f);
     assert(r->ico);

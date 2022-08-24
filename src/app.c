@@ -202,8 +202,7 @@ app_open_files(struct app *app, struct sys *sys, const struct str *files, int cn
   assert(app);
   assert(sys);
   assert(files);
-
-  for (int i = 0; i < cnt; ++i) {
+  for_cnt(i,cnt) {
     /* open each database in new tab */
     struct app_view *view = app_view_new(app, sys);
     view->db = db.new(&app->gui, sys->mem.arena, sys->mem.tmp, files[i]);

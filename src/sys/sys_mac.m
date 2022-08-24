@@ -201,9 +201,7 @@ sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
 
   int res = 0;
   struct stat stats;
-
-  struct mem_scp scp;
-  scp_mem(tmp, &scp, &_sys) {
+  scp_mem(tmp, &_sys) {
     char *fullpath = arena_cstr(tmp, &_sys, path);
     res = stat(fullpath, &stats);
   }
@@ -444,8 +442,7 @@ sys_mac_mod_open(struct sys_mac_module *mod, struct arena *mem) {
     }
     return;
   }
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, &_sys) {
+  scp_mem(mem, &_sys) {
     mod->fileId = fileID;
     mod->valid = 1;
     mod->lib = sys_mac_lib_open(mod->path.str);
@@ -486,8 +483,7 @@ sys_mac_mod_reload(struct sys_mac_module *mod, struct arena *a) {
  */
 static void
 sys_mac_clipboard_set(struct str s, struct arena *a) {
-  struct mem_scp scp = {0};
-  scp_mem(a, &scp, &_sys) {
+  scp_mem(a, &_sys) {
     struct str tmp = arena_str(a, &_sys, s);
     @autoreleasepool {
       NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
@@ -913,9 +909,7 @@ static BOOL
 sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
   BOOL ret = NO;
   int file_cnt = cast(int, [files count]);
-
-  struct mem_scp scp;
-  scp_mem(_sys.mem.tmp, &scp, &_sys) {
+  scp_mem(_sys.mem.tmp, &_sys) {
     _sys.dnd.state = SYS_DND_DELIVERY;
     _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
     for (int i = 0; i < file_cnt; i++) {
@@ -941,9 +935,7 @@ sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
 static BOOL
 sys__mac_dnd_str(NSArray *strs, enum sys_dnd_state state) {
   BOOL ret = NO;
-
-  struct mem_scp scp;
-  scp_mem(_sys.mem.tmp, &scp, &_sys) {
+  scp_mem(_sys.mem.tmp, &_sys) {
     _sys.dnd.state = SYS_DND_DELIVERY;
 
     NSString *str = [strs objectAtIndex:0];

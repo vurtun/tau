@@ -2948,9 +2948,8 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_PASTE)) {
-    struct mem_scp scp;
     struct sys *sys = ctx->sys;
-    scp_mem(sys->mem.tmp, &scp, sys) {
+    scp_mem(sys->mem.tmp, sys) {
       struct str p = sys->clipboard.get(sys->mem.tmp);
       gui_txt_ed_paste(edt, ctx->sys, buf, p);
     }

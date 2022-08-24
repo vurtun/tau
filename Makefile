@@ -23,7 +23,7 @@ debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-missing-field-initializers
 debug: OBJCFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch -Wno-switch-enum
 debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
 debug: OBJCFLAGS += -Wno-unused-function -Wimplicit-int-conversion -Wimplicit-fallthrough
-debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations
+debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations -Wno-vla
 debug: OBJCFLAGS += -DDEBUG_MODE
 debug: CC = clang
 debug: bin/tau

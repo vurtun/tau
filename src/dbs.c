@@ -549,8 +549,7 @@ db_tree_qry_tbl(struct db_ui_view *d, struct db_tree_node *n,
   assert(mem);
 
   /* query table columns */
-  struct mem_scp scp = {0};
-  scp_mem(d->tmp_mem, &scp, sys) {
+  scp_mem(d->tmp_mem, sys) {
     struct db_tbl_col *cols = arena_dyn(d->tmp_mem, sys, struct db_tbl_col, 128);
     cols = db_tbl_qry_cols(d->con, 0, sys, n->name, cols, d->tmp_mem, d->tmp_mem);
     /* create node for each table column */
@@ -708,8 +707,7 @@ db_tbl_row_cnt(struct db_tbl_view *view, struct sys *sys, sqlite3 *con) {
   assert(view);
 
   int ret = 0;
-  struct mem_scp scp = {0};
-  scp_mem(view->tmp_mem, &scp, sys) {
+  scp_mem(view->tmp_mem, sys) {
     sqlite3_stmt *stmt = 0;
     char *sql = db_tbl_sql(view, sys, view->tmp_mem, strv("COUNT(*)"),0,0);
     sqlite3_prepare_v2(con, sql, -1, &stmt, 0);
@@ -728,8 +726,7 @@ db_tbl_view_setup(struct db_tbl_view *view, struct sys *sys, sqlite3 *con,
   if (view->data) {
     mem_scp_end(&view->scp, &view->mem, sys);
   }
-  struct mem_scp scp = {0};
-  scp_mem(view->tmp_mem, &scp, sys) {
+  scp_mem(view->tmp_mem, sys) {
     char *sql_buf = 0;
     struct str sql = str_nil;
     sqlite3_stmt *stmt = 0;
@@ -861,8 +858,7 @@ db_tbl_view_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
   assert(view);
 
   /* load blob memory from database */
-  struct mem_scp scp = {0};
-  scp_mem(view->tmp_mem, &scp, sys) {
+  scp_mem(view->tmp_mem, sys) {
     sqlite3_stmt *stmt = 0;
     struct str sql = arena_fmt(view->tmp_mem, sys,
       "SELECT %.*s FROM %.*s WHERE %.*s = %.*s;", strf(blob_col), strf(tbl),
@@ -932,8 +928,7 @@ db_tbl_view_fltr_init(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr,
   /* retrieve total table row count */
   struct str sql;
   sqlite3_stmt *stmt;
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
+  scp_mem(mem, sys) {
     if (has_match) {
       sql = arena_fmt(mem, sys, "SELECT COUNT(%.*s) FROM %.*s WHERE %.*s LIKE '%%%.*s%%';",
                       strf(arg->col), strf(arg->tbl), strf(arg->col), strf(arg->match));
@@ -982,8 +977,8 @@ db_tbl_view_fltr_time_range_init(struct db_tbl_fltr *fltr, struct sys *sys,
   assert(mem);
   assert(fltr);
 
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
+  struct mem_scp scp;
+  scp__mem(mem, &scp, sys) {
     /* retrieve time range */
     sqlite3_stmt *stmt = 0;
     struct str sql = arena_fmt(mem, sys, "SELECT MIN(strftime('%%s',%.*s)),"
@@ -1030,8 +1025,7 @@ db_tbl_view_fltr_tm_init(struct db_tbl_fltr_view *view, struct db_tbl_fltr *fltr
     mem_scp_end(&view->scp, mem, sys);
     fltr->is_date = 1;
   }
-  struct mem_scp scp = {0};
-  scp_mem(mem, &scp, sys) {
+  scp_mem(mem, sys) {
     /* retrieve total count */
     sqlite3_stmt *stmt = 0;
     fltr->tm.from_val = mktime(&fltr->tm.from);
@@ -1570,8 +1564,7 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
   assert(parent);
   assert(tmp_mem);
 
-  struct mem_scp scp = {0};
-  scp_mem(tmp_mem, &scp, ctx->sys) {
+  scp_mem(tmp_mem, ctx->sys) {
     gui.pan.begin(ctx, pan, parent);
     {
       struct gui_tbl tbl = {.box = pan->box};
@@ -2068,8 +2061,7 @@ ui_db_hex_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, blob->off);
     for_gui_reg_lst(i,gui,&reg) {
       int addr = i * col_cnt;
-      struct mem_scp scp = {0};
-      scp_mem(view->tmp_mem, &scp, ctx->sys) {
+      scp_mem(view->tmp_mem, ctx->sys) {
         /* generate and display each line of hex/ascii data representation */
         struct gui_panel elm = {0};
         char *ln = arena_dyn(view->tmp_mem, ctx->sys, char, KB(4));
@@ -2311,8 +2303,7 @@ ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 static void
 ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
                struct gui_ctx *ctx) {
-  struct mem_scp scp = {0};
-  scp_mem(ui->tmp_mem, &scp, ctx->sys) {
+  scp_mem(ui->tmp_mem, ctx->sys) {
     struct db_tree_node **lst;
     int cnt = tbl_cnt(ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
