@@ -1818,8 +1818,8 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   unsigned *restrict idx[] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 2; ++p, d = !d, s = !s) {
     for_cnt(i, n) {
-      unsigned off = idx[s][i] * cast(unsigned, siz);
-      unsigned k = sort__access(b + off, usr, access, conv, off);
+      unsigned at = idx[s][i] * cast(unsigned, siz);
+      unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
     }
   }
@@ -1872,8 +1872,8 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   unsigned *restrict idx[] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 4; ++p, d = !d, s = !s) {
     for_cnt(i, n) {
-      unsigned off = idx[s][i] * cast(unsigned, siz);
-      unsigned k = sort__access(b + off, usr, access, conv, off);
+      unsigned at = idx[s][i] * cast(unsigned, siz);
+      unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8*p))&0xff]++] = at;
     }
   }
