@@ -390,12 +390,14 @@ math_atan2(float in_y, float in_x) {
   unsigned x_sign = (ux.i & 0x80000000u);
   union bit_castf x_abs = {.i = ux.i ^ x_sign};
 
-  // Always divide smallest / largest to avoid dividing by zero
+  // always divide smallest / largest to avoid dividing by zero
   int x_is_numerator = x_abs.f < y_abs.f;
   float num = x_is_numerator ? x_abs.f : y_abs.f;
   float den = x_is_numerator ? y_abs.f : x_abs.f;
   float atn = math_atan(num / den);
-  // If we calculated x / y instead of y / x the result is PI / 2 - result (note that this is true because we know the result is positive because the input was positive)
+  // if we calculated x / y instead of y / x the result is
+  // PI / 2 - result (note that this is true because we know the result is
+  // positive because the input was positive)
   atn = x_is_numerator ? (0.5f * FLT_PI) - atn : atn;
   // Now we need to map to the correct quadrant
   // x_sign y_sign  result
@@ -591,7 +593,7 @@ hflt(float in) {
 #define len3(v)         math_sqrt(dot3(v,v))
 #define adds3(d,a,b,s)  op3(d,=,a,+,b,*,s)
 #define subs3(d,a,b,s)  op3(d,=,a,-,b,*,s)
-#define norm3(n,v)      mul3(n,v,rsqrt(dot3(v, v)))
+#define norm3(n,v)      mul3(n,v,math_rsqrt(dot3(v, v)))
 #define normeq3(v)      norm3(v,v)
 #define proj3(p,v,n)    mul3(p,n,dot3(v,n))
 #define projn3(p,v,to)  mul3(to,dot3(v,to)/Dot(to,to));
@@ -609,6 +611,12 @@ hflt(float in) {
   (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
   (d)[2] = ((a)[0]*(b)[1]) - ((a)[1]*(b)[0]);\
 } while(0)
+static inline float
+box3(const float *a, const float *b, const float *c) {
+  float n[3];
+  cross3(n, a, b);
+  return dot3(n, c);
+}
 
 /* vector 4D */
 #define set4(v,x,y,z,w) (v)[0]=(x),(v)[1]=(y),(v)[2]=(z),(v)[3] =(w)
@@ -633,6 +641,7 @@ hflt(float in) {
 #define swzl4(r,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
+#define qinv(d,s)       qconj(d,s);
 #define quat(q,n,x)     quatf(q,n,(x)[0],(x)[1],(x)[2])
 #define qmul(q,a,b)\
   (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
@@ -651,6 +660,130 @@ angle3(const float *restrict a3, const float *restrict b3) {
   if (n < 1.e-6f) return 0.0f;
   float dot = dot3(c,d);
   return math_cos(dot/math_sqrt(n));
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  Color
+ * ---------------------------------------------------------------------------
+ */
+#define col_get(u) \
+  (struct color) { col_r(u), col_g(u), col_b(u), col_a(u) }
+#define col_paq(c) col_rgba((c)->r, (c)->g, (c)->b, (c)->a)
+
+#define col_msk(c, i) (((c) >> i) & 0xFF)
+#define col_r(c) col_msk(c, COL_R)
+#define col_g(c) col_msk(c, COL_G)
+#define col_b(c) col_msk(c, COL_B)
+#define col_a(c) col_msk(c, COL_A)
+
+#define col_shl(c, i) ((unsigned)(((c) & 0xFFu) << (i)))
+#define col_clr(c, i) ((c) & ~(0xFFu << i))
+#define col_set_r(c, r) (col_clr(c, COL_R) | (col_shl(r, COL_R))
+#define col_set_g(c, g) (col_clr(c, COL_G) | (col_shl(g, COL_G))
+#define col_set_b(c, b) (col_clr(c, COL_B) | (col_shl(b, COL_B))
+#define col_set_a(c, a) (col_clr(c, COL_A) | (col_shl(a, COL_A))
+
+#define col_rgba(r,g,b,a)\
+  (col_shl(r, COL_R) | col_shl(g, COL_G) | col_shl(b, COL_B) | col_shl(a, COL_A))
+#define col_rgb(r, g, b) col_rgba(r, g, b, 0xFFu)
+
+#define byte_flt(x) clamp(0u, cast(unsigned char, 0.5f + 255.0f * (x)), 255u)
+#define flt_byte(x) (cast(float,(x)) * (1.0f/255.0f))
+
+static float
+col_srgb_linear(float x) {
+  float v = 0.0f;
+  if (x <= 0.0031308f) {
+    v = 12.92f * x;
+  } else {
+    v = (1.0f + 0.055f) * math_pow(x, 1.0f / 2.0f) - 0.055f;
+  }
+  return clamp(0, v, 1.0f);
+}
+static void
+col_srgb_rgb(float *restrict srgb_out, const float *restrict rgb_in) {
+  float rgb[3]; cpy3(rgb, rgb_in);
+  float srgb[3]; map3(srgb, col_srgb_linear, rgb);
+  cpy3(srgb_out, srgb);
+}
+static void
+col_srgba_rgba(float *restrict srgba_out, const float *restrict rgba_in) {
+  float rgba[4]; cpy4(rgba, rgba_in);
+  float srgba[4]; map4(srgba, col_srgb_linear, rgba);
+  cpy4(srgba_out, srgba);
+}
+static float
+col_linear_srgb(float x) {
+  if (x <= 0.04045f) {
+    return x / 12.98f;
+  } else {
+    return math_pow((x + 0.055f )/(1.0f + 0.055f), 2.4f);
+  }
+}
+static void
+col_rgb_srgb(float *restrict rgb_out, const float *restrict srgb_in) {
+  float srgb[3]; cpy3(srgb, srgb_in);
+  float rgb[3]; map3(rgb, col_linear_srgb, srgb);
+  cpy3(rgb_out, rgb);
+}
+static void
+col_rgba_srgba(float *restrict rgba_out, const float *restrict srgba_in) {
+  float srgba[4]; cpy4(srgba, srgba_in);
+  float rgba[4]; map4(rgba, col_linear_srgb, srgba);
+  cpy4(rgba_out, rgba);
+}
+static unsigned
+col_paq_flt(const float *restrict rgba_in) {
+  float rgba[4]; cpy4(rgba, rgba_in);
+  unsigned char col[4]; map4(col, byte_flt, rgba);
+  return col_rgba(col[0], col[1], col[2], col[3]);
+}
+static void
+col_flt_paq(float *out, unsigned in) {
+  unsigned char col[4] = {col_r(in), col_g(in), col_b(in), col_a(in)};
+  float rgba[4]; map4(rgba, flt_byte, col);
+  cpy4(out, rgba);
+}
+static void
+col_hsv_rgb(float *restrict hsv_out, const float *restrict rgb_in) {
+  float hsv[3] = {0};
+  float rgb[3]; cpy3(rgb, rgb_in);
+  float m = min3i(rgb[0], rgb[1], rgb[2]);
+  hsv[2] = max3i(rgb[0], rgb[1], rgb[2]);
+  float c = hsv[2] - m;
+  if (c != 0.0f) {
+    hsv[1] = c / hsv[2];
+    float d[3] = {(hsv[2] - rgb[0])/c, (hsv[2] - rgb[1])/c, (hsv[2] - rgb[2])/c};
+    float dzxy[3]; swzl3(dzxy,d,2,0,1);
+    static const float off[3] = {2.0f, 4.0f, 6.0f};
+    float t[3]; sub3(t, d, dzxy);
+    add3(d, t, off);
+    if (rgb[0] >= hsv[2]) hsv[0] = d[2];
+    else if (rgb[1] >= hsv[2]) hsv[0] = d[0];
+    else hsv[0] = d[1];
+    hsv[0] = math_mod(hsv[0] / 6.0f, 1.0f);
+  }
+  cpy3(hsv_out, hsv);
+}
+static void
+col_rgb_hue(float *restrict rgb_out, float hue) {
+  const float rgb[3] = {
+    clamp01((float)math_abs(hue * 6.0f - 3.0f) - 1.0f),
+    clamp01(2.0f - (float)math_abs(hue * 6.0f - 2.0f)),
+    clamp01(2.0f - (float)math_abs(hue * 6.0f - 4.0f))
+  };
+  cpy3(rgb_out, rgb);
+}
+static void
+col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
+  float hsv[3]; cpy3(hsv, hsv_in);
+  float rgb[3]; col_rgb_hue(rgb, hsv[0]);
+  const float ret[3] = {
+    ((rgb[0] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+    ((rgb[1] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+    ((rgb[2] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
+  };
+  cpy3(rgb_out, ret);
 }
 
 /* ---------------------------------------------------------------------------
@@ -793,6 +926,19 @@ qintegratev(float *restrict qo, const float *restrict qrot,
   cpy4(qo, r);
 }
 static void
+qnlerp(float *restrict qres, const float *restrict qfrom,
+       const float *restrict qto, float t) {
+  t = clamp(0.0f, t, 1.0f);
+  float adj[4]; cpy4(adj,qfrom);
+  if (dot4(qfrom, qto) < 0.0f) {
+    mul4(adj,qfrom,-1.0f);
+  }
+  float r[4];
+  lerp4(r, adj, qto, t);
+  normaleq4(r);
+  cpy4(qres, r);
+}
+static void
 qslerp(float *restrict qres, const float *restrict qfrom,
        const float *restrict qto, float t) {
   if (t <= 0.0f) {
@@ -924,6 +1070,165 @@ qst_slerp(float *restrict qres, const float *restrict qfull_swing,
           const float *restrict qfull_twist, float t_swing, float t_twist) {
   float swing[4], twist[4];
   qst__slerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
+}
+/* ---------------------------------------------------------------------------
+ *                                Transform
+ * --------------------------------------------------------------------------- */
+struct transform {
+  float pos[3];
+  float rot[4];
+  float scale[3];
+};
+static void
+transform_id(struct transform *ret) {
+  zero3(ret->pos);
+  qid(ret->rot);
+  set3(ret->scale,1,1,1);
+}
+static void
+transform_set(struct transform *ret, const float *restrict pos,
+              const float *restrict rot, const float *restrict scale) {
+  assert(ret);
+  assert(pos);
+  assert(rot);
+  assert(scale);
+
+  cpy3(ret->pos, pos);
+  cpy4(ret->rot, rot);
+  cpy3(ret->scale, scale);
+}
+static void
+transform_pnt(float *restrict ret, const struct transform *tfm,
+              const float *restrict v) {
+  assert(ret);
+  assert(tfm);
+  assert(v);
+
+  float sp[3]; op3(sp,=,v,*,tfm->scale,+,0);
+  float tp[3]; qrot3(tp, tfm->rot, sp);
+  float rp[3]; add3(rp, tp, tfm->pos);
+  cpy3(ret, rp);
+}
+static void
+transform_inv(struct transform *ret, const struct transform *src) {
+  assert(ret);
+  assert(src);
+
+  float inv_scale[3];
+  inv_scale[0] = (src->scale[0] == 0.0f) ? 0.0f : 1.0f / src->scale[0];
+  inv_scale[1] = (src->scale[1] == 0.0f) ? 0.0f : 1.0f / src->scale[1];
+  inv_scale[2] = (src->scale[2] == 0.0f) ? 0.0f : 1.0f / src->scale[2];
+
+  float inv_rot[4]; qinv(inv_rot, src->rot);
+  float sp[3]; op3(sp,=,src->pos,*,inv_scale,+,0);
+  float tp[3]; qrot3(tp, inv_rot, sp);
+  float inv_pos[3]; mul3(inv_pos, tp, -1.0f);
+  transform_set(ret, inv_pos, inv_rot, inv_scale);
+}
+static void
+transform_mul(struct transform *restrict ret, const struct transform *restrict a,
+              const struct transform *restrict b) {
+  assert(ret);
+  assert(a);
+  assert(b);
+
+  float rot[4]; qmul(rot, a->rot, b->rot);
+  float ps[3]; op3(ps,=,a->pos,*,b->scale,+,0);
+  float pr[3]; qrot3(pr,b->rot, ps);
+  float pos[3]; add3(pos,pr,b->pos);
+  float scale[3]; op3(ps,=,a->scale,*,b->scale,+,0);
+  transform_set(ret, pos, rot, scale);
+}
+static void
+transform_nlerp(struct transform *ret, const struct transform *a,
+                const struct transform *b, float t) {
+  assert(ret);
+  assert(a);
+  assert(b);
+
+  float rot[4]; qnlerp(rot, a->rot, b->rot, t);
+  float pos[3]; lerp3(pos, a->pos, b->pos, t);
+  float scale[3]; lerp3(scale, a->scale, b->scale, t);
+  transform_set(ret, pos, rot, scale);
+}
+static void
+transform_slerp(struct transform *ret, const struct transform *a,
+                const struct transform *b, float t) {
+  assert(ret);
+  assert(a);
+  assert(b);
+
+  float rot[4]; qslerp(rot, a->rot, b->rot, t);
+  float pos[3]; lerp3(pos, a->pos, b->pos, t);
+  float scale[3]; lerp3(scale, a->scale, b->scale, t);
+  transform_set(ret, pos, rot, scale);
+}
+static void
+transform_delta(struct transform *ret, const struct transform *from,
+                const struct transform *to) {
+  assert(ret);
+  assert(from);
+  assert(to);
+
+  float inv_scale[3];
+  inv_scale[0] = (from->scale[0] == 0.0f) ? 0.0f : 1.0f / from->scale[0];
+  inv_scale[1] = (from->scale[1] == 0.0f) ? 0.0f : 1.0f / from->scale[1];
+  inv_scale[2] = (from->scale[2] == 0.0f) ? 0.0f : 1.0f / from->scale[2];
+
+  float dt_scale[3]; op3(dt_scale,=,to->scale,*,inv_scale,+,0);
+  float inv_rot[4]; qinv(inv_rot, from->rot);
+  float dt_rot[4]; qmul(dt_rot, to->rot, inv_rot);
+  float dt_delta[3]; sub3(dt_delta,to->pos,from->pos);
+  float dt_rot_pos[3]; qrot3(dt_rot_pos, inv_rot, dt_delta);
+  float dt_pos[3]; op3(dt_pos,=,dt_rot_pos,*,inv_scale,+,0);
+  transform_set(ret, dt_pos, dt_rot, dt_scale);
+}
+static void
+transform_compose(float *m44, struct transform *tfm) {
+  assert(m44);
+  assert(tfm);
+
+  float x2 = tfm->rot[0] + tfm->rot[0];
+  float y2 = tfm->rot[1] + tfm->rot[1];
+  float z2 = tfm->rot[2] + tfm->rot[2];
+
+  float xx = tfm->rot[0]*x2;
+  float xy = tfm->rot[0]*y2;
+  float xz = tfm->rot[0]*z2;
+
+  float yy = tfm->rot[1]*y2;
+  float yz = tfm->rot[1]*z2;
+  float zz = tfm->rot[2]*z2;
+
+  float wx = tfm->rot[3]*x2;
+  float wy = tfm->rot[3]*y2;
+  float wz = tfm->rot[3]*z2;
+
+  float m[4][4] = {0};
+  m[0][0] = 1.0f - (yy + zz);
+  m[0][1] = xy - wz;
+  m[0][2] = xz + wy;
+  m[0][3] = 0.0f;
+
+  m[1][0] = xy + wz;
+  m[1][1] = 1.0f - (xx + zz);
+  m[1][2] = yz - wx;
+  m[1][3] = 0.0f;
+
+  m[2][0] = xz - wy;
+  m[2][1] = yz + wx;
+  m[2][2] = 1.0f - (xx + yy);
+  m[2][3] = 0.0f;
+
+  mul3(m[0],m[0],tfm->scale[0]);
+  mul3(m[1],m[1],tfm->scale[1]);
+  mul3(m[2],m[2],tfm->scale[2]);
+
+  m[3][0] = tfm->pos[0];
+  m[3][1] = tfm->pos[1];
+  m[3][2] = tfm->pos[2];
+  m[3][3] = 1.0f;
+  mcpy(m44,m,szof(m));
 }
 
 /* ---------------------------------------------------------------------------
@@ -1281,129 +1586,1042 @@ bspline_calc_new_pnts_del(float *restrict new_pnts, int idx,
   opN(h,=,cvs+((idx+2)*dim),-,cvs+((idx+3)*dim),*,len/arc_len_2,dim);
   opN(new_pnts+dim,=,h,+,cvs+((idx+3) * dim),+,0,dim);
 }
+/* ----------------------------------------------------------------------------
+ *                                  GJK
+ * ---------------------------------------------------------------------------- */
+#define GJK_MAX_ITERATIONS 20
+struct gjk_support {
+  int aid, bid;
+  float a[3];
+  float b[3];
+};
+struct gjk_vertex {
+  float a[3];
+  float b[3];
+  float p[3];
+  int aid, bid;
+};
+struct gjk_simplex {
+  int hit;
+  int iter, max_iter;
+  int vcnt, scnt;
+  int saveA[5], saveB[5];
+  struct gjk_vertex v[5];
+  float bc[4], D;
+};
+struct gjk_result {
+  int hit;
+  float p0[3];
+  float p1[3];
+  float distance_squared;
+  int iterations;
+};
+static int
+gjk_solve(struct gjk_simplex *s, const struct gjk_support *sup, float *dv) {
+  assert(s);
+  assert(dv);
+  assert(sup);
+  if (!s || !sup || !dv) return 0;
+  if (s->max_iter > 0 && s->iter >= s->max_iter)
+      return 0;
+
+  /* I.) Initialize */
+  if (!s->vcnt) {
+    s->scnt = 0;
+    s->D = FLT_MAX;
+    s->max_iter = !s->max_iter ? GJK_MAX_ITERATIONS: s->max_iter;
+  }
+  /* II.) Check for duplications */
+  for (int i = 0; i < s->scnt; ++i) {
+    if (sup->aid != s->saveA[i]) continue;
+    if (sup->bid != s->saveB[i]) continue;
+    return 0;
+  }
+  /* III.) Add vertex into simplex */
+  struct gjk_vertex *vert = &s->v[s->vcnt];
+  cpy3(vert->a, sup->a);
+  cpy3(vert->b, sup->b);
+  cpy3(vert->p, dv);
+  vert->aid = sup->aid;
+  vert->bid = sup->bid;
+  s->bc[s->vcnt++] = 1.0f;
+
+  /* IV.) Find closest simplex point */
+  switch (s->vcnt) {
+  case 1: break;
+  case 2: {
+      /* -------------------- Line ----------------------- */
+      float a[3]; cpy3(a, s->v[0].p);
+      float b[3]; cpy3(b, s->v[1].p);
+
+      /* compute barycentric coordinates */
+      float ab[3]; sub3(ab, a, b);
+      float ba[3]; sub3(ba, b, a);
+
+      float u = dot3(b, ba);
+      float v = dot3(a, ab);
+      if (v <= 0.0f) {
+        /* region A */
+        s->bc[0] = 1.0f;
+        s->vcnt = 1;
+        break;
+      }
+      if (u <= 0.0f) {
+        /* region B */
+        s->v[0] = s->v[1];
+        s->bc[0] = 1.0f;
+        s->vcnt = 1;
+        break;
+      }
+      /* region AB */
+      s->bc[0] = u;
+      s->bc[1] = v;
+      s->vcnt = 2;
+  } break;
+  case 3: {
+    /* -------------------- Triangle ----------------------- */
+    float a[3]; cpy3(a, s->v[0].p);
+    float b[3]; cpy3(b, s->v[1].p);
+    float c[3]; cpy3(c, s->v[2].p);
+
+    float ab[3]; sub3(ab, a, b);
+    float ba[3]; sub3(ba, b, a);
+    float bc[3]; sub3(bc, b, c);
+    float cb[3]; sub3(cb, c, b);
+    float ca[3]; sub3(ca, c, a);
+    float ac[3]; sub3(ac, a, c);
+
+    /* compute barycentric coordinates */
+    float u_ab = dot3(b, ba);
+    float v_ab = dot3(a, ab);
+
+    float u_bc = dot3(c, cb);
+    float v_bc = dot3(b, bc);
+
+    float u_ca = dot3(a, ac);
+    float v_ca = dot3(c, ca);
+
+    if (v_ab <= 0.0f && u_ca <= 0.0f) {
+      /* region A */
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    if (u_ab <= 0.0f && v_bc <= 0.0f) {
+      /* region B */
+      s->v[0] = s->v[1];
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    if (u_bc <= 0.0f && v_ca <= 0.0f) {
+      /* region C */
+      s->v[0] = s->v[2];
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    /* calculate fractional area */
+    float n[3]; cross3(n, ba, ca);
+    float n1[3]; cross3(n1, b, c);
+    float n2[3]; cross3(n2, c, a);
+    float n3[3]; cross3(n3, a, b);
+
+    float u_abc = dot3(n1, n);
+    float v_abc = dot3(n2, n);
+    float w_abc = dot3(n3, n);
+
+    if (u_ab > 0.0f && v_ab > 0.0f && w_abc <= 0.0f) {
+      /* region AB */
+      s->bc[0] = u_ab;
+      s->bc[1] = v_ab;
+      s->vcnt = 2;
+      break;
+    }
+    if (u_bc > 0.0f && v_bc > 0.0f && u_abc <= 0.0f) {
+      /* region BC */
+      s->v[0] = s->v[1];
+      s->v[1] = s->v[2];
+      s->bc[0] = u_bc;
+      s->bc[1] = v_bc;
+      s->vcnt = 2;
+      break;
+    }
+    if (u_ca > 0.0f && v_ca > 0.0f && v_abc <= 0.0f) {
+      /* region CA */
+      s->v[1] = s->v[0];
+      s->v[0] = s->v[2];
+      s->bc[0] = u_ca;
+      s->bc[1] = v_ca;
+      s->vcnt = 2;
+      break;
+    }
+    /* region ABC */
+    assert(u_abc > 0.0f && v_abc > 0.0f && w_abc > 0.0f);
+    s->bc[0] = u_abc;
+    s->bc[1] = v_abc;
+    s->bc[2] = w_abc;
+    s->vcnt = 3;
+  } break;
+  case 4: {
+    /* -------------------- Tetrahedron ----------------------- */
+    float a[3]; cpy3(a, s->v[0].p);
+    float b[3]; cpy3(b, s->v[1].p);
+    float c[3]; cpy3(c, s->v[2].p);
+    float d[3]; cpy3(d, s->v[3].p);
+
+    float ab[3]; sub3(ab, a, b);
+    float ba[3]; sub3(ba, b, a);
+    float bc[3]; sub3(bc, b, c);
+    float cb[3]; sub3(cb, c, b);
+    float ca[3]; sub3(ca, c, a);
+    float ac[3]; sub3(ac, a, c);
+
+    float db[3]; sub3(db, d, b);
+    float bd[3]; sub3(bd, b, d);
+    float dc[3]; sub3(dc, d, c);
+    float cd[3]; sub3(cd, c, d);
+    float da[3]; sub3(da, d, a);
+    float ad[3]; sub3(ad, a, d);
+
+    /* compute barycentric coordinates */
+    float u_ab = dot3(b, ba);
+    float v_ab = dot3(a, ab);
+
+    float u_bc = dot3(c, cb);
+    float v_bc = dot3(b, bc);
+
+    float u_ca = dot3(a, ac);
+    float v_ca = dot3(c, ca);
+
+    float u_bd = dot3(d, db);
+    float v_bd = dot3(b, bd);
+
+    float u_dc = dot3(c, cd);
+    float v_dc = dot3(d, dc);
+
+    float u_ad = dot3(d, da);
+    float v_ad = dot3(a, ad);
+
+    /* check verticies for closest point */
+    if (v_ab <= 0.0f && u_ca <= 0.0f && v_ad <= 0.0f) {
+      /* region A */
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    if (u_ab <= 0.0f && v_bc <= 0.0f && v_bd <= 0.0f) {
+      /* region B */
+      s->v[0] = s->v[1];
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    if (u_bc <= 0.0f && v_ca <= 0.0f && u_dc <= 0.0f) {
+      /* region C */
+      s->v[0] = s->v[2];
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    if (u_bd <= 0.0f && v_dc <= 0.0f && u_ad <= 0.0f) {
+      /* region D */
+      s->v[0] = s->v[3];
+      s->bc[0] = 1.0f;
+      s->vcnt = 1;
+      break;
+    }
+    /* calculate fractional area */
+    float n[3], n1[3], n2[3], n3[3];
+    cross3(n, da, ba);
+    cross3(n1, d, b);
+    cross3(n2, b, a);
+    cross3(n3, a, d);
+
+    float u_adb = dot3(n1, n);
+    float v_adb = dot3(n2, n);
+    float w_adb = dot3(n3, n);
+
+    cross3(n, ca, da);
+    cross3(n1, c, d);
+    cross3(n2, d, a);
+    cross3(n3, a, c);
+
+    float u_acd = dot3(n1, n);
+    float v_acd = dot3(n2, n);
+    float w_acd = dot3(n3, n);
+
+    cross3(n, bc, dc);
+    cross3(n1, b, d);
+    cross3(n2, d, c);
+    cross3(n3, c, b);
+
+    float u_cbd = dot3(n1, n);
+    float v_cbd = dot3(n2, n);
+    float w_cbd = dot3(n3, n);
+
+    cross3(n, ba, ca);
+    cross3(n1, b, c);
+    cross3(n2, c, a);
+    cross3(n3, a, b);
+
+    float u_abc = dot3(n1, n);
+    float v_abc = dot3(n2, n);
+    float w_abc = dot3(n3, n);
+
+      /* check edges for closest point */
+    if (w_abc <= 0.0f && v_adb <= 0.0f && u_ab > 0.0f && v_ab > 0.0f) {
+      /* region AB */
+      s->bc[0] = u_ab;
+      s->bc[1] = v_ab;
+      s->vcnt = 2;
+      break;
+    }
+    if (u_abc <= 0.0f && w_cbd <= 0.0f && u_bc > 0.0f && v_bc > 0.0f) {
+      /* region BC */
+      s->v[0] = s->v[1];
+      s->v[1] = s->v[2];
+      s->bc[0] = u_bc;
+      s->bc[1] = v_bc;
+      s->vcnt = 2;
+      break;
+    }
+    if (v_abc <= 0.0f && w_acd <= 0.0f && u_ca > 0.0f && v_ca > 0.0f) {
+      /* region CA */
+      s->v[1] = s->v[0];
+      s->v[0] = s->v[2];
+      s->bc[0] = u_ca;
+      s->bc[1] = v_ca;
+      s->vcnt = 2;
+      break;
+    }
+    if (v_cbd <= 0.0f && u_acd <= 0.0f && u_dc > 0.0f && v_dc > 0.0f) {
+      /* region DC */
+      s->v[0] = s->v[3];
+      s->v[1] = s->v[2];
+      s->bc[0] = u_dc;
+      s->bc[1] = v_dc;
+      s->vcnt = 2;
+      break;
+    }
+    if (v_acd <= 0.0f && w_adb <= 0.0f && u_ad > 0.0f && v_ad > 0.0f) {
+      /* region AD */
+      s->v[1] = s->v[3];
+      s->bc[0] = u_ad;
+      s->bc[1] = v_ad;
+      s->vcnt = 2;
+      break;
+    }
+    if (u_cbd <= 0.0f && u_adb <= 0.0f && u_bd > 0.0f && v_bd > 0.0f) {
+      /* region BD */
+      s->v[0] = s->v[1];
+      s->v[1] = s->v[3];
+      s->bc[0] = u_bd;
+      s->bc[1] = v_bd;
+      s->vcnt = 2;
+      break;
+    }
+    /* calculate fractional volume (volume can be negative!) */
+    float denom = box3(cb, ab, db);
+    float volume = (denom == 0) ? 1.0f: 1.0f/denom;
+    float u_abcd = box3(c, d, b) * volume;
+    float v_abcd = box3(c, a, d) * volume;
+    float w_abcd = box3(d, a, b) * volume;
+    float x_abcd = box3(b, a, c) * volume;
+
+      /* check faces for closest point */
+    if (x_abcd <= 0.0f && u_abc > 0.0f && v_abc > 0.0f && w_abc > 0.0f) {
+      /* region ABC */
+      s->bc[0] = u_abc;
+      s->bc[1] = v_abc;
+      s->bc[2] = w_abc;
+      s->vcnt = 3;
+      break;
+    }
+    if (u_abcd <= 0.0f && u_cbd > 0.0f && v_cbd > 0.0f && w_cbd > 0.0f) {
+      /* region CBD */
+      s->v[0] = s->v[2];
+      s->v[2] = s->v[3];
+      s->bc[0] = u_cbd;
+      s->bc[1] = v_cbd;
+      s->bc[2] = w_cbd;
+      s->vcnt = 3;
+      break;
+    }
+    if (v_abcd <= 0.0f && u_acd > 0.0f && v_acd > 0.0f && w_acd > 0.0f) {
+      /* region ACD */
+      s->v[1] = s->v[2];
+      s->v[2] = s->v[3];
+      s->bc[0] = u_acd;
+      s->bc[1] = v_acd;
+      s->bc[2] = w_acd;
+      s->vcnt = 3;
+      break;
+    }
+    if (w_abcd <= 0.0f && u_adb > 0.0f && v_adb > 0.0f && w_adb > 0.0f) {
+      /* region ADB */
+      s->v[2] = s->v[1];
+      s->v[1] = s->v[3];
+      s->bc[0] = u_adb;
+      s->bc[1] = v_adb;
+      s->bc[2] = w_adb;
+      s->vcnt = 3;
+      break;
+    }
+    /* region ABCD */
+    assert(u_abcd > 0.0f && v_abcd > 0.0f && w_abcd > 0.0f && x_abcd > 0.0f);
+    s->bc[0] = u_abcd;
+    s->bc[1] = v_abcd;
+    s->bc[2] = w_abcd;
+    s->bc[3] = x_abcd;
+    s->vcnt = 4;
+  } break;}
+
+  /* V.) Check if origin is enclosed by tetrahedron */
+  if (s->vcnt == 4) {
+    s->hit = 1;
+    return 0;
+  }
+  /* VI.) Ensure closing in on origin to prevent multi-step cycling */
+  float pnt[3], denom = 0;
+  for (int i = 0; i < s->vcnt; ++i) {
+    denom += s->bc[i];
+  }
+  denom = 1.0f / denom;
+
+  switch (s->vcnt) {
+  case 1: cpy3(pnt, s->v[0].p); break;
+  case 2: {
+    /* --------- Line -------- */
+    float a[3]; mul3(a, s->v[0].p, denom * s->bc[0]);
+    float b[3]; mul3(b, s->v[1].p, denom * s->bc[1]);
+    add3(pnt, a, b);
+  } break;
+  case 3: {
+    /* ------- Triangle ------ */
+    float a[3]; mul3(a, s->v[0].p, denom * s->bc[0]);
+    float b[3]; mul3(b, s->v[1].p, denom * s->bc[1]);
+    float c[3]; mul3(c, s->v[2].p, denom * s->bc[2]);
+
+    add3(pnt, a, b);
+    add3(pnt, pnt, c);
+  } break;
+  case 4: {
+    /* ----- Tetrahedron ----- */
+    float a[3]; mul3(a, s->v[0].p, denom * s->bc[0]);
+    float b[3]; mul3(b, s->v[1].p, denom * s->bc[1]);
+    float c[3]; mul3(c, s->v[2].p, denom * s->bc[2]);
+    float d[3]; mul3(d, s->v[3].p, denom * s->bc[3]);
+
+    add3(pnt, a, b);
+    add3(pnt, pnt, c);
+    add3(pnt, pnt, d);
+  } break;}
+
+  float d2 = dot3(pnt, pnt);
+  if (d2 >= s->D) {
+    return 0;
+  }
+  s->D = d2;
+
+  /* VII.) New search direction */
+  switch (s->vcnt) {
+  default: assert(0); break;
+  case 1: {
+    /* --------- Point -------- */
+    mul3(dv, s->v[0].p, -1);
+  } break;
+  case 2: {
+    /* ------ Line segment ---- */
+    float ba[3]; sub3(ba, s->v[1].p, s->v[0].p);
+    float b0[3]; mul3(b0, s->v[1].p, -1);
+    float t[3]; cross3(t, ba, b0);
+    cross3(dv, t, ba);
+  } break;
+  case 3: {
+    /* ------- Triangle ------- */
+    float ab[3]; sub3(ab, s->v[1].p, s->v[0].p);
+    float ac[3]; sub3(ac, s->v[2].p, s->v[0].p);
+    float n[3]; cross3(n, ab, ac);
+    if (dot3(n, s->v[0].p) <= 0.0f) {
+      cpy3(dv, n);
+    } else {
+      mul3(dv, n, -1);
+    }
+  }}
+  if (dot3(dv,dv) < FLT_EPSILON * FLT_EPSILON) {
+    return 0;
+  }
+  /* VIII.) Save ids for next duplicate check */
+  s->scnt = s->vcnt; s->iter++;
+  for (int i = 0; i < s->scnt; ++i) {
+    s->saveA[i] = s->v[i].aid;
+    s->saveB[i] = s->v[i].bid;
+  }
+  return 1;
+}
+static struct gjk_result
+gjk_analyze(const struct gjk_simplex *s) {
+  struct gjk_result r = {0};
+  r.iterations = s->iter;
+  r.hit = s->hit;
+
+  /* calculate normalization denominator */
+  float denom = 0;
+  for (int i = 0; i < s->vcnt; ++i) {
+    denom += s->bc[i];
+  }
+  denom = 1.0f / denom;
+
+  /* compute closest points */
+  switch (s->vcnt) {
+  default: assert(0); break;
+  case 1: {
+    /* Point */
+    cpy3(r.p0, s->v[0].a);
+    cpy3(r.p1, s->v[0].b);
+  } break;
+  case 2: {
+    /* Line */
+    float as = denom * s->bc[0];
+    float bs = denom * s->bc[1];
+
+    float a[3]; mul3(a, s->v[0].a, as);
+    float b[3]; mul3(b, s->v[1].a, bs);
+    float c[3]; mul3(c, s->v[0].b, as);
+    float d[3]; mul3(d, s->v[1].b, bs);
+
+    add3(r.p0, a, b);
+    add3(r.p1, c, d);
+  } break;
+  case 3: {
+    /* Triangle */
+    float as = denom * s->bc[0];
+    float bs = denom * s->bc[1];
+    float cs = denom * s->bc[2];
+
+    float a[3]; mul3(a, s->v[0].a, as);
+    float b[3]; mul3(b, s->v[1].a, bs);
+    float c[3]; mul3(c, s->v[2].a, cs);
+
+    float d[3]; mul3(d, s->v[0].b, as);
+    float e[3]; mul3(e, s->v[1].b, bs);
+    float f[3]; mul3(f, s->v[2].b, cs);
+
+    add3(r.p0, a, b);
+    add3(r.p0, r.p0, c);
+
+    add3(r.p1, d, e);
+    add3(r.p1, r.p1, f);
+  } break;
+  case 4: {
+    /* Tetrahedron */
+    float as = denom * s->bc[0];
+    float bs = denom * s->bc[1];
+    float cs = denom * s->bc[2];
+    float ds = denom * s->bc[3];
+
+    float a[3]; mul3(a, s->v[0].a, as);
+    float b[3]; mul3(b, s->v[1].a, bs);
+    float c[3]; mul3(c, s->v[2].a, cs);
+    float d[3]; mul3(d, s->v[3].a, ds);
+
+    add3(r.p0, a, b);
+    add3(r.p0, r.p0, c);
+    add3(r.p0, r.p0, d);
+    cpy3(r.p1, r.p0);
+  } break;}
+
+  if (!r.hit) {
+    /* compute distance */
+    float d[3]; sub3(d, r.p1, r.p0);
+    r.distance_squared = dot3(d, d);
+  } else {
+    r.distance_squared = 0;
+  }
+  return r;
+}
 
 /* ---------------------------------------------------------------------------
- *                                  Color
+ *                                Plane
  * ---------------------------------------------------------------------------
  */
-#define col_get(u) \
-  (struct color) { col_r(u), col_g(u), col_b(u), col_a(u) }
-#define col_paq(c) col_rgba((c)->r, (c)->g, (c)->b, (c)->a)
+static inline void
+planeq(float *restrict r, const float *restrict n, const float *restrict p) {
+  cpy3(r,n);
+  r[3] = -dot3(n,p);
+}
+static inline void
+planeqf(float *r, float nx, float ny, float nz, float px, float py, float pz) {
+  /* Plane: ax + by + cz + d
+   * Equation:
+   *      n * (p - p0) = 0
+   *      n * p - n * p0 = 0
+   *      |a b c| * p - |a b c| * p0
+   *
+   *      |a b c| * p + d = 0
+   *          d = -1 * |a b c| * p0
+   *
+   *  Plane: |a b c d| d = -|a b c| * p0
+   */
+  float n[3]; set3(n,nx,ny,nz);
+  float p[3]; set3(p,px,py,pz);
+  planeq(r, n, p);
+}
+static inline void
+plane_tri(float *restrict r, const float *restrict p0, const float *restrict p1,
+          const float *restrict p2) {
+  float d10[3]; sub3(d10, p0, p1);
+  float d20[3]; sub3(d20, p0, p2);
+  float n[3]; cross3(n, d10, d20); normeq3(n);
+  cpy3(r,n);
+  r[3] = -dot3(p0, n);
+}
+static inline float
+plane_signed_dist_pnt(const float *restrict plane, const float *restrict pnt) {
+  float p[4] = {0,0,0,1}; cpy3(p, pnt);
+  return dot4(p, plane);
+}
+static inline float
+plane_abs_dist_pnt(const float *plane, const float *pnt) {
+  float d = plane_signed_dist_pnt(plane, pnt);
+  return cast(float, math_abs(d));
+}
+static inline int
+plane_pnts_same_side(const float *restrict plane, const float *restrict a,
+                     const float *restrict b) {
+  float da = plane_signed_dist_pnt(plane, a);
+  float db = plane_signed_dist_pnt(plane, b);
+  return (da * db) >= 0.0f;
+}
+static inline int
+plane_pnt_is_front(const float *restrict plane, const float *pnt) {
+  float d = plane_signed_dist_pnt(plane, pnt);
+  return d >= 0.0f;
+}
+static inline int
+plane_pnt_is_behind(const float *restrict plane, const float *pnt) {
+  float d = plane_signed_dist_pnt(plane, pnt);
+  return d < 0.0f;
+}
+static inline void
+plane_proj_pnt(float *restrict r, const float *restrict plane, const float *pnt) {
+  float p[4] = {0,0,0,1}; cpy3(p, pnt);
+  float n[4] = {0,0,0,0}; cpy3(n,plane); mul3(n,n,-1.0f);
+  float d = dot4(p, plane);
+  op4(r,=,p,+,n,*,d);
+}
+static inline void
+plane_proj_vec(float *restrict r, const float *restrict plane, const float *v) {
+  float d = dot3(v, plane);
+  float n[4]; mul4(n,plane,-1.0f);
+  op4(r,=,v,+,n,*,d);
+}
 
-#define col_msk(c, i) (((c) >> i) & 0xFF)
-#define col_r(c) col_msk(c, COL_R)
-#define col_g(c) col_msk(c, COL_G)
-#define col_b(c) col_msk(c, COL_B)
-#define col_a(c) col_msk(c, COL_A)
-
-#define col_shl(c, i) ((unsigned)(((c) & 0xFFu) << (i)))
-#define col_clr(c, i) ((c) & ~(0xFFu << i))
-#define col_set_r(c, r) (col_clr(c, COL_R) | (col_shl(r, COL_R))
-#define col_set_g(c, g) (col_clr(c, COL_G) | (col_shl(g, COL_G))
-#define col_set_b(c, b) (col_clr(c, COL_B) | (col_shl(b, COL_B))
-#define col_set_a(c, a) (col_clr(c, COL_A) | (col_shl(a, COL_A))
-
-#define col_rgba(r,g,b,a)\
-  (col_shl(r, COL_R) | col_shl(g, COL_G) | col_shl(b, COL_B) | col_shl(a, COL_A))
-#define col_rgb(r, g, b) col_rgba(r, g, b, 0xFFu)
-
-#define byte_flt(x) clamp(0u, cast(unsigned char, 0.5f + 255.0f * (x)), 255u)
-#define flt_byte(x) (cast(float,(x)) * (1.0f/255.0f))
-
+/* ---------------------------------------------------------------------------
+ *                                Line segment
+ * ---------------------------------------------------------------------------
+ */
+static void
+seg_get_pnt_to_pnt(float *res, const float *a, const float *b, const float *p) {
+  float ab[3]; sub3(ab, b,a);
+  float pa[3]; sub3(pa, p,a);
+  float t = dot3(pa,ab) / dot3(ab,ab);
+  if (t < 0.0f) t = 0.0f;
+  if (t > 1.0f) t = 1.0f;
+  mul3(res, ab, t);
+  add3(res, a, res);
+}
 static float
-col_srgb_linear(float x) {
-  float v = 0.0f;
-  if (x <= 0.0031308f) {
-    v = 12.92f * x;
-  } else {
-    v = (1.0f + 0.055f) * math_pow(x, 1.0f / 2.0f) - 0.055f;
-  }
-  return clamp(0, v, 1.0f);
-}
-static void
-col_srgb_rgb(float *restrict srgb_out, const float *restrict rgb_in) {
-  float rgb[3]; cpy3(rgb, rgb_in);
-  float srgb[3]; map3(srgb, col_srgb_linear, rgb);
-  cpy3(srgb_out, srgb);
-}
-static void
-col_srgba_rgba(float *restrict srgba_out, const float *restrict rgba_in) {
-  float rgba[4]; cpy4(rgba, rgba_in);
-  float srgba[4]; map4(srgba, col_srgb_linear, rgba);
-  cpy4(srgba_out, srgba);
+seg_get_pnt_to_pnt_sqdist(const float *restrict a, const float *restrict b,
+                          const float *p) {
+  float ab[3]; sub3(ab,a,b);
+  float ap[3]; sub3(ap,a,p);
+  float bp[3]; sub3(bp,a,p);
+  float e = dot3(ap,ab);
+
+  /* handle cases p proj outside ab */
+  if (e <= 0.0f) return dot3(ap,ap);
+  float f = dot3(ab,ab);
+  if (e >= f) return dot3(bp,bp);
+  return dot3(ap,ap) - (e*e)/f;
 }
 static float
-col_linear_srgb(float x) {
-  if (x <= 0.04045f) {
-    return x / 12.98f;
+seg_get_pnt_to_seg(float *t1, float *t2, float *c1, float *c2,
+                    const float *p1, const float *q1,
+                    const float *p2, const float *q2) {
+  float d1[3]; sub3(d1, q1, p1); /* direction vector segment s1 */
+  float d2[3]; sub3(d2, q2, p2); /* direction vector segment s2 */
+  float r[3]; sub3(r, p1, p2);
+
+  float a = dot3(d1, d1);
+  float e = dot3(d2, d2);
+  float f = dot3(d2, r);
+
+  if (a <= FLT_EPSILON && e <= FLT_EPSILON) {
+    /* both segments degenerate into points */
+    *t1 = *t2 = 0.0f;
+    cpy3(c1, p1);
+    cpy3(c2, p2);
+    float d12[3]; sub3(d12, c1, c2);
+    return dot3(d12,d12);
+  }
+  if (a > FLT_EPSILON) {
+    float c = dot3(d1,r);
+    if (e > FLT_EPSILON) {
+      /* non-degenerate case */
+      float b = dot3(d1,d2);
+      float denom = a*e - b*b;
+      /* compute closest point on L1/L2 if not parallel else pick any t2 */
+      if (denom != 0.0f) {
+        *t1 = clamp(0.0f, (b*f - c*e) / denom, 1.0f);
+      } else {
+        *t1 = 0.0f;
+      }
+      /* cmpute point on L2 closest to S1(s) */
+      *t2 = (b*(*t1) + f) / e;
+      if (*t2 < 0.0f) {
+        *t2 = 0.0f;
+        *t1 = clamp(0.0f, -c/a, 1.0f);
+      } else if (*t2 > 1.0f) {
+        *t2 = 1.0f;
+        *t1 = clamp(0.0f, (b-c)/a, 1.0f);
+      }
+    } else {
+      /* second segment degenerates into a point */
+      *t1 = clamp(0.0f, -c/a, 1.0f);
+      *t2 = 0.0f;
+    }
   } else {
-    return math_pow((x + 0.055f )/(1.0f + 0.055f), 2.4f);
+    /* first segment degenerates into a point */
+    *t2 = clamp(0.0f, f / e, 1.0f);
+    *t1 = 0.0f;
+  }
+  /* calculate closest points */
+  float n[3]; mul3(n, d1, *t1);
+  add3(c1, p1, n);
+  mul3(n, d2, *t2);
+  add3(c2, p2, n);
+
+  /* calculate squared distance */
+  float d12[3]; sub3(d12, c1, c2);
+  return dot3(d12,d12);
+}
+
+/* ---------------------------------------------------------------------------
+ *                                Ray
+ * ---------------------------------------------------------------------------
+ */
+static float
+ray_hit_plane(const float *ro, const float *rd, const float *plane) {
+  /* Ray: P = origin + rd * t
+   * Plane: plane_normal * P + d = 0
+   *
+   * Substitute:
+   *      normal * (origin + rd*t) + d = 0
+   *
+   * Solve for t:
+   *      plane_normal * origin + plane_normal * rd*t + d = 0
+   *      -(plane_normal*rd*t) = plane_normal * origin + d
+   *
+   *                  plane_normal * origin + d
+   *      t = -1 * -------------------------------
+   *                      plane_normal * rd
+   *
+   * Result:
+   *      Behind: t < 0
+   *      Infront: t >= 0
+   *      Parallel: t = 0
+   *      Intersection point: ro + rd * t
+   */
+  float n = -(dot3(plane,ro) + plane[3]);
+  if (math_abs(n) < 0.0001f) {
+    return 0.0f;
+  }
+  return n/(dot3(plane,rd));
+}
+static float
+ray_hit_tri(const float *ro, const float *rd, const float *p0,
+            const float *p1, const float *p2) {
+  /* calculate triangle normal */
+  float d10[3]; sub3(d10, p1,p0);
+  float d20[3]; sub3(d20, p2,p0);
+  float d21[3]; sub3(d21, p2,p1);
+  float d02[3]; sub3(d02, p0,p2);
+  float n[3]; cross3(n, d10,d20);
+
+  /* check for plane intersection */
+  float p[4]; planeq(p, n, p0);
+  float t = ray_hit_plane(ro, rd, p);
+  if (t <= 0.0f){
+    return t;
+  }
+  /* intersection point */
+  float in[3];
+  mul3(in,rd,t);
+  add3(in,in,ro);
+
+  /* check if point inside triangle in plane */
+  float di0[3]; sub3(di0, in, p0);
+  float di1[3]; sub3(di1, in, p1);
+  float di2[3]; sub3(di2, in, p2);
+
+  float in0[3]; cross3(in0, d10, di0);
+  float in1[3]; cross3(in1, d21, di1);
+  float in2[3]; cross3(in2, d02, di2);
+
+  if (dot3(in0,n) < 0.0f) {
+    return -1;
+  } else if (dot3(in1,n) < 0.0f) {
+    return -1;
+  } else if (dot3(in2,n) < 0.0f) {
+    return -1;
+  }
+  return t;
+}
+static int
+ray_hit_sphere(float *t0, float *t1, const float *ro, const float *rd,
+               const float *c, float r) {
+  float a[3]; sub3(a,c,ro);
+  float tc = dot3(rd,a);
+  if (tc < 0) {
+    return 0;
+  }
+  float r2 = r*r;
+  float d2 = dot3(a,a) - tc*tc;
+  if (d2 > r2) {
+    return 0;
+  }
+  float td = math_sqrt(r2 - d2);
+
+  *t0 = tc - td;
+  *t1 = tc + td;
+  return 1;
+}
+static int
+ray_hit_aabb(float *t0, float *t1,
+  const float *ro, const float *rd,
+  const float *min, const float *max) {
+
+  float t0x = (min[0] - ro[0]) / rd[0];
+  float t0y = (min[1] - ro[1]) / rd[1];
+  float t0z = (min[2] - ro[2]) / rd[2];
+  float t1x = (max[0] - ro[0]) / rd[0];
+  float t1y = (max[1] - ro[1]) / rd[1];
+  float t1z = (max[2] - ro[2]) / rd[2];
+
+  float tminx = min(t0x, t1x);
+  float tminy = min(t0y, t1y);
+  float tminz = min(t0z, t1z);
+  float tmaxx = max(t0x, t1x);
+  float tmaxy = max(t0y, t1y);
+  float tmaxz = max(t0z, t1z);
+  if (tminx > tmaxy || tminy > tmaxx) {
+    return 0;
+  }
+  *t0 = max(tminx, tminy);
+  *t1 = min(tmaxy, tmaxx);
+  if (*t0 > tmaxz || tminz> *t1) {
+    return 0;
+  }
+  *t0 = max(*t0, tminz);
+  *t1 = min(*t1, tmaxz);
+  return 1;
+}
+
+/* ---------------------------------------------------------------------------
+ *                                Sphere
+ * ---------------------------------------------------------------------------
+ * 4 floats:
+ *    3 float center,
+ *    1 float radius
+ */
+static int aabb_hit_sphere(const float *restrict a, const float *restrict s);
+static int capsule_hit_sphere(const float *c, const float *s);
+
+static void
+sphere_closest_pnt(float *restrict res, const float *restrict s,
+                   const float *restrict p) {
+  float d[3]; sub3(d, p, s);
+  float n[3]; norm3(n,d);
+  mul3(res,n,s[3]);
+  add3(res,s,res);
+}
+static int
+sphere_hit_sphere(const float *restrict a, const float *restrict b) {
+  float d[3]; sub3(d, b, a);
+  float r = a[3] + b[3];
+  if (dot3(d,d) > r*r) {
+    return 0;
+  }
+  return 1;
+}
+static int
+sphere_hit_aabb(const float *restrict s, const float *restrict a) {
+  return aabb_hit_sphere(a, s);
+}
+static int
+sphere_hit_capsule(const float *s, const float *c) {
+  return capsule_hit_sphere(c, s);
+}
+
+/* ---------------------------------------------------------------------------
+ *                                AABB
+ * ---------------------------------------------------------------------------
+ * 6 floats:
+ *    3 float min,
+ *    3 float max
+ */
+static inline float* aabb_min(float *a) { return a; }
+static inline float* aabb_max(float *a) { return a + 3; }
+static int capsule_hit_aabb(const float *c, const float *a);
+
+static void
+aabb_add_pnt(float *restrict a, const float *restrict pnt) {
+  min3(a, a, pnt);
+  max3(a + 3, a + 3, pnt);
+}
+static void
+aabb_ext(float *e, const float *restrict a) {
+  float d[3]; sub3(d, a + 3, a);
+  mul3(e, e, 0.5f);
+}
+static void
+aabb_ctr(float *ctr, const float *restrict a) {
+  float e[3]; aabb_ext(e, a);
+  add3(ctr, a, e);
+}
+static void
+aabb_build(float *restrict a, const float *restrict ctr,
+           const float *restrict ext) {
+  sub3(a, ctr, ext);
+  add3(a + 3, ctr, ext);
+}
+static void
+aabb_mov(float *restrict a, const float *ctr) {
+  float e[3]; aabb_ext(e, a);
+  aabb_build(a, ctr, e);
+}
+static void
+aabb_rebalance(float *restrict b, const float *a, const float *restrict m,
+               const float *restrict t) {
+  for (int i = 0; i < 3; ++i) {
+    b[i] = b[3+i] = t[i];
+    for (int j = 0; j < 3; ++j) {
+      float e = m[i*3+j] * a[j];
+      float f = m[i*3+j] * a[3+j];
+      if (e < f) {
+        b[i] += e;
+        b[3+i] += f;
+      } else {
+        b[i] += f;
+        b[3+i] += e;
+      }
+    }
   }
 }
 static void
-col_rgb_srgb(float *restrict rgb_out, const float *restrict srgb_in) {
-  float srgb[3]; cpy3(srgb, srgb_in);
-  float rgb[3]; map3(rgb, col_linear_srgb, srgb);
-  cpy3(rgb_out, rgb);
+aabb_merge(float *r, const float *a, const float *b) {
+  min3(r, a, b);
+  max3(r+3, a+3, b+3);
 }
 static void
-col_rgba_srgba(float *restrict rgba_out, const float *restrict srgba_in) {
-  float srgba[4]; cpy4(srgba, srgba_in);
-  float rgba[4]; map4(rgba, col_linear_srgb, srgba);
-  cpy4(rgba_out, rgba);
-}
-static unsigned
-col_paq_flt(const float *restrict rgba_in) {
-  float rgba[4]; cpy4(rgba, rgba_in);
-  unsigned char col[4]; map4(col, byte_flt, rgba);
-  return col_rgba(col[0], col[1], col[2], col[3]);
+aabb_intersect(float *r, const float *a, const float *b) {
+  max3(r, a, b);
+  min3(r+3, a+3, b+3);
 }
 static void
-col_flt_paq(float *out, unsigned in) {
-  unsigned char col[4] = {col_r(in), col_g(in), col_b(in), col_a(in)};
-  float rgba[4]; map4(rgba, flt_byte, col);
-  cpy4(out, rgba);
-}
-static void
-col_hsv_rgb(float *restrict hsv_out, const float *restrict rgb_in) {
-  float hsv[3] = {0};
-  float rgb[3]; cpy3(rgb, rgb_in);
-  float m = min3i(rgb[0], rgb[1], rgb[2]);
-  hsv[2] = max3i(rgb[0], rgb[1], rgb[2]);
-  float c = hsv[2] - m;
-  if (c != 0.0f) {
-    hsv[1] = c / hsv[2];
-    float d[3] = {(hsv[2] - rgb[0])/c, (hsv[2] - rgb[1])/c, (hsv[2] - rgb[2])/c};
-    float dzxy[3]; swzl3(dzxy,d,2,0,1);
-    static const float off[3] = {2.0f, 4.0f, 6.0f};
-    float t[3]; sub3(t, d, dzxy);
-    add3(d, t, off);
-    if (rgb[0] >= hsv[2]) hsv[0] = d[2];
-    else if (rgb[1] >= hsv[2]) hsv[0] = d[0];
-    else hsv[0] = d[1];
-    hsv[0] = math_mod(hsv[0] / 6.0f, 1.0f);
+aabb_closest_pnt(float *restrict res, const float *restrict a,
+                 const float *restrict p) {
+  for (int i = 0; i < 3; ++i) {
+    float v = p[i];
+    if (v < a[i]) v = a[i];
+    if (v > a[3+i]) v = a[3+i];
+    res[i] = v;
   }
-  cpy3(hsv_out, hsv);
+}
+static float
+aabb_sqdist_to_pnt(const float *a, const float *p) {
+  float r = 0;
+  for (int i = 0; i < 3; ++i) {
+    float v = p[i];
+    if (v < a[i])
+      r += (a[i]-v) * (a[i]-v);
+    if (v > a[3+i])
+      r += (v-a[3+i]) * (v-a[3+i]);
+  }
+  return r;
+}
+static int
+aabb_has_pnt(const float *restrict a, const float *restrict p) {
+  if (p[0] < a[0] || p[0] > a[3]) return 0;
+  if (p[1] < a[1] || p[1] > a[4]) return 0;
+  if (p[2] < a[2] || p[2] > a[5]) return 0;
+  return 1;
+}
+static int
+aabb_has_aabb(const float *restrict a, const float *restrict b) {
+  if (a[3] < b[0] || a[0] > b[3]) return 0;
+  if (a[4] < b[1] || a[1] > b[4]) return 0;
+  if (a[5] < b[2] || a[2] > b[5]) return 0;
+  return 1;
+}
+static int
+aabb_hit_sphere(const float *restrict a, const float *restrict s) {
+  /* compute squared distance between sphere center and aabb */
+  float d2 = aabb_sqdist_to_pnt(a, s);
+  /* intersection if distance is smaller/equal sphere radius*/
+  return d2 <= s[3]*s[3];
+}
+static int
+aabb_hit_capsule(const float *restrict a, const float *restrict c) {
+  return capsule_hit_aabb(c, a);
+}
+
+/* ---------------------------------------------------------------------------
+ *                                Capsule
+ * ---------------------------------------------------------------------------
+ * 7 floats:
+ *    3 float center0,
+ *    3 float center1
+ *    1 float radius
+ */
+static float
+capsule_pnt_sqdist(const float *c, const float *p) {
+  float d2 = seg_get_pnt_to_pnt_sqdist(c, c+3, p);
+  return d2 - (c[6]*c[6]);
 }
 static void
-col_rgb_hue(float *restrict rgb_out, float hue) {
-  const float rgb[3] = {
-    clamp01((float)math_abs(hue * 6.0f - 3.0f) - 1.0f),
-    clamp01(2.0f - (float)math_abs(hue * 6.0f - 2.0f)),
-    clamp01(2.0f - (float)math_abs(hue * 6.0f - 4.0f))
-  };
-  cpy3(rgb_out, rgb);
+capsule_closest_pnt(float *res, const float *restrict c, const float *restrict p) {
+  /* calculate closest point to internal capsule segment */
+  float pp[3]; seg_get_pnt_to_pnt(pp, c, c + 3, p);
+  /* extend point out by radius in normal direction */
+  float d[3]; sub3(d,p,pp); normeq3(d);
+  mul3(res, d, c[6]);
+  add3(res, pp, res);
 }
-static void
-col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
-  float hsv[3]; cpy3(hsv, hsv_in);
-  float rgb[3]; col_rgb_hue(rgb, hsv[0]);
-  const float ret[3] = {
-    ((rgb[0] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
-    ((rgb[1] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
-    ((rgb[2] - 1.0f) * hsv[1] + 1.0f) * hsv[2],
-  };
-  cpy3(rgb_out, ret);
+static int
+capsule_hit_capsule(const float *a, const float *b) {
+  float t1, t2, c1[3], c2[3];
+  float d2 = seg_get_pnt_to_seg(&t1, &t2, c1, c2, a, a+3, b, b+3);
+  float r = a[6] + b[6];
+  return d2 <= r*r;
+}
+static int
+capsule_hit_sphere(const float *c, const float *s) {
+  /* squared distance bwetween sphere center and capsule line segment */
+  float d2 = seg_get_pnt_to_pnt_sqdist(c,c+3,s);
+  float r = s[4] + c[6];
+  return d2 <= r * r;
+}
+static int
+capsule_hit_aabb(const float *c, const float *a) {
+  /* calculate aabb center point */
+  float ac[3]; sub3(ac, a, a+3);
+  mul3(ac, ac, 0.5f);
+  /* calculate closest point from aabb to point on capsule and check if inside aabb */
+  float p[3]; capsule_closest_pnt(p, c, ac);
+  return aabb_has_pnt(a, p);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1434,6 +2652,20 @@ struct cam_ortho {
   int bottom;
   int top;
 };
+enum cam_plane_id {
+  PLANE_LEFT,
+  PLANE_RIGHT,
+  PLANE_TOP,
+  PLANE_BOTTOM,
+  PLANE_NEAR,
+  PLANE_FAR,
+  PLANE_CNT
+};
+enum cam_intersect {
+  CAM_PLANE_OUTSIDE,
+  CAM_PLANE_INSIDE,
+  CAM_PLANE_INTERSECTS,
+};
 struct cam {
   /* in: proj */
   enum cam_mode mode;
@@ -1458,8 +2690,19 @@ struct cam {
   float view_inv[4][4];
   float proj[4][4];
   float proj_inv[4][4];
+  float view_proj[4][4];
 
-  float loc[3];
+  union {
+    struct cam_planes {
+      float left[4];
+      float right[4];
+      float top[4];
+      float bot[4];
+      float near[4];
+      float far[4];
+    } plane;
+    float planes[4*PLANE_CNT];
+  };
   float forward[3];
   float backward[3];
   float right[3];
@@ -1489,7 +2732,7 @@ cam_init(struct cam *c) {
   memcpy(c->proj_inv, m4id, sizeof(m4id));
 }
 static void
-cam__calc_view(struct cam *c) {
+cam_build(struct cam *c) {
   assert(c);
   /* convert orientation matrix into quaternion */
   if (c->orient == CAM_MAT) {
@@ -1536,27 +2779,24 @@ cam__calc_view(struct cam *c) {
   gimbal lock under all circumstances). While it is true that it is not a problem for
   FPS style cameras, it is a problem for free cameras. To fix that issue this camera only
   takes in the relative angle rotation and does not store the absolute angle values [7].*/
-  float sx = math_sin((c->ear[0]*0.5f));
-  float sy = math_sin((c->ear[1]*0.5f));
-  float sz = math_sin((c->ear[2]*0.5f));
+  {
+    float sx, cx; math_sin_cos(&sx,&cx,c->ear[0]*0.5f);
+    float sy, cy; math_sin_cos(&sy,&cy,c->ear[1]*0.5f);
+    float sz, cz; math_sin_cos(&sz,&cz,c->ear[2]*0.5f);
 
-  float cx = math_cos((c->ear[0]*0.5f));
-  float cy = math_cos((c->ear[1]*0.5f));
-  float cz = math_cos((c->ear[2]*0.5f));
+    float a[4], b[4];
+    a[0] = cz*sx; a[1] = sz*sx; a[2] = sz*cx; a[3] = cz*cx;
+    b[0] = c->q[0]*cy - c->q[2]*sy;
+    b[1] = c->q[3]*sy + c->q[1]*cy;
+    b[2] = c->q[2]*cy + c->q[0]*sy;
+    b[3] = c->q[3]*cy - c->q[1]*sy;
 
-  float a[4], b[4];
-  a[0] = cz*sx; a[1] = sz*sx; a[2] = sz*cx; a[3] = cz*cx;
-  b[0] = c->q[0]*cy - c->q[2]*sy;
-  b[1] = c->q[3]*sy + c->q[1]*cy;
-  b[2] = c->q[2]*cy + c->q[0]*sy;
-  b[3] = c->q[3]*cy - c->q[1]*sy;
-
-  c->q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
-  c->q[1] = a[3]*b[1] + a[1]*b[3] + a[2]*b[0] - a[0]*b[2];
-  c->q[2] = a[3]*b[2] + a[2]*b[3] + a[0]*b[1] - a[1]*b[0];
-  c->q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
-  memset(c->ear, 0, sizeof(c->ear));
-
+    c->q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+    c->q[1] = a[3]*b[1] + a[1]*b[3] + a[2]*b[0] - a[0]*b[2];
+    c->q[2] = a[3]*b[2] + a[2]*b[3] + a[0]*b[1] - a[1]*b[0];
+    c->q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+    memset(c->ear, 0, sizeof(c->ear));
+  }
   /* Convert quaternion to matrix
   Next up we want to convert our camera quaternion orientation into a 3x3 matrix
   to generate our view matrix. So to convert from quaternion to rotation
@@ -1727,10 +2967,6 @@ cam__calc_view(struct cam *c) {
   c->view[2][3] = 0; c->view[3][3] = 1.0f;
 
   /* fill vectors with data */
-  c->loc[0] = c->view_inv[3][0];
-  c->loc[1] = c->view_inv[3][1];
-  c->loc[2] = c->view_inv[3][2];
-
   c->right[0] = c->view_inv[0][0];
   c->right[1] = c->view_inv[0][1];
   c->right[2] = c->view_inv[0][2];
@@ -1754,10 +2990,7 @@ cam__calc_view(struct cam *c) {
   c->backward[0] = -c->view_inv[2][0];
   c->backward[1] = -c->view_inv[2][1];
   c->backward[2] = -c->view_inv[2][2];
-}
-static void
-cam__calc_proj(struct cam *c) {
-  assert(c);
+
   /*  Projection matrix
   While the view matrix transforms from world space to local camera space,
   tranforms the perspective projection matrix from camera space to screen space.
@@ -1879,7 +3112,6 @@ cam__calc_proj(struct cam *c) {
       c->proj[3][2] = (c->z_range_epsilon - 1.0f) * c->near;
     } break;}
   }
-
   /* Invert projection [2][3]:
   Since perspective matrices have a fixed layout, it makes sense
   to calculate the specific perspective inverse instead of relying on a default
@@ -1896,7 +3128,7 @@ cam__calc_proj(struct cam *c) {
       |x0  x1  x2  x3 |   |a 0 0 0|   |1 0 0 0|
       |x4  x5  x6  x7 | * |0 b 0 0| = |0 1 0 0|
       |x8  x9  x10 x11|   |0 0 c d|   |0 0 1 0|
-      |x12 x13 x14 x15|   |0 0 e 0|   |0 0 0 1|
+      |x12 x13 x14 x15|   |0 0 e 1|   |0 0 0 1|
 
   2.) Multiply inversion matrix times our perspective matrix
 
@@ -1937,11 +3169,59 @@ cam__calc_proj(struct cam *c) {
     c->proj_inv[3][3] = 1.0f;
   } break;
   }
-}
-static void
-cam_build(struct cam *c) {
-  cam__calc_view(c);
-  cam__calc_proj(c);
+  /* calculate combined view projection matrix */
+  {
+    float *m1 = cast(float*, c->view);
+    float *m2 = cast(float*, c->proj);
+    float *dst = cast(float*, c->view_proj);
+    for_cnt(i,4) {
+      for_cnt(j,4) {
+        float a0 = m1[0] * m2[0*4+j];
+        float b0 = m1[1] * m2[1*4+j];
+        float c0 = m1[2] * m2[2*4+j];
+        float d0 = m1[3] * m2[3*4+j];
+        *dst++ = a0 + b0 + c0 + d0;
+      }
+      m1 += 4;
+    }
+  }
+  /* calculate the 6 planes enclosing the camera volume */
+  c->plane.left[0] = c->view_proj[0][3] + c->view_proj[0][0];
+  c->plane.left[1] = c->view_proj[1][3] + c->view_proj[1][0];
+  c->plane.left[2] = c->view_proj[2][3] + c->view_proj[2][0];
+  c->plane.left[3] = c->view_proj[3][3] + c->view_proj[3][0];
+
+  c->plane.right[0] = c->view_proj[0][3] - c->view_proj[0][0];
+  c->plane.right[1] = c->view_proj[1][3] - c->view_proj[1][0];
+  c->plane.right[2] = c->view_proj[2][3] - c->view_proj[2][0];
+  c->plane.right[3] = c->view_proj[3][3] - c->view_proj[3][0];
+
+  c->plane.bot[0] = c->view_proj[0][3] + c->view_proj[0][1];
+  c->plane.bot[1] = c->view_proj[1][3] + c->view_proj[1][1];
+  c->plane.bot[2] = c->view_proj[2][3] + c->view_proj[2][1];
+  c->plane.bot[3] = c->view_proj[3][3] + c->view_proj[3][1];
+
+  c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][1];
+  c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][1];
+  c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][1];
+  c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][1];
+
+  c->plane.near[0] = c->view_proj[0][3] + c->view_proj[0][2];
+  c->plane.near[1] = c->view_proj[1][3] + c->view_proj[1][2];
+  c->plane.near[2] = c->view_proj[2][3] + c->view_proj[2][2];
+  c->plane.near[3] = c->view_proj[3][3] + c->view_proj[3][2];
+
+  c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][2];
+  c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][2];
+  c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][2];
+  c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][2];
+
+  normaleq4(c->plane.left);
+  normaleq4(c->plane.right);
+  normaleq4(c->plane.bot);
+  normaleq4(c->plane.top);
+  normaleq4(c->plane.near);
+  normaleq4(c->plane.far);
 }
 static void
 cam_lookatf(struct cam *c,
@@ -1986,7 +3266,7 @@ cam_lookatf(struct cam *c,
   enum cam_orient orient = c->orient;
   c->orient = CAM_MAT;
   memset(c->ear, 0, sizeof(c->ear));
-  cam__calc_view(c);
+  cam_build(c);
   c->orient = orient;
 }
 static void
@@ -2097,9 +3377,9 @@ cam_ray(float *ro, float *rd, const struct cam *c,
   from screen coordinates into world coordinates. After that we only have to
   subtract our camera position from our calculated mouse world position and
   normalize the result to make sure we have a unit vector as direction. */
-  ro[0] = c->loc[0];
-  ro[1] = c->loc[1];
-  ro[2] = c->loc[2];
+  ro[0] = c->pos[0];
+  ro[1] = c->pos[1];
+  ro[2] = c->pos[2];
 
   rd[0] = world[0] - ro[0];
   rd[1] = world[1] - ro[1];
@@ -2111,5 +3391,45 @@ cam_ray(float *ro, float *rd, const struct cam *c,
     float len = math_sqrt(dot);
     rd[0] /= len; rd[1] /= len; rd[2] /= len;
   }
+}
+static enum cam_intersect
+cam_intersect_pnt(const struct cam *c, const float *restrict pnt) {
+  for (int i = 0; i < 6; ++i) {
+    float d = plane_signed_dist_pnt(c->planes+i*4, pnt);
+    if (d < 0.0f) {
+      return CAM_PLANE_OUTSIDE;
+    }
+  }
+  return CAM_PLANE_INSIDE;
+}
+static enum cam_intersect
+cam_intersect_sphere(const struct cam *c, const float *s) {
+  for (int i = 0; i < 6; ++i) {
+    float d = plane_signed_dist_pnt(c->planes+i*4, s);
+    if (d + s[3] < 0) {
+      return CAM_PLANE_OUTSIDE;
+    }
+    if (d - s[3] < 0) {
+      return CAM_PLANE_INTERSECTS;
+    }
+  }
+  return CAM_PLANE_INSIDE;
+}
+static enum cam_intersect
+cam_intersect_aabb(const struct cam *c, const float *aabb) {
+  float ctr[3]; aabb_ctr(ctr, aabb);
+  float ext[3]; aabb_ext(ext, aabb);
+  for (int i = 0; i < 6; ++i) {
+    float abs_plane[4]; mapN(abs_plane, (float)math_abs, c->planes+i*4,3);
+    float d = plane_signed_dist_pnt(c->planes+i*4, ctr);
+    float r = dot3(ext, abs_plane);
+    if ((d + r) < 0.0f) {
+      return CAM_PLANE_OUTSIDE;
+    }
+    if ((d - r) < 0.0f) {
+      return CAM_PLANE_INTERSECTS;
+    }
+  }
+  return CAM_PLANE_INSIDE;
 }
 

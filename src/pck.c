@@ -523,7 +523,7 @@ file_node_alloc(struct file_tree_view *tree, struct sys *sys, struct arena *mem)
 
   struct file_tree_node *s = 0;
   if (lst_any(&tree->del_lst)) {
-    s = lst_get(tree->del_lst.nxt, struct file_tree_node, hook);
+    s = lst_get(lst_first(&tree->del_lst), struct file_tree_node, hook);
     lst_del(&s->hook);
     memset(s, 0, sizeof(*s));
   } else {

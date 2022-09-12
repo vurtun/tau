@@ -1,7 +1,17 @@
 /* ---------------------------------------------------------------------------
- *                                Foreach
+ *                                Range
  * ---------------------------------------------------------------------------
  */
+#define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
+#define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
+#define rng_has_excl(a,b) ((a)->lo < (b)->lo && (a)->hi > (b)->hi)
+#define rng_has_exclv(a, v) ((v) > (a)->lo && (v) < (a)->hi)
+#define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
+#define rng_overlaps(a,b) (max((a)->lo, (b)->lo) <= min((a)->hi, (b)->hi))
+#define rng_len(r) ((r)->hi - (r)->lo)
+#define rng_shift(r, d) (r)->lo += (d), (r)->hi += (d), (r)->mid += (d)
+#define rng_percent(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
+
 static inline int
 rng__bnd(int i, int n) {
   int l = max(n, 1) - 1;
@@ -9,15 +19,21 @@ rng__bnd(int i, int n) {
   return clamp(v, 0, l);
 }
 static inline struct rng
-rng__mk(int lo, int hi, int s) {
+rng_mk(int lo, int hi, int s) {
   struct rng r = {.lo = lo, .hi = hi, .step = s};
   assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
   r.cnt = abs(r.hi - r.lo);
+  r.mid = r.lo + r.hi - r.lo;
   return r;
 }
+
+/* ---------------------------------------------------------------------------
+ *                                Foreach
+ * ---------------------------------------------------------------------------
+ */
 #define arrv(b) (b), cntof(b)
 #define arr(b) (b), dyn_cnt((b))
-#define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
+#define rng(b,e,s,n) rng_mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
 
 #define forever while(1)
@@ -42,88 +58,25 @@ rng__mk(int lo, int hi, int s) {
  *                                Memory
  * ---------------------------------------------------------------------------
  */
-static void
-mcpy(void* restrict dstp, void const *restrict srcp, int bytes) {
-  #define PERLOOP (4*szof(bigreg))
-  assert(dstp);
-  assert(srcp);
-  assert(bytes >= 0);
-  assert((((uintptr_t)srcp) & 15)==0);
-  assert((((uintptr_t)dstp) & 15)==0);
-  assert(srcp != dstp);
-
-  int s = bytes/PERLOOP;
-  unsigned char const *src = (unsigned char const*)srcp;
-  unsigned char *dst = (unsigned char*)dstp;
-  int rest = bytes & 15;
-
-  bytes = (bytes & 63) / 16;
-  while(s) { // 64-byte chunks
-#ifdef __clang__
-  __asm__ __volatile__("");
-#endif
-    bigreg a; bigreg_ld(a,src+0);
-    bigreg b; bigreg_ld(b,src+1);
-    bigreg c; bigreg_ld(c,src+2);
-    bigreg d; bigreg_ld(d,src+3);
-
-    bigreg_str(((bigreg*)(void*)dst)+0,a);
-    bigreg_str(((bigreg*)(void*)dst)+1,b);
-    bigreg_str(((bigreg*)(void*)dst)+2,c);
-    bigreg_str(((bigreg*)(void*)dst)+3,d);
-
-    src+=PERLOOP;
-    dst+=PERLOOP;
-    --s;
-  };
-  #undef PERLOOP
-  while (bytes) { // 16-byte chunks
-    bigreg a;
-    bigreg_ld(a,src);
-    bigreg_str(dst,a);
-
-    src+=16;
-    dst+=16;
-    --bytes;
-  }
-  while (rest) {
-    *dst = *src;
-    src+=1;
-    dst+=1;
-    --rest;
+static inline void
+mcpy(void* restrict dst, void const *restrict src, int n) {
+  assert(dst);
+  assert(src);
+  assert(n >= 0);
+  unsigned char *restrict d = dst;
+  const unsigned char *restrict s = src;
+  for (int i = 0; i < n; ++i) {
+    d[i] = s[i];
   }
 }
-static void
-mset(void *addr, unsigned char c, int n) {
+static inline void
+mset(void *addr, int c, int n) {
   assert(addr);
   assert(n >= 0);
   unsigned char *dst = addr;
-
-  bigreg z = bigreg_u8(c);
-  #define PERLOOP (2*szof(bigreg))
-  int s = n/PERLOOP;
-  int bytes = (n & 63) / 16;
-  int rest = n & 15;
-  while(s) { // 64-byte chunks
-#ifdef __clang__
-  __asm__ __volatile__("");
-#endif
-    bigreg_str(((bigreg*)(void*)dst)+0,z);
-    bigreg_str(((bigreg*)(void*)dst)+1,z);
-    dst+=PERLOOP;
-    --s;
-  };
-  while (bytes) { // 16-byte chunks
-    bigreg_str(dst,z);
-    dst+=16;
-    --bytes;
+  for (int i = 0; i < n; ++i) {
+    dst[i] = cast(unsigned char,c);
   }
-  while (rest) {
-    *dst = 0;
-    dst+=1;
-    --rest;
-  }
-  #undef PERLOOP
 }
 
 /* ---------------------------------------------------------------------------
@@ -280,8 +233,7 @@ static void
 bit_fill(unsigned long *addr, int byte, int nbits) {
   assert(addr);
   int n = bits_to_long(nbits);
-  unsigned long len = (unsigned long)n * sizeof(long);
-  memset(addr, byte, len);
+  mset(addr, byte, n * szof(long));
 }
 static int
 bit_tst(const unsigned long *addr, int nr) {
@@ -1075,7 +1027,7 @@ arena_alloc(struct arena *a, struct sys *sys, int size_init) {
 
   assert(siz >= size_init);
   assert(a->blk->used <= a->blk->size);
-  memset(res, 0, cast(size_t, size_init));
+  mset(res, 0, size_init);
   return res;
 }
 static void *
@@ -1085,7 +1037,7 @@ arena_cpy(struct arena *a, struct sys *sys, const void *src, int siz) {
   assert(siz > 0);
 
   void *dst = arena_alloc(a, sys, siz);
-  memcpy(dst, src, cast(size_t, siz));
+  mcpy(dst, src, siz);
   return dst;
 }
 static struct str
@@ -1110,7 +1062,7 @@ arena_cstr(struct arena *a, struct sys *sys, struct str cs) {
   assert(sys);
 
   char *s = arena_alloc(a, sys, cs.len + 1);
-  memcpy(s, cs.str, cast(size_t, cs.len));
+  mcpy(s, cs.str, cs.len);
   s[cs.len] = 0;
   return s;
 }
@@ -1262,7 +1214,7 @@ struct dyn_hdr {
 #define dyn_asn(b, s, x, n) do {                  \
   dyn_clr(b);                                   \
   dyn_fit(b, s, n);                             \
-  memcpy(b, x, sizeof((b)[0]) * cast(size_t, (n))); \
+  mcpy(b, x, szof((b)[0]) * (n)); \
   dyn__hdr(b)->cnt = (n);                       \
 } while (0)
 
@@ -1271,7 +1223,7 @@ struct dyn_hdr {
   assert((i) <= dyn_cnt(b));                                            \
   assert((i) < dyn_cap(b));                                             \
   memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
-  memcpy((b) + (i), (x), sizeof((b)[0]) * cast(size_t, (n)));           \
+  mcpy((b) + (i), (x), szof((b)[0]) * (n));                             \
   dyn__hdr(b)->cnt += (n);                                              \
 } while (0)
 
@@ -1302,7 +1254,7 @@ dyn__grow(void *buf, struct sys *sys, int new_len, int elem_size) {
     hdr = cast(struct dyn_hdr*, (void*)blk->base);
     hdr->blk = blk;
     hdr->cnt = dyn_cnt(buf);
-    memcpy(hdr->buf, dyn__hdr(buf)->buf, (size_t)(cap * elem_size));
+    mcpy(hdr->buf, dyn__hdr(buf)->buf, cap * elem_size);
   } else {
     /* grow array */
     int n = dyn_cnt(buf);
@@ -1421,7 +1373,7 @@ static void set__swapi(unsigned long long *a, unsigned long long *b) {unsigned l
 #define set_put(t,s,k) ((!(t) || !set_fnd(t, k)) ? set__add(t, s, k) : set_cap(t))
 #define set_del(s,k) set__del(s, k, set_cap(s))
 #define set_free(s,sys) dyn_free(s, sys)
-#define set_clr(s) do {((s) ? memset(s,0,sizeof(unsigned long long) * (size_t)dyn_cap(s)) : 0); dyn_clr(s);} while(0)
+#define set_clr(s) do {((s) ? mset(s,0,szof(unsigned long long) * dyn_cap(s)) : 0); dyn_clr(s);} while(0)
 // clang-format on
 
 static inline unsigned long long
@@ -1441,9 +1393,9 @@ set_new(int old, int req, struct sys *sys) {
 }
 static void
 set__swap(void *a, void *b, void *tmp, int siz) {
-  memcpy(tmp, a, siz);
-  memcpy(a, b, siz);
-  memcpy(b, tmp, siz);
+  mcpy(tmp, a, siz);
+  mcpy(a, b, siz);
+  mcpy(b, tmp, siz);
 }
 static inline long long
 set__store(unsigned long long *keys, void *vals,
@@ -1452,7 +1404,7 @@ set__store(unsigned long long *keys, void *vals,
   keys[i] = h;
   if (vals) {
     unsigned long long off = (unsigned long long)val_siz * i;
-    memcpy((unsigned char*)vals + off, val, val_siz);
+    mcpy((unsigned char*)vals + off, val, val_siz);
   }
   return cast(long long, i);
 }
@@ -1636,7 +1588,7 @@ ut_set(struct sys *sys) {
 #define tbl_fnd(t,k) (!tbl_cnt(t)) ? 0: tbl__fnd(t, k, szof(*(t)))
 #define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_del(t,k) tbl__del(t, k, szof(*(t)))
-#define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; memset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
+#define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; mset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
 #define tbl_free(t,s) do {if(tbl_cap(t)){(s)->mem.free(dyn__hdr(t)->blk); (t) = 0;}} while(0)
 #define for_tbl(n,i,t) for (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
 // clang-format on
@@ -1777,7 +1729,7 @@ static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; 
 #define sort_shorts(out,a,n) sort_short(out,a,szof(short),n,0)
 #define sort_ushorts(out,a,n) sort_ushort(out,a,szof(unsigned short),n,0)
 #define sort_hflts(out,a,n) sort_hflt(out,a,szof(unsigned short),n,0)
-#define sort_ints(out,a,n) sort_int(out,a,szof(int), n,0)
+#define sort_ints(out,a,n) sort_int(out,a,szof(int),n,0)
 #define sort_uints(out,a,n) sort_uint(out,a,szof(unsigned),n,0)
 #define sort_flts(out,a,n) sort_flt(out,a,szof(float),n,0)
 // clang-format on
@@ -1796,7 +1748,7 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* build histogram */
   int is_sorted = 1;
-  memset(buf, 0, 512 * sizeof(unsigned));
+  mset(buf,0,512*szof(unsigned));
   unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
   for_cnt(i, n) {
     unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
@@ -1846,7 +1798,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* build histogram */
   int is_sorted = 1;
-  memset(buf,0,1024*sizeof(unsigned));
+  mset(buf,0,1024*szof(unsigned));
   unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
   for_cnt(i,n) {
     unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
@@ -1858,7 +1810,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
     lst = k;
   }
   if (is_sorted) {
-    return; /* already sorted so early out */
+    return; /* already sorted. early out */
   }
   /* convert histogram into offset table */
   unsigned sum[4] = {0};
@@ -1871,7 +1823,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   /* sort 8-bit at a time */
   unsigned *restrict idx[] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 4; ++p, d = !d, s = !s) {
-    for_cnt(i, n) {
+    for_cnt(i,n) {
       unsigned at = idx[s][i] * cast(unsigned, siz);
       unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8*p))&0xff]++] = at;
@@ -1946,7 +1898,7 @@ sort__radix_str(int *o, void *a, int n, int siz, int off,
 static int*
 sort__str(int *out, void *a, int n, int siz, int off,
           sort_access_f fn, void *u, int d) {
-  /* <!> out needs to be at least size: 2*n <!> */
+  /* <!> out needs to be at least size: 3*n <!> */
   /* <!> returned pointer will either be be beginnning or middle of out <!> */
   for (int i = 0; i < n; ++i) out[i] = i;
   return sort__radix_str(out, a, n, siz, off, 0, n-1, fn, u, d);

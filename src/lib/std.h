@@ -61,7 +61,10 @@
 
 typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
-  int lo, hi, step, cnt;
+  int lo, mid, hi, step, cnt;
+};
+struct rngf {
+  float lo, hi;
 };
 struct str {
   const char *str;

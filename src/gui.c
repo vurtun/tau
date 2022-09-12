@@ -5644,6 +5644,7 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *b, unsigned flags,
   assert(ctx);
   int s = ctx->cfg.grid;
   struct sys *sys = ctx->sys;
+
   sys->ren.drw.line_style(ctx->ren, 1);
   sys->ren.drw.col(ctx->ren, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
   if (flags & GUI_GRID_X) {
