@@ -82,7 +82,6 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 /* shortcut operations */
 static const struct app_op app_ops[APP_OP_CNT] = {
   [APP_OP_QUIT]     = {.key = {'q', SYS_KEYMOD_CTRL}, .handler = app_op_quit},
-  [APP_OP_PROFILE]  = {.key = {SYS_KEY_F2,0},         .handler = app_op_profiler}
 };
 
 // clang-format on

@@ -32,17 +32,12 @@
 #include "../lib/fmt.h"
 #include "../lib/fmt.c"
 #include "../lib/std.h"
-#include "dbg.h"
 #include "ren.h"
 #include "sys.h"
 #include "../lib/std.c"
 #include "../lib/math.c"
-
-#ifdef RELEASE_MODE
 #include "../app.h"
-#include "dbg.c"
-#include "ren.c"
-#endif
+#include "ren_cpu.c"
 
 @interface sys__mac_app_delegate : NSObject<NSApplicationDelegate>
 @end
@@ -64,27 +59,11 @@ struct sys_app_sym_table {
   void (*dlEntry)(struct sys *s);
   void (*dlRegister)(struct sys *s);
 };
-struct sys_dbg_sym_table {
-  void (*dlInit)(struct sys *s);
-  void (*dlBegin)(struct sys *s);
-  void (*dlEnd)(struct sys *s);
-};
 struct sys_ren_sym_table {
   void (*dlInit)(struct sys *s);
   void (*dlBegin)(struct sys *s);
   void (*dlEnd)(struct sys *s);
   void (*dlShutdown)(struct sys *s);
-};
-struct sys_mac_module {
-  unsigned valid : 1;
-  struct str path;
-  void *lib;
-  ino_t fileId;
-
-  int sym_cnt;
-  char **sym_names;
-  void **syms;
-  sys_mod_export dlExport;
 };
 struct sys_mac_vertex {
   float x, y, z, w;
@@ -111,21 +90,8 @@ struct sys_mac {
   enum sys_cur_style cursor;
   struct str exe_path;
 
-  struct str dbg_path;
-  struct sys_dbg_sym_table dbg;
-  struct sys_mac_module dbg_lib;
-
-  struct str ren_path;
   struct sys_ren_sym_table ren;
-  struct sys_mac_module ren_lib;
-
-  struct str app_path;
   struct sys_app_sym_table app;
-  struct sys_mac_module app_lib;
-
-  int mod_cnt;
-  #define SYS_MAC_MAX_MODS 64
-  struct sys_mac_module mods[SYS_MAC_MAX_MODS];
 
   NSWindow* win;
   NSTrackingArea *track_area;
@@ -162,25 +128,62 @@ xpanic(const char *fmt, ...) {
 
 /* ---------------------------------------------------------------------------
  *
+ *                                  Random
+ *
+ * ---------------------------------------------------------------------------
+ */
+static uintptr_t
+sys__rnd_open(void) {
+  int fp = open("/dev/urandom", O_RDONLY);
+  if (fp == -1) {
+    fprintf(stderr, "failed to access system random number\n");
+    exit(1);
+  }
+  return castull(fp);
+}
+static void
+sys__rnd_close(uintptr_t hdl) {
+  int fp = casti(hdl);
+  close(fp);
+}
+static unsigned
+sys__rnd_gen32(uintptr_t hdl) {
+  unsigned val;
+  int fp = casti(hdl);
+  ssize_t ret = read(fp, cast(char*, &val), sizeof(val));
+  if (ret < szof(val)) {
+    fprintf(stderr, "failed to generate system random number\n");
+    exit(1);
+  }
+  return val;
+}
+static unsigned long long
+sys__rnd_gen64(uintptr_t hdl) {
+  int fp = casti(hdl);
+  unsigned long long val = 0;
+  ssize_t ret = read(fp, cast(char*, &val), sizeof(val));
+  if (ret < szof(val)) {
+    fprintf(stderr, "failed to generate system random number\n");
+    exit(1);
+  }
+  return val;
+}
+static void
+sys__rnd_gen128(uintptr_t hdl, void *dst) {
+  int fp = casti(hdl);
+  ssize_t ret = read(fp, cast(char*, dst), 16);
+  if (ret < 16) {
+    fprintf(stderr, "failed to generate system random number\n");
+    exit(1);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ *
  *                                File
  *
  * ---------------------------------------------------------------------------
  */
-static struct str
-sys_mac_get_exe_path(struct arena *a) {
-  int siz = 0;
-  _NSGetExecutablePath(0, &siz);
-  char *buf = arena_alloc(a, &_sys, szof(char) * siz + 1);
-  _NSGetExecutablePath(buf, &siz);
-  return str(buf, siz);
-}
-static struct str
-sys_mac_get_exe_file_path(struct str exe_path, struct str file,
-                          struct str suffix, struct arena *a) {
-  struct str exe_file = path_file(exe_path);
-  struct str path = strp(exe_path.str, exe_file.str);
-  return arena_fmt(a, &_sys, "%.*s%.*s%.*s", strf(path), strf(file), strf(suffix));
-}
 static void
 sys__file_perm(char *mod, mode_t perm) {
   mod[0] = (perm & S_IRUSR) ? 'r' : '-';
@@ -208,7 +211,7 @@ sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
   if (res < 0) {
     return 0;
   }
-  info->siz = cast(size_t, stats.st_size);
+  info->siz = castsz(stats.st_size);
   info->mtime = stats.st_mtime;
   sys__file_perm(info->perm, stats.st_mode);
 
@@ -311,7 +314,7 @@ sys_mac_mem_alloc(struct mem_blk* opt_old, int siz, unsigned flags,
   int base_off = szof(struct sys_mem_blk);
 
   struct sys_mem_blk *blk = 0;
-  size_t mapsiz = cast(size_t, total);
+  size_t mapsiz = castsz(total);
   if (flags & SYS_MEM_GROWABLE) {
     if (opt_old){
       assert(opt_old->flags == flags);
@@ -324,7 +327,7 @@ sys_mac_mem_alloc(struct mem_blk* opt_old, int siz, unsigned flags,
     }
     blk = realloc(opt_old, (size_t)total);
     if (!opt_old) {
-      memset(blk, 0, cast(size_t, total));
+      memset(blk, 0, castsz(total));
     }
     blk->blk.base = (unsigned char*)blk + base_off;
   } else {
@@ -355,7 +358,7 @@ sys_mac_mem_free(struct mem_blk *mem_blk) {
   if (mem_blk->flags & SYS_MEM_GROWABLE) {
     free(blk);
   } else {
-    size_t unmapsiz = cast(size_t, total);
+    size_t unmapsiz = castsz(total);
     munmap(blk, unmapsiz);
   }
 }
@@ -386,93 +389,6 @@ sys_mac_mem_free_tag(unsigned long long tag) {
     }
   }
   lck_rel(&_mac.mem_lck);
-}
-
-/* ---------------------------------------------------------------------------
- *
- *                            Dynamic Library
- *
- * ---------------------------------------------------------------------------
- */
-static void *
-sys_mac_lib_sym(void *lib, const char *s) {
-  void *sym = dlsym(lib, s);
-  if (!sym) {
-    fprintf(stderr, "failed to load dynamic library symbol: %s\n", dlerror());
-  }
-  return sym;
-}
-static void *
-sys_mac_lib_open(const char *path) {
-  void *lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-  if (!lib) {
-    fprintf(stderr, "failed to open dynamic library: %s\n", dlerror());
-  }
-  return lib;
-}
-static void
-sys_mac_lib_close(void *lib) {
-  if (lib != 0) {
-    dlclose(lib);
-  }
-}
-static ino_t
-sys_mac_file_id(struct str path) {
-  struct stat attr = {0};
-  if (stat(path.str, &attr)) {
-    attr.st_ino = 0;
-  }
-  return attr.st_ino;
-}
-static void
-sys_mac_mod_close(struct sys_mac_module *mod) {
-  if (mod->lib) {
-    sys_mac_lib_close(mod->lib);
-    mod->lib = 0;
-  }
-  mod->fileId = 0;
-  mod->valid = 0;
-}
-static void
-sys_mac_mod_open(struct sys_mac_module *mod, struct arena *mem) {
-  ino_t fileID = sys_mac_file_id(mod->path);
-  if (mod->fileId == fileID) {
-    if(!mod->valid) {
-      sys_mac_mod_close(mod);
-    }
-    return;
-  }
-  scp_mem(mem, &_sys) {
-    mod->fileId = fileID;
-    mod->valid = 1;
-    mod->lib = sys_mac_lib_open(mod->path.str);
-    if (mod->lib) {
-      for (int i = 0; i < mod->sym_cnt; ++i) {
-        void *sym = sys_mac_lib_sym(mod->lib, mod->sym_names[i]);
-        if (sym) {
-          mod->syms[i] = sym;
-        } else {
-          mod->valid = 0;
-        }
-      }
-    }
-    if(!mod->valid) {
-      sys_mac_mod_close(mod);
-    }
-  }
-}
-static int
-sys_mac_mod_chk(struct sys_mac_module *mod) {
-  ino_t libId = sys_mac_file_id(mod->path);
-  return libId != mod->fileId;
-}
-static void
-sys_mac_mod_reload(struct sys_mac_module *mod, struct arena *a) {
-  sys_mac_mod_close(mod);
-  for(int i = 0; !mod->valid && i < 100; ++i) {
-    sys_mac_mod_open(mod, a);
-    usleep(100000);
-  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -549,7 +465,6 @@ sys__mac_metal_init(struct sys_mac_metal *mtl, int w, int h) {
     NSLog(@"Metal is not supported on this device");
     return -1;
   }
-
   mtl->sem = dispatch_semaphore_create(SYS_MAX_TEX_BUF);
   mtl->cmd_que = [mtl->dev newCommandQueue];
   mtl->lib = [mtl->dev newLibraryWithSource:sys__mac_shdr_src
@@ -662,16 +577,9 @@ sys__mac_free(void) {
   SYS__OBJ_REL(_mac.win_dlg);
   SYS__OBJ_REL(_mac.win);
   SYS__OBJ_REL(_mac.view);
-
-  sys_mac_mod_close(&_mac.dbg_lib);
-  sys_mac_mod_close(&_mac.ren_lib);
-  sys_mac_mod_close(&_mac.app_lib);
 }
 static void
 sys__mac_on_frame(void) {
-  if (_mac.dbg.dlBegin) {
-    _mac.dbg.dlBegin(&_sys);
-  }
   _sys.txt_mod = !!_sys.txt_len;
   _sys.win.w = _mac.win_w;
   _sys.win.h = _mac.win_h;
@@ -724,10 +632,6 @@ sys__mac_on_frame(void) {
     case SYS_CUR_MOVE: [[NSCursor closedHandCursor] set]; break;
     case SYS_CUR_SIZE_NS: [[NSCursor resizeUpDownCursor] set]; break;
     case SYS_CUR_SIZE_WE: [[NSCursor resizeLeftRightCursor] set]; break;
-    case SYS_CUR_UP_ARROW: [[NSCursor resizeUpCursor] set]; break;
-    case SYS_CUR_DOWN_ARROW: [[NSCursor resizeDownCursor] set]; break;
-    case SYS_CUR_LEFT_ARROW: [[NSCursor resizeLeftCursor] set]; break;
-    case SYS_CUR_RIGHT_ARROW: [[NSCursor resizeRightCursor] set]; break;
     }
     _mac.cursor = _sys.cursor;
   }
@@ -744,28 +648,24 @@ sys__mac_on_frame(void) {
     _mac.tooltip = tooltip_id;
   }
   _sys.tooltip.str = str_nil;
-
-  if (_mac.dbg.dlEnd) {
-    _mac.dbg.dlEnd(&_sys);
-  }
 }
 static void
 sys_mac__resize(void) {
   NSRect bounds = [_mac.view bounds];
-  int w = max(1, cast(int, bounds.size.width));
-  int h = max(1, cast(int, bounds.size.height));
+  int w = max(1, casti(bounds.size.width));
+  int h = max(1, casti(bounds.size.height));
   if (_mac.win_w == w && _mac.win_h == h) {
     return;
   }
   if (_mac.backbuf) {
-    munmap(_mac.backbuf, cast(size_t, _mac.win_w * _mac.win_h * 4));
+    munmap(_mac.backbuf, castsz(_mac.win_w * _mac.win_h * 4));
     _mac.backbuf = 0;
   }
   _mac.win_w = w;
   _mac.win_h = h;
   _mac.buf_stride = w * 4;
 
-  _mac.backbuf = mmap(0, cast(size_t, w*h*4), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  _mac.backbuf = mmap(0, castsz(w*h*4), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
   _sys.ren_target.resized = 1;
   sys__mac_metal_resize(&_mac.metal, w, h);
   sys__mac_on_frame();
@@ -775,15 +675,16 @@ static unsigned
 sys__mac_col(NSColor *col) {
   @autoreleasepool {
     NSColor *ref = [col colorUsingColorSpace: [NSColorSpace deviceRGBColorSpace]];
-    unsigned char r = cast(unsigned char, [ref redComponent] * 255.0);
-    unsigned char g = cast(unsigned char, [ref greenComponent] * 255.0);
-    unsigned char b = cast(unsigned char, [ref blueComponent] * 255.0);
-    unsigned char a = cast(unsigned char, [ref alphaComponent] * 255.0);
+    unsigned char r = castb([ref redComponent] * 255.0);
+    unsigned char g = castb([ref greenComponent] * 255.0);
+    unsigned char b = castb([ref blueComponent] * 255.0);
+    unsigned char a = castb([ref alphaComponent] * 255.0);
     return col_rgba(r,g,b,a);
   }
 }
 static void
 sys__mac_load_col(void) {
+  _sys.has_style = 1;
   _sys.style_mod = 1;
   _sys.col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
   _sys.col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
@@ -796,7 +697,7 @@ sys__mac_load_col(void) {
   _sys.col[SYS_COL_ICO] = sys__mac_col([NSColor controlTextColor]);
   _sys.col[SYS_COL_LIGHT] = sys__mac_col([NSColor unemphasizedSelectedContentBackgroundColor]);
   _sys.col[SYS_COL_SHADOW] = sys__mac_col([NSColor underPageBackgroundColor]);
-  _sys.fnt_pnt_size = cast(float, [NSFont systemFontSize]);
+  _sys.fnt_pnt_size = castf([NSFont systemFontSize]);
 }
 @implementation sys__mac_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
@@ -806,7 +707,7 @@ sys__mac_load_col(void) {
   NSDictionary *desc = [scrn deviceDescription];
   NSSize dpy_pix_size = [[desc objectForKey:NSDeviceSize] sizeValue];
   CGSize dpy_phy_size = CGDisplayScreenSize([[desc objectForKey:@"NSScreenNumber"] unsignedIntValue]);
-  _sys.ui_scale = cast(float, (dpy_pix_size.width / dpy_phy_size.width) * 25.4f);
+  _sys.ui_scale = castf((dpy_pix_size.width / dpy_phy_size.width) * 25.4f);
   _sys.ui_scale /= 96.0f;
 
   /* create window */
@@ -865,8 +766,6 @@ sys__mac_load_col(void) {
   if (_mac.ren.dlShutdown) {
     _mac.ren.dlShutdown(&_sys);
   }
-  sys_mac_mod_close(&_mac.app_lib);
-  sys_mac_mod_close(&_mac.ren_lib);
   sys__mac_free();
 }
 @end
@@ -908,7 +807,7 @@ sys__mac_load_col(void) {
 static BOOL
 sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
   BOOL ret = NO;
-  int file_cnt = cast(int, [files count]);
+  int file_cnt = casti([files count]);
   scp_mem(_sys.mem.tmp, &_sys) {
     _sys.dnd.state = SYS_DND_DELIVERY;
     _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
@@ -987,11 +886,11 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
   NSPoint pos = [_mac.win mouseLocationOutsideOfEventStream];
-  float new_x = cast(float, pos.x) * _mac.dpi_scale[0];
-  float new_y = cast(float, pos.y) * _mac.dpi_scale[1];
+  float new_x = castf(pos.x) * _mac.dpi_scale[0];
+  float new_y = castf(pos.y) * _mac.dpi_scale[1];
 
-  _sys.mouse.pos[0] = cast(int, new_x);
-  _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
+  _sys.mouse.pos[0] = casti(new_x);
+  _sys.mouse.pos[1] = _sys.win.h - casti(new_y) - 1;
 
   _sys.mouse.pos_delta[0] = _sys.mouse.pos[0] - _sys.mouse.pos_last[0];
   _sys.mouse.pos_delta[1] = _sys.mouse.pos[1] - _sys.mouse.pos_last[1];
@@ -1189,11 +1088,11 @@ sys__macos_on_key(unsigned long *keys, int scan) {
 static void
 sys_mac__mouse_pos(NSEvent *e) {
   NSPoint pos = e.locationInWindow;
-  float new_x = cast(float, pos.x) * _mac.dpi_scale[0];
-  float new_y = cast(float, pos.y) * _mac.dpi_scale[1];
+  float new_x = castf(pos.x) * _mac.dpi_scale[0];
+  float new_y = castf(pos.y) * _mac.dpi_scale[1];
 
-  _sys.mouse.pos[0] = cast(int, new_x);
-  _sys.mouse.pos[1] = _sys.win.h - cast(int, new_y) - 1;
+  _sys.mouse.pos[0] = casti(new_x);
+  _sys.mouse.pos[1] = _sys.win.h - casti(new_y) - 1;
 
   _sys.mouse.pos_delta[0] = _sys.mouse.pos[0] - _sys.mouse.pos_last[0];
   _sys.mouse.pos_delta[1] = _sys.mouse.pos[1] - _sys.mouse.pos_last[1];
@@ -1278,15 +1177,15 @@ sys_mac__mouse_pos(NSEvent *e) {
   }
 }
 - (void)scrollWheel:(NSEvent*)e {
-  float dx = cast(float, e.scrollingDeltaX);
-  float dy = cast(float, e.scrollingDeltaY);
+  float dx = castf(e.scrollingDeltaX);
+  float dy = castf(e.scrollingDeltaY);
   if (e.hasPreciseScrollingDeltas) {
     dx *= 0.1f, dy *= 0.1f;
   }
   if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
     _sys.keymod |= sys__mac_mods(e);
-    _sys.mouse.scrl[0] = cast(int, dx);
-    _sys.mouse.scrl[1] = cast(int, dy);
+    _sys.mouse.scrl[0] = casti(dx);
+    _sys.mouse.scrl[1] = casti(dy);
     _sys.scrl_mod = 1;
   }
   sys__mac_on_frame();
@@ -1307,7 +1206,7 @@ sys_mac__mouse_pos(NSEvent *e) {
       char buf[UTF_SIZ+1];
       int n = utf_enc(buf, cntof(buf), codepoint);
       if (_sys.txt_len + n < cntof(_sys.txt)) {
-        memcpy(_sys.txt + _sys.txt_len, buf, cast(size_t, n));
+        memcpy(_sys.txt + _sys.txt_len, buf, castsz(n));
         _sys.txt_len += n;
       }
     }
@@ -1327,27 +1226,43 @@ static unsigned long long
 sys_mac_timestamp(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-  unsigned long long sec = cast(unsigned long long, ts.tv_sec) * 1000000llu;
-  unsigned long long usec = cast(unsigned long long, ts.tv_nsec) / 1000;
+  unsigned long long sec = castull(ts.tv_sec) * 1000000llu;
+  unsigned long long usec = castull(ts.tv_nsec) / 1000;
   unsigned long long ret = sec + usec;
   return ret;
 }
-static int
-sys_mac_plugin_add(void *exp, void *imp, struct str name) {
-  assert(_mac.mod_cnt < SYS_MAC_MAX_MODS);
-  int at = _mac.mod_cnt++;
-  struct sys_mac_module *mod = _mac.mods + at;
+static void
+sys__mac_log(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
+  fprintf(stdout, "%s", buf);
+}
+static void
+sys__mac_warn(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
 
-  static char *sys_module_fn_sym[] = {"dlExport"};
-  mod->path = sys_mac_get_exe_file_path(_mac.exe_path, name, strv(".so"), &_mac.mem);
-  mod->sym_cnt = cntof(sys_module_fn_sym);
-  mod->sym_names = sys_module_fn_sym;
-  mod->syms = (void**)&mod->dlExport;
-  sys_mac_mod_open(mod, &_mac.tmp);
-  if (mod->dlExport) {
-    mod->dlExport(exp, imp);
-  }
-  return mod->valid;
+  fprintf(stdout, "\033[33m");
+  fprintf(stdout, "%s", buf);
+  fprintf(stdout, "\033[0m");
+}
+static void
+sys__mac_err(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
+
+  fprintf(stdout, "\033[31m");
+  fprintf(stdout, "%s", buf);
+  fprintf(stdout, "\033[0m");
 }
 extern int
 main(int argc, char* argv[]) {
@@ -1374,19 +1289,20 @@ main(int argc, char* argv[]) {
   _sys.dir.exists = sys_dir_exists;
   _sys.clipboard.set = sys_mac_clipboard_set;
   _sys.clipboard.get = sys_mac_clipboard_get;
-  _sys.plugin.add = sys_mac_plugin_add;
   _sys.time.timestamp = sys_mac_timestamp;
   _sys.file.info = sys_file_info;
+  _sys.con.log = sys__mac_log;
+  _sys.con.warn = sys__mac_warn;
+  _sys.con.err = sys__mac_err;
+  _sys.rnd.open = sys__rnd_open;
+  _sys.rnd.close = sys__rnd_close;
+  _sys.rnd.gen32 = sys__rnd_gen32;
+  _sys.rnd.gen64 = sys__rnd_gen64;
+  _sys.rnd.gen128 = sys__rnd_gen128;
 
   /* constants */
-  _mac.dpi_scale[1] = 1.0f;
   _mac.dpi_scale[0] = 1.0f;
-
-#ifdef RELEASE_MODE
-  _mac.dbg.dlInit = dbg_init;
-  _mac.dbg.dlBegin = dbg_begin;
-  _mac.dbg.dlEnd = dbg_end;
-  dbg_init(&_sys);
+  _mac.dpi_scale[1] = 1.0f;
 
   _mac.ren.dlInit = ren_init;
   _mac.ren.dlBegin = ren_begin;
@@ -1396,41 +1312,7 @@ main(int argc, char* argv[]) {
   _mac.app.dlRegister = app_on_api;
   _mac.app.dlEntry = app_run;
   _mac.app.dlRegister(&_sys);
-#else
-  _mac.exe_path = sys_mac_get_exe_path(&_mac.mem);
-  _mac.ren_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("ren"), strv(".so"), &_mac.mem);
-  _mac.app_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("app"), strv(".so"), &_mac.mem);
-  _mac.dbg_path = sys_mac_get_exe_file_path(_mac.exe_path, strv("dbg"), strv(".so"), &_mac.mem);
 
-  /* open dbg dynamic library */
-  static char *sys_dbg_module_fn_sym[] = {"dlInit","dlBegin","dlEnd"};
-  _mac.dbg_lib.path = _mac.dbg_path;
-  _mac.dbg_lib.sym_cnt = cntof(sys_dbg_module_fn_sym);
-  _mac.dbg_lib.sym_names = sys_dbg_module_fn_sym;
-  _mac.dbg_lib.syms = (void**)&_mac.dbg;
-  sys_mac_mod_open(&_mac.dbg_lib, &_mac.tmp);
-  if (_mac.dbg.dlInit) {
-    _mac.dbg.dlInit(&_sys);
-  }
-  /* open ren dynamic library */
-  static char *sys_ren_module_fn_sym[] = {"dlInit","dlBegin","dlEnd","dlShutdown"};
-  _mac.ren_lib.path = _mac.ren_path;
-  _mac.ren_lib.sym_cnt = cntof(sys_ren_module_fn_sym);
-  _mac.ren_lib.sym_names = sys_ren_module_fn_sym;
-  _mac.ren_lib.syms = (void**)&_mac.ren;
-  sys_mac_mod_open(&_mac.ren_lib, &_mac.tmp);
-
-  /* open app dynamic library */
-  static char *sys_app_module_fn_sym[] = {"dlEntry", "dlRegister"};
-  _mac.app_lib.path = _mac.app_path;
-  _mac.app_lib.sym_cnt = cntof(sys_app_module_fn_sym);
-  _mac.app_lib.sym_names = sys_app_module_fn_sym;
-  _mac.app_lib.syms = (void**)&_mac.app;
-  sys_mac_mod_open(&_mac.app_lib, &_mac.tmp);
-  if (_mac.app.dlRegister)  {
-    _mac.app.dlRegister(&_sys);
-  }
-#endif
   /* start application */
   [NSApplication sharedApplication];
   _mac.app_dlg = [[sys__mac_app_delegate alloc] init];

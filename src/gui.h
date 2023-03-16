@@ -259,6 +259,7 @@ struct gui_lay {
   int idx, cnt;
   int gap[2], item;
 };
+
 /* Widget: Edit */
 #define GUI_EDT_UNDO_CNT 128
 #define GUI_EDT_UNDO_CHAR_CNT (4 * 1024)
@@ -340,8 +341,14 @@ struct gui_scrl_bar {
 };
 
 /* Widget: Spin */
-enum gui_spin_val_typ { GUI_SPIN_INT, GUI_SPIN_FLT };
-union gui_spin_dat {float f; int i;};
+enum gui_spin_val_typ {
+  GUI_SPIN_INT,
+  GUI_SPIN_FLT
+};
+union gui_spin_dat {
+  float f;
+  int i;
+};
 struct gui_spin_val {
   enum gui_spin_val_typ typ;
   union gui_spin_dat val;
@@ -567,6 +574,7 @@ struct gui_lst {
   int begin;
   int end;
   int cnt;
+
   /* internal */
   struct gui_lst_lay lay;
   struct gui_lst_ctl ctl;
@@ -694,6 +702,7 @@ struct gui_tbl {
   struct gui_box col_lay;
   int idx, cnt;
 };
+
 /* Widget: Combo */
 struct gui_combo {
   /* in */
@@ -776,6 +785,116 @@ struct gui_graph_node_hdr {
   unsigned moved : 1;
   unsigned mov_end : 1;
   int pos[2];
+};
+
+/* Utility: Min-Max Solver */
+enum gui_minmax_solver_result {
+  GUI_MINMAX_OPT,
+  GUI_MINMAX_PESSIMAL
+};
+struct gui_minmax_solver_param {
+  float total_val;
+  float total_siz;
+  float pref_rng_siz[2];
+  const float *rng_steps;
+  int rng_steps_cnt;
+  float scaler;
+};
+struct gui_minmax_solver_solution {
+  float time_basis;
+  const float *rng_steps;
+  int rng_step_idx;
+  int rng_step_cnt;
+  float rng_val_step;
+  float rng_siz;
+  int rng_cnt;
+};
+
+/* Widget: Time Line */
+#define GUI_TML_MIN_PREF_RNG 100
+#define GUI_TML_MAX_PREF_RNG 250
+struct gui_tml {
+  /* in */
+  struct gui_box box;
+  float off;
+  float zoom;
+  long long cur_time;
+  long long total_time;
+  long long end_time;
+
+  /* opt */
+  float zoom_scaler;
+  long long frame_time;
+  long long snap_time;
+  float scale_rng[2];
+
+  /* out */
+  struct gui_panel pan;
+  unsigned off_drag_begin:1;
+  unsigned off_drag_mod:1;
+  unsigned off_drag_end:1;
+  unsigned off_mod:1;
+  unsigned zoomed:1;
+  unsigned cur_time_drag_begin:1;
+  unsigned cur_time_dragged:1;
+  unsigned cur_time_drag_end:1;
+  unsigned cur_time_mod:1;
+
+  /* intern */
+  unsigned has_hdr:1;
+  float scale;
+
+  int abs_mouse_cur_off;
+  int abs_cur_off;
+  int abs_rng_begin_off;
+  int abs_rng_end_off;
+  int abs_end_off;
+  int abs_track_off;
+
+  int frame_cnt;
+  int frame_scaled_siz;
+
+  float rng_time_step;
+  int rng_scaled_siz;
+  int rng_cnt;
+
+  int track_bot;
+  int end_off;
+  int cur_off;
+  struct gui_box clip_rect;
+};
+struct gui_tml_hdr {
+  /* in */
+  struct gui_box box;
+  /* opt */
+  int pref_rng_siz[2];
+  const float *rng_steps;
+  int rng_steps_cnt;
+  /* out */
+  struct gui_panel pan;
+  struct gui_input cur_in;
+  struct gui_minmax_solver_solution sol;
+};
+struct gui_tml_trk {
+  /* in */
+  struct gui_box box;
+  /* out */
+  struct gui_panel pan;
+  struct gui_input in;
+  struct gui_box clip_rect;
+};
+struct gui_tml_evt {
+  /* in */
+  long long time;
+  unsigned col;
+  /* out */
+  struct gui_panel pan;
+  struct gui_input in;
+  unsigned time_drag_begin:1;
+  unsigned time_dragged:1;
+  unsigned time_drag_end:1;
+  unsigned time_mod:1;
+  long long time_mod_delta;
 };
 
 /* Context */
@@ -1265,11 +1384,25 @@ struct gui_graph_hdr_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_graph_node_hdr *hdr);
   void (*end)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_graph_node_hdr *hdr);
 };
-struct gui_graph_api {
+struct gui_graph_node_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_panel *parent);
   void (*item)(struct gui_box *ret, struct gui_ctx *ctx, struct gui_graph_node *n, int item_h);
   void (*end)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_panel *parent);
   struct gui_graph_hdr_api hdr;
+};
+struct gui_time_line_track_api {
+  void(*begin)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk);
+  void(*end)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk);
+  void(*evt)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk, struct gui_tml_evt *evt, unsigned long long id);
+};
+struct gui_time_line_api {
+  void(*begin)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_panel *parent);
+  void(*end)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_panel *parent);
+  void(*hdr)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_hdr *hdr);
+  int(*pos)(const struct gui_tml *t, int scrn_pos);
+  void(*zoom_px)(struct gui_tml *t, int min, int max);
+  void(*zoom_tm)(struct gui_tml *t, long long min, long long max);
+  struct gui_time_line_track_api trk;
 };
 struct gui_api {
   int version;
@@ -1310,7 +1443,8 @@ struct gui_api {
   struct gui_tbl_api tbl;
   struct gui_tab_ctl_api tab;
   struct gui_grid_api grid;
-  struct gui_graph_api node;
+  struct gui_graph_node_api graph_node;
+  struct gui_time_line_api tml;
 };
 static void gui_get_api(void *export, void *import);
 

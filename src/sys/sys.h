@@ -108,10 +108,6 @@ enum sys_cur_style {
   SYS_CUR_MOVE,
   SYS_CUR_SIZE_NS,
   SYS_CUR_SIZE_WE,
-  SYS_CUR_UP_ARROW,
-  SYS_CUR_DOWN_ARROW,
-  SYS_CUR_LEFT_ARROW,
-  SYS_CUR_RIGHT_ARROW,
   SYS_CUR_CNT,
 };
 
@@ -146,6 +142,7 @@ struct sys_ren_target {
 /* window */
 struct sys_win {
   int w, h;
+  unsigned resized:1;
 };
 
 /* drag & drop */
@@ -222,9 +219,18 @@ struct sys_clip_api {
 struct sys_time_api {
   unsigned long long (*timestamp)(void);
 };
-typedef void (*sys_mod_export)(void *export, void *import);
-struct sys_mod_api {
-  int (*add)(void *exp, void *imp, struct str name);
+struct sys_console_api {
+  void(*log)(const char *fmt, ...);
+  void(*warn)(const char *fmt, ...);
+  void(*err)(const char *fmt, ...);
+};
+struct sys_rnd {
+  uintptr_t gen;
+  uintptr_t(*open)(void);
+  unsigned (*gen32)(uintptr_t hdl);
+  unsigned long long(*gen64)(uintptr_t hdl);
+  void(*gen128)(uintptr_t hdl, void *dst);
+  void(*close)(uintptr_t hdl);
 };
 
 /* platform */
@@ -245,6 +251,7 @@ struct sys {
   struct sys_tooltip tooltip;
 
   /* style */
+  unsigned has_style:1;
   unsigned style_mod:1;
   unsigned col[SYS_COL_CNT];
   float fnt_pnt_size;
@@ -261,10 +268,10 @@ struct sys {
   struct sys_dir_api dir;
   struct sys_file_api file;
   struct sys_clip_api clipboard;
-  struct sys_mod_api plugin;
   struct sys_time_api time;
+  struct sys_console_api con;
   struct ren_api ren;
-  struct dbg_api dbg;
+  struct sys_rnd rnd;
 
   /* input */
   unsigned key_mod:1;

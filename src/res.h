@@ -29,7 +29,7 @@ struct res_txt_bnd {
 };
 #define RES_FNT_MAX_RUN 16
 struct res_fnt_run {
-  aes128 hash;
+  hkey hash;
   int nxt, len;
   int lru_nxt, lru_prv;
 #ifdef DEBUG_MODE

@@ -110,10 +110,10 @@ PERFORMANCE vs MSVC 2008 32-/64-bit (GCC is even slower than MSVC):
 #endif
 
 typedef char* FMT_SPRINTFCB(const char *buf, void *user, int len);
-FMT__PUBLICDEF int fmtv(char *buf, char const *fmt, va_list va);
-FMT__PUBLICDEF int fmtvn(char *buf, int count, char const *fmt, va_list va);
-FMT__PUBLICDEF int fmts(char *buf, char const *fmt, ...);
-FMT__PUBLICDEF int fmtsn(char *buf, int count, char const *fmt, ...);
-FMT__PUBLICDEF int fmtvscb(FMT_SPRINTFCB *callback, void *user, char *buf, char const *fmt, va_list va);
-FMT__PUBLICDEF void fmt_set_sep(char comma, char period);
+static int fmtv(char *buf, char const *fmt, va_list va);
+static int fmtvsn(char *buf, int count, char const *fmt, va_list va);
+static int fmts(char *buf, char const *fmt, ...);
+static int fmtsn(char *buf, int count, char const *fmt, ...);
+static int fmtvscb(FMT_SPRINTFCB *callback, void *user, char *buf, char const *fmt, va_list va);
+static void fmt_set_sep(char comma, char period);
 

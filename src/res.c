@@ -1,34 +1,4 @@
-#ifdef DEBUG_MODE
-/* std */
-#include <assert.h>
-#include <stddef.h>
-#include <ctype.h>
-#include <errno.h>
-#include <float.h>
-#include <limits.h>
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-
-#include "sys/cpu.h"
-#include "lib/fmt.h"
-#include "lib/fmt.c"
-#include "lib/std.h"
-#include "sys/dbg.h"
-#include "sys/ren.h"
-#include "sys/sys.h"
-#include "lib/std.c"
-#include "lib/math.c"
-
-#include "res.h"
-#include "lib/fnt.c"
-#endif
-
 #include "ttf.c"
-
 /* ---------------------------------------------------------------------------
  *
  *                                  Images
@@ -209,8 +179,8 @@ res_icon_fnt(int *data_siz, struct sys *sys, struct arena *a, struct arena *tmp)
  * ---------------------------------------------------------------------------
  */
 static int*
-res__run_cache_slot(struct res_run_cache *c, aes128 h) {
-  int hidx = aes128_lane_int(h);
+res__run_cache_slot(struct res_run_cache *c, hkey h) {
+  int hidx = hkey32(h);
   int slot = (hidx & c->hmsk);
   assert(slot < c->hcnt);
   return &c->htbl[slot];
@@ -277,17 +247,17 @@ res__run_cache_free_entry(struct res_run_cache *c) {
   if (!sen->nxt) {
     res__run_cache_recycle_lru(c);
   }
-  int res = sen->nxt;
-  assert(res);
+  int ret = sen->nxt;
+  assert(ret);
 
-  struct res_fnt_run *run = res__run_cache_get(c, res);
+  struct res_fnt_run *run = res__run_cache_get(c, ret);
   sen->nxt = run->nxt;
   run->nxt = 0;
 
   assert(run);
   assert(run != sen);
   assert(run->nxt == 0);
-  return res;
+  return ret;
 }
 struct res_run_cache_tbl_fnd_res {
   struct res_fnt_run *run;
@@ -295,27 +265,27 @@ struct res_run_cache_tbl_fnd_res {
   int idx;
 };
 static struct res_run_cache_tbl_fnd_res
-res__run_cache_tbl_fnd(struct res_run_cache *c, aes128 hash) {
-  struct res_run_cache_tbl_fnd_res res = {0};
-  res.slot = res__run_cache_slot(c, hash);
-  res.idx = *res.slot;
-  while (res.idx) {
-    struct res_fnt_run *it = res__run_cache_get(c, res.idx);
-    if (aes128_eq(it->hash, hash)) {
-      res.run = it;
+res__run_cache_tbl_fnd(struct res_run_cache *c, hkey hash) {
+  struct res_run_cache_tbl_fnd_res ret = {0};
+  ret.slot = res__run_cache_slot(c, hash);
+  ret.idx = *ret.slot;
+  while (ret.idx) {
+    struct res_fnt_run *it = res__run_cache_get(c, ret.idx);
+    if (hkey_eq(it->hash, hash)) {
+      ret.run = it;
       break;
     }
-    res.idx = it->nxt;
+    ret.idx = it->nxt;
   }
-  return res;
+  return ret;
 }
 struct res_run_cache_fnd_res {
   int is_new;
   struct res_fnt_run *run;
 };
 static struct res_run_cache_fnd_res
-res_run_cache_fnd(struct res_run_cache *c, aes128 h) {
-  struct res_run_cache_fnd_res res = {0};
+res_run_cache_fnd(struct res_run_cache *c, hkey h) {
+  struct res_run_cache_fnd_res ret = {0};
   struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(c, h);
   if (fnd.run) {
     struct res_fnt_run *prv = res__run_cache_get(c, fnd.run->lru_prv);
@@ -332,7 +302,7 @@ res_run_cache_fnd(struct res_run_cache *c, aes128 h) {
     fnd.run->hash = h;
     *fnd.slot = fnd.idx;
     c->stats.miss_cnt++;
-    res.is_new = 1;
+    ret.is_new = 1;
   }
   struct res_fnt_run *sen = res__run_cache_sen(c);
   assert(fnd.run != sen);
@@ -346,8 +316,8 @@ res_run_cache_fnd(struct res_run_cache *c, aes128 h) {
   fnd.run->ordering = sen->ordering++;
   res__run_cache_val_lru(c, 1);
 #endif
-  res.run = fnd.run;
-  return res;
+  ret.run = fnd.run;
+  return ret;
 }
 static void
 res_run_cache_init(struct res_run_cache *c, struct sys *sys,
@@ -358,7 +328,6 @@ res_run_cache_init(struct res_run_cache *c, struct sys *sys,
   c->run_cnt = args->run_cnt;
   c->htbl = arena_arr(sys->mem.arena, sys, int, c->hcnt);
   c->runs = arena_arr(sys->mem.arena, sys, struct res_fnt_run, c->run_cnt);
-
   for_cnt(i, args->run_cnt) {
     struct res_fnt_run *run = res__run_cache_get(c, i);
     run->nxt = ((i + 1) < args->run_cnt) ? run->nxt = i + 1 : 0;
@@ -500,22 +469,20 @@ res_fnt_ext(int *ext, struct res *r, struct str txt) {
   if (!txt.len) {
     return;
   }
-  dbg_blk_begin(r->sys, "res:fnt:ext");
-  aes128 h = aes128_load(aes_seed);
+  hkey h = hkey_init;
   int n = div_round_up(txt.len, 16);
   for_cnt(i,n) {
     struct str seg = str_lhs(txt, 16);
-    h = aes128_hash(seg.str, seg.len, h);
+    h = cpu_hash(seg.str, seg.len, h);
 
-    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
-    struct res_fnt_run *run = res.run;
-    if (res.is_new) {
+    struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = ret.run;
+    if (ret.is_new) {
       res_fnt_fill_run(r, run, txt);
     }
     ext[0] += run->adv[run->len-1];
     txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
-  dbg_blk_end(r->sys);
 }
 static void
 res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space,
@@ -544,16 +511,15 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
     return;
   }
   int ext = 0;
-  dbg_blk_begin(r->sys, "res:fnt:fit");
-  aes128 h = aes128_load(aes_seed);
+  hkey h = hkey_init;
   int n = div_round_up(txt.len, 16);
   for_cnt(i,n) {
     struct str seg = str_lhs(txt, 16);
-    h = aes128_hash(seg.str, seg.len, h);
+    h = cpu_hash(seg.str, seg.len, h);
 
-    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
-    struct res_fnt_run *run = res.run;
-    if (res.is_new) {
+    struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = ret.run;
+    if (ret.is_new) {
       res_fnt_fill_run(r, run, txt);
     }
     if (ext + run->adv[run->len-1] < space) {
@@ -569,7 +535,6 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
     txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
   bnd->end = txt.str + bnd->len;
-  dbg_blk_end(r->sys);
 }
 static struct fnt_baked_char *
 res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
@@ -585,7 +550,7 @@ res__glyph(struct ren_cmd_buf *buf, struct res *r, struct res_fnt *fnt,
 
   int at_x = x + math_roundi(g->xoff);
   int at_y = y + math_roundi(g->yoff);
-  sys->ren.drw.img(buf, at_x, at_y, sx, sy, w, h, set->texid);
+  sys->ren.img(buf, at_x, at_y, sx, sy, w, h, set->texid);
   return g;
 }
 static int
@@ -599,29 +564,27 @@ res__ren_run(struct sys *sys, struct ren_cmd_buf *buf, struct res_fnt_run *run,
     int h = run->ext[i * 2 + 1];
     int at_x = x + run->pad[i * 2 + 0];
     int at_y = y + run->pad[i * 2 + 1];
-    sys->ren.drw.img(buf, at_x, at_y, sx, sy, w, h, run->tex_id[i]);
+    sys->ren.img(buf, at_x, at_y, sx, sy, w, h, run->tex_id[i]);
     x = dx + run->adv[i];
   }
   return dx + run->adv[run->len-1];
 }
 static void
 ren_print(struct ren_cmd_buf *buf, struct res *r, int x, int y, struct str txt) {
-  dbg_blk_begin(r->sys, "res:fnt:print");
-  aes128 h = aes128_load(aes_seed);
+  hkey h = hkey_init;
   int n = div_round_up(txt.len, 16);
   for_cnt(i,n) {
     struct str seg = str_lhs(txt, 16);
-    h = aes128_hash(seg.str, seg.len, h);
+    h = cpu_hash(seg.str, seg.len, h);
 
-    struct res_run_cache_fnd_res res = res_run_cache_fnd(&r->run_cache, h);
-    struct res_fnt_run *run = res.run;
-    if (res.is_new) {
+    struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
+    struct res_fnt_run *run = ret.run;
+    if (ret.is_new) {
       res_fnt_fill_run(r, run, txt);
     }
     x = res__ren_run(r->sys, buf, run, x, y);
     txt = str_cut_lhs(&txt, run->off[run->len-1]);
   }
-  dbg_blk_end(r->sys);
 }
 static void
 ren_ico_siz(int *siz, struct res *r, const char *ico) {
@@ -642,8 +605,7 @@ ren_ico(struct ren_cmd_buf *buf, struct res *r, int x, int y, const char *ico) {
   struct str utf8 = str0(ico);
   utf_dec(&rune, &utf8);
   if (rune != UTF_INVALID) {
-    struct fnt_baked_char *g;
-    g = res__glyph(buf, r, r->ico, x, y, cast(int, rune));
+    res__glyph(buf, r, r->ico, x, y, cast(int, rune));
   }
 }
 static void
@@ -695,13 +657,7 @@ static const struct res_api res_api = {
 static void
 res_get_api(void *export, void *import) {
   unused(import);
-  struct res_api *res = (struct res_api*)export;
-  *res = res_api;
+  struct res_api *r = (struct res_api*)export;
+  *r = res_api;
 }
-#ifdef DEBUG_MODE
-extern void
-dlExport(void *export, void *import) {
-  res_get_api(export, import);
-}
-#endif
 

@@ -63,7 +63,7 @@ static struct {
                     "25262728293031323334353637383940414243444546474849"
                     "50515253545556575859606162636465666768697071727374"
                     "75767778798081828384858687888990919293949596979899"};
-FMT__PUBLICDEF void
+static void
 fmt_set_sep(char pcomma, char pperiod) {
   fmt__period = pperiod;
   fmt__comma = pcomma;
@@ -97,7 +97,7 @@ fmt__lead_sign(fmt__uint32 fl, char *sign) {
     sign[1] = '+';
   }
 }
-FMT__PUBLICDEF int
+static int
 fmtvscb(FMT_SPRINTFCB *callback, void *user, char *buf, char const *fmt,
         va_list va) {
   static char hex[] = "0123456789abcdefxp";
@@ -1109,7 +1109,7 @@ done:
 // ============================================================================
 //   wrapper functions
 
-FMT__PUBLICDEF int
+static int
 fmts(char *buf, char const *fmt, ...) {
   int result;
   va_list va;
@@ -1159,7 +1159,7 @@ fmt__count_clamp_callback(const char *buf, void *user, int len) {
   c->length += len;
   return c->tmp;  // go direct into buffer if you can
 }
-FMT__PUBLICDEF int
+static int
 fmtvsn(char *buf, int count, char const *fmt, va_list va) {
   fmt__context c;
   if ((count == 0) && !buf) {
@@ -1181,7 +1181,7 @@ fmtvsn(char *buf, int count, char const *fmt, va_list va) {
   }
   return c.length;
 }
-FMT__PUBLICDEF int
+static int
 fmtsn(char *buf, int count, char const *fmt, ...) {
   int result;
   va_list va;
@@ -1191,7 +1191,7 @@ fmtsn(char *buf, int count, char const *fmt, ...) {
   return result;
 }
 
-FMT__PUBLICDEF int
+static int
 fmtvs(char *buf, char const *fmt, va_list va) {
   return fmtvscb(0, 0, buf, fmt, va);
 }

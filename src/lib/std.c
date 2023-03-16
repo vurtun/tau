@@ -1,15 +1,50 @@
 /* ---------------------------------------------------------------------------
+ *                                Memory
+ * ---------------------------------------------------------------------------
+ */
+static inline void
+mcpy(void* restrict dst, void const *restrict src, int n) {
+  assert(dst);
+  assert(src);
+  assert(n >= 0);
+  unsigned char *restrict d = dst;
+  const unsigned char *restrict s = src;
+  for (int i = 0; i < n; ++i) {
+    d[i] = s[i];
+  }
+}
+static inline void
+mset(void *addr, int c, int n) {
+  assert(addr);
+  assert(n >= 0);
+  unsigned char *dst = addr;
+  for (int i = 0; i < n; ++i) {
+    dst[i] = castb(c);
+  }
+}
+#define swap(x,y) do {\
+  unsigned char uniqid(t)[szof(x) == szof(y) ? szof(x) : -1]; \
+  mcpy(uniqid(t),&y,szof(x)); \
+  mcpy(&y,&x,szof(x)); \
+  mcpy(&x,uniqid(t),szof(x)); \
+} while(0)
+
+/* ---------------------------------------------------------------------------
  *                                Range
  * ---------------------------------------------------------------------------
  */
+#define rng(b,e,s,n) rng_mk(rng__bnd(b,n), rng__bnd(e,n), s)
+#define intvl(b,s,n) rng(b,n,s,n)
+#define rngn(n) rng(0,n,1,n)
 #define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
 #define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
 #define rng_has_excl(a,b) ((a)->lo < (b)->lo && (a)->hi > (b)->hi)
 #define rng_has_exclv(a, v) ((v) > (a)->lo && (v) < (a)->hi)
 #define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
 #define rng_overlaps(a,b) (max((a)->lo, (b)->lo) <= min((a)->hi, (b)->hi))
-#define rng_len(r) ((r)->hi - (r)->lo)
-#define rng_shift(r, d) (r)->lo += (d), (r)->hi += (d), (r)->mid += (d)
+#define rng_len(r) (((r)->hi - (r)->lo)
+#define rng_cnt(r) ((abs((r)->hi) - abs((r)->lo)) / abs((r)->step))
+#define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d), (r)->mid += (d)
 #define rng_percent(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
 
 static inline int
@@ -31,11 +66,6 @@ rng_mk(int lo, int hi, int s) {
  *                                Foreach
  * ---------------------------------------------------------------------------
  */
-#define arrv(b) (b), cntof(b)
-#define arr(b) (b), dyn_cnt((b))
-#define rng(b,e,s,n) rng_mk(rng__bnd(b,n), rng__bnd(e,n), s)
-#define intvl(b,s,n) rng(b,n,s,n)
-
 #define forever while(1)
 #define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
 #define for_cnt(i,n) for_nstep(i,n,1)
@@ -43,52 +73,13 @@ rng_mk(int lo, int hi, int s) {
 #define for_rng(i,l,r)\
   for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
 
-#define for_arrp(it,a,e) for ((it) = (a); (it) < (e); ++(it))
-#define for_arr(it,a,n) for_arrp(it,a,(a)+(n))
-#define for_arrv(it,a) for_arr(it,a,cntof(a))
-#define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
-#define for_arr_rng(it,a,r)\
-  for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
-#define for_arrv_rng(it,a, b,e,s)       \
-  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;\
-       (it) != (a) + rng(b,e,s,cntof(a)).hi;\
-       (it) += rng(b,e,s,cntof(a)).step)
-
-/* ---------------------------------------------------------------------------
- *                                Memory
- * ---------------------------------------------------------------------------
- */
-static inline void
-mcpy(void* restrict dst, void const *restrict src, int n) {
-  assert(dst);
-  assert(src);
-  assert(n >= 0);
-  unsigned char *restrict d = dst;
-  const unsigned char *restrict s = src;
-  for (int i = 0; i < n; ++i) {
-    d[i] = s[i];
-  }
-}
-static inline void
-mset(void *addr, int c, int n) {
-  assert(addr);
-  assert(n >= 0);
-  unsigned char *dst = addr;
-  for (int i = 0; i < n; ++i) {
-    dst[i] = cast(unsigned char,c);
-  }
-}
-
 /* ---------------------------------------------------------------------------
  *                                  Hash
  * ---------------------------------------------------------------------------
  */
 #define FNV1A32_HASH_INITIAL 2166136261u
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
-static const unsigned char sse_align aes_seed[16] = {
-  178, 201, 95, 240, 40, 41, 143, 216,
-  2, 209, 178, 114, 232, 4, 176, 188
-};
+
 static unsigned
 fnv1a32(const void *ptr, int size, unsigned h) {
   const unsigned char *p = ptr;
@@ -118,39 +109,13 @@ static unsigned long long
 hash_ptr(const void *ptr) {
   return fnv1a64(&ptr, szof(void *), FNV1A64_HASH_INITIAL);
 }
-static aes128
-aes128_hash(const void *src, int len, aes128 seedx16) {
-  static const char unsigned msk[32] = {
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0
-  };
-  const unsigned char *at = src;
-  aes128 h = aes128_int(cast(unsigned,len));
-  h = aes128_xor(h, seedx16);
-  int n = len >> 4;
-  while (n--) {
-    aes128 in = aes128_load(at);
-    h = aes128_xor(h, in);
-    h = aes128_dec(h, aes128_zero());
-    h = aes128_dec(h, aes128_zero());
-    h = aes128_dec(h, aes128_zero());
-    h = aes128_dec(h, aes128_zero());
-    at += 16;
-  }
-  int over = len & 15;
-  aes128 in = aes128_load(at);
-  in = aes128_and(in, aes128_load((msk + 16 - over)));
-  h = aes128_xor(h, in);
-  h = aes128_dec(h, aes128_zero());
-  h = aes128_dec(h, aes128_zero());
-  h = aes128_dec(h, aes128_zero());
-  h = aes128_dec(h, aes128_zero());
-  return h;
-}
+/* ---------------------------------------------------------------------------
+ *                                  Random
+ * ---------------------------------------------------------------------------
+ */
 static unsigned long long
 rnd_gen(unsigned long long x, int n) {
-  return x + cast(unsigned long long, n) * 0x9E3779B97F4A7C15llu;
+  return x + castull(n) * 0x9E3779B97F4A7C15llu;
 }
 static unsigned long long
 rnd_mix(unsigned long long z) {
@@ -170,19 +135,284 @@ rnd(unsigned long long *x) {
 static unsigned
 rndu(unsigned long long *x) {
   unsigned long long z = rnd(x);
-  return cast(unsigned, z & 0xffffffffu);
+  return castu(z & 0xffffffffu);
 }
 static int
 rndi(unsigned long long *x) {
   unsigned z = rndu(x);
-  long long n = cast(long long, z) - (UINT_MAX/2);
+  long long n = castll(z) - (UINT_MAX/2);
   assert(n >= INT_MIN && n <= INT_MAX);
-  return cast(int, n);
+  return casti(n);
 }
 static double
 rndn(unsigned long long *x) {
   unsigned n = rndu(x);
-  return cast(double,n) / cast(double,UINT_MAX);
+  return castd(n) / castd(UINT_MAX);
+}
+static unsigned
+rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
+  unsigned lo = min(mini, maxi);
+  unsigned hi = max(mini, maxi);
+  unsigned rng = castu(-1);
+  unsigned n = hi - lo + 1u;
+  if (n == 1u)  {
+    return mini;
+  } else if(n == 0u) {
+    return rndu(x);
+  } else {
+    unsigned v = 0;
+    unsigned remainder = rng % n;
+    do {v = rndu(x);}
+    while(v >= rng - remainder);
+    return mini + v % n;
+  }
+}
+static float
+rndf01(unsigned long long *x) {
+  unsigned u = rndu(x);
+  double du = castd(u);
+  double div = castd((unsigned)-1);
+  return castf(du/div);
+}
+static float
+rnduf(unsigned long long *x, float mini, float maxi) {
+  float lo = min(mini, maxi);
+  float hi = max(mini, maxi);
+  unsigned u = rndu(x);
+  float rng = hi - lo;
+  double du = castd(u);
+  double div = castd((unsigned)-1);
+  return lo + rng * castf(du/div);
+}
+/* ---------------------------------------------------------------------------
+ *                                  Guid
+ * ---------------------------------------------------------------------------
+ */
+/* 00000000-0000-0000-0000-000000000000 */
+#define GUID_STR_LEN 37
+#define GUID_BUF_LEN (GUID_STR_LEN+1)
+#define guid_hash32(g) ((g)->d1)
+#define guid_eq(a,b) (a)->d1 == (b)->d1 && (a)->d2 == (b)->d2 && (a)->d3 == (b)->d3 && !memcmp((a)->d4, (b)->d4)
+
+static void
+guid_gen(struct guid *ret, struct sys *s, uintptr_t gen) {
+  assert(s);
+  assert(ret);
+  s->rnd.gen128(gen, cast(void*,ret));
+}
+static int
+guid__hex4(unsigned char *dst, int c) {
+  assert(dst);
+  if (c >= '0' && c <= '9') {
+    *dst = castb(c-'0');
+  } else if(c >= 'a' && c <= 'f') {
+    *dst = castb(10 + c - 'a');
+  } else if(c >= 'A' && c <= 'F') {
+    *dst = castb(10 + c - 'A');
+  } else {
+    return 0;
+  }
+  return 1;
+}
+static int
+guid__hex8(unsigned char *dst, const char *s) {
+  assert(s);
+  assert(dst);
+  unsigned char v[2] = {0};
+  if (!guid__hex4(v+1, s[0]) ||
+      !guid__hex4(v+1, s[1])) {
+    return 0;
+  }
+  *dst = castb((v[0] << 4) | v[1]);
+  return 1;
+}
+static int
+guid__hex16(unsigned short *dst, const char *s) {
+  assert(s);
+  assert(dst);
+  unsigned char v[2];
+  if (!guid__hex8(v+0, s + 0) ||
+      !guid__hex8(v+1, s + 2)) {
+    return 0;
+  }
+  *dst = castus((v[0] << 8) | v[1]);
+  return 1;
+}
+static int
+guid__hex32(unsigned *dst, const char *s) {
+  assert(s);
+  assert(dst);
+  unsigned char v[4];
+  if (!guid__hex8(v + 0, s + 0) ||
+      !guid__hex8(v + 1, s + 2) ||
+      !guid__hex8(v + 2, s + 4) ||
+      !guid__hex8(v + 3, s + 6)) {
+    return 0;
+  }
+  *dst = castu((v[0] << 24) | (v[1] << 16) | (v[2] << 8) | (v[3]));
+  return 1;
+}
+static int
+guid__sep(const char *s) {
+  assert(s);
+  return *s == '-';
+}
+static int
+guid_str(struct guid *g, struct str gstr) {
+  assert(g);
+  if (gstr.len < GUID_STR_LEN) {
+    return 0;
+  }
+  const char *s = gstr.str;
+  int ret =
+    guid__hex32(&g->d1, s + 0) &&
+    guid__sep(s + 8) &&
+    guid__hex16(&g->d2, s + 9) &&
+    guid__sep(s + 13) &&
+    guid__hex16(&g->d3, s + 14) &&
+    guid__sep(s + 18) &&
+    guid__hex8(&g->d4[0], s + 19) &&
+    guid__hex8(&g->d4[1], s + 21) &&
+    guid__sep(s + 23) &&
+    guid__hex8(&g->d4[2], s + 24) &&
+    guid__hex8(&g->d4[3], s + 26) &&
+    guid__hex8(&g->d4[4], s + 28) &&
+    guid__hex8(&g->d4[5], s + 30) &&
+    guid__hex8(&g->d4[6], s + 32) &&
+    guid__hex8(&g->d4[7], s + 34);
+  if (!ret) {
+    return 0;
+  }
+  return ret;
+}
+static void
+guid__put(char *dst, int byte) {
+  static const char *hex_chars = "0123456789abcdef";
+  dst[0] = hex_chars[byte >> 4];
+  dst[1] = hex_chars[byte & 15];
+}
+static void
+str_guid(char *buf, const struct guid *g) {
+  assert(buf);
+  assert(g);
+  const char *src = (const char*)g;
+  guid__put(buf + 0, src[3]);
+  guid__put(buf + 2, src[2]);
+  guid__put(buf + 4, src[1]);
+  guid__put(buf + 6, src[0]);
+  buf[8] = '-';
+  guid__put(buf + 9, src[5]);
+  guid__put(buf + 11, src[4]);
+  buf[13] = '-';
+  guid__put(buf + 14, src[7]);
+  guid__put(buf + 16, src[6]);
+  buf[18] = '-';
+  guid__put(buf + 19, src[8]);
+  guid__put(buf + 21, src[9]);
+  buf[23] = '-';
+  guid__put(buf + 24, src[10]);
+  guid__put(buf + 26, src[11]);
+  guid__put(buf + 28, src[12]);
+  guid__put(buf + 30, src[13]);
+  guid__put(buf + 32, src[14]);
+  guid__put(buf + 34, src[15]);
+}
+static unsigned long long
+guid_hash64(const struct guid *g) {
+  unsigned long long v[2] = {0};
+  compiler_assert(szof(v) == sizeof(*g));
+  mcpy(v, g, szof(v));
+  return fnv1au64(v[0], v[1]);
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  Array
+ * ---------------------------------------------------------------------------
+ */
+#define arrv(b) (b),cntof(b)
+#define arr(b) (b),dyn_cnt((b))
+#define arr_shfl(a,n,p) do {                              \
+  for (int uniqid(i) = 0; uniqid(i) < (n); ++uniqid(i)) { \
+    if ((p)[uniqid(i)] >= 0) {                            \
+      int uniqid(j) = uniqid(i);                          \
+      while ((p)[uniqid(j)] != uniqid(i)) {               \
+        int uniqid(d) = (p)[uniqid(j)];                   \
+        swap((a)[uniqid(j)],(a)[uniqid(d)]);             \
+        (p)[uniqid(j)] = -1 - uniqid(d);                  \
+        uniqid(j) = uniqid(d);                            \
+      } (p)[uniqid(j)] = -1 - (p)[uniqid(j)];             \
+    }                                                     \
+}} while (0)
+
+#define for_arrp(it,a,e) for ((it) = (a); (it) < (e); ++(it))
+#define for_arr(it,a,n) for_arrp(it,a,(a)+(n))
+#define for_arrv(it,a) for_arr(it,a,cntof(a))
+#define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
+#define for_arr_rng(it,a,r)\
+  for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
+#define for_arrv_rng(it,a, b,e,s)       \
+  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;\
+       (it) != (a) + rng(b,e,s,cntof(a)).hi;\
+       (it) += rng(b,e,s,cntof(a)).step)
+
+/* ---------------------------------------------------------------------------
+ *                                Sequence
+ * ---------------------------------------------------------------------------
+ */
+static inline void
+seq_rng(int *seq, struct rng rng) {
+  for_rng(i,k,rng) {
+    seq[k] = i;
+  }
+}
+static inline void
+seq_rngu(unsigned *seq, struct rng rng) {
+  for_rng(i,k,rng) {
+    seq[k] = castu(i);
+  }
+}
+static inline void
+seq_rnd(int *seq, int n, unsigned long long *r) {
+  for (int i = n - 1; i > 0; --i) {
+    unsigned at = rndu(r) % castu(i + 1);
+    iswap(seq[i], seq[at]);
+  }
+}
+static void
+seq_fix(int *p, int n) {
+  for (int i = 0; i < n; ++i) {
+    p[i] = -1 - p[i];
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  Bits
+ * ---------------------------------------------------------------------------
+ */
+static inline unsigned
+bit_rev32(unsigned x){
+  x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
+  x = ((x & 0x33333333) << 2) | ((x >> 2) & 0x33333333);
+  x = ((x & 0x0F0F0F0F) << 4) | ((x >> 4) & 0x0F0F0F0F);
+  x = (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
+  return x;
+}
+static inline unsigned long long
+bit_rev64(unsigned long long x){
+  unsigned x1 = castu(x & 0xffffffffu);
+  unsigned x2 = castu(x >> 32);
+  return (castull(bit_rev32(x1)) << 32)|bit_rev32(x2);
+}
+static inline unsigned
+bit_eqv(unsigned x, unsigned y) {
+  /* Calculates bitwise equivalence.
+   * Bitwise equivalence is the opposite of xor. It sets all bits that
+   * are the same to 1, whereas xor sets all bits that are different to 1.
+   * Thus, you can simply use ~ to get bitwise equivalence from xor.
+   * Example:
+   *    11001100, 11110000 -> 11000011
+   */
+  return castu(~(x ^ y));
 }
 
 /* ---------------------------------------------------------------------------
@@ -196,7 +426,7 @@ static int
 bit_set(unsigned long *addr, int nr) {
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
-  int ret = cast(int, *p &m);
+  int ret = casti(*p &m);
   *p |= m;
   return ret;
 }
@@ -211,7 +441,7 @@ bit_clr(unsigned long *addr, int nr) {
   assert(addr);
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
-  int ret = cast(int, (*p & m));
+  int ret = casti((*p & m));
   *p &= ~m;
   return ret;
 }
@@ -270,6 +500,9 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
 static int
 bit_ffz(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
+  assert(nbits >= 0);
+  assert(idx < nbits);
+
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -287,6 +520,9 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
 static int
 bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
+  assert(nbits >= 0);
+  assert(idx < nbits);
+
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1u, bit_mask(idx)) - 1u;
   if ((unsigned long)nbits < BITS_PER_LONG) {
@@ -308,6 +544,9 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
 static int
 bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
+  assert(nbits >= 0);
+  assert(idx < nbits);
+
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1u, bit_mask(idx)) - 1u;
   if ((unsigned long)nbits < BITS_PER_LONG) {
@@ -329,6 +568,8 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
 static int
 bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   assert(addr);
+  assert(nbits >= 0);
+  assert(off < nbits);
   if (!idx) {
     return bit_ffs(addr, nbits, idx);
   }
@@ -340,6 +581,8 @@ bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
 static int
 bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
   assert(addr);
+  assert(nbits >= 0);
+  assert(off < nbits);
   if (!idx) {
     return bit_ffz(addr, nbits, idx);
   }
@@ -564,11 +807,11 @@ static int str__match_star(int c, struct str reg, struct str txt);
 #define H32(s,i,x)  H16(s,i,H16(s,i+16,x))
 #define H64(s,i,x)  H16(s,i,H16(s,i+16,H16(s,i+32,H16(s,i+48,x))))
 
-#define STR_HASH4(s)    cast(unsigned,(H4(s,0,0)^(H4(s,0,0)>>16)))
-#define STR_HASH8(s)    cast(unsigned,(H8(s,0,0)^(H8(s,0,0)>>16)))
-#define STR_HASH16(s)   cast(unsigned,(H16(s,0,0)^(H16(s,0,0)>>16)))
-#define STR_HASH32(s)   cast(unsigned,(H32(s,0,0)^(H32(s,0,0)>>16)))
-#define STR_HASH64(s)   cast(unsigned,(H64(s,0,0)^(H64(s,0,0)>>16)))
+#define STR_HASH4(s)    castu((H4(s,0,0)^(H4(s,0,0)>>16)))
+#define STR_HASH8(s)    castu((H8(s,0,0)^(H8(s,0,0)>>16)))
+#define STR_HASH16(s)   castu((H16(s,0,0)^(H16(s,0,0)>>16)))
+#define STR_HASH32(s)   castu((H32(s,0,0)^(H32(s,0,0)>>16)))
+#define STR_HASH64(s)   castu((H64(s,0,0)^(H64(s,0,0)>>16)))
 
 static inline unsigned
 str__match_hash(struct str s) {
@@ -585,9 +828,9 @@ str__match_hash(struct str s) {
 #define with32(s) case STR_HASH32(s)
 #define with64(s) case STR_HASH64(s)
 
-#define cstrn(s) cast(int, strlen(s))
+#define cstrn(s) casti(strlen(s))
 #define str(s,n) (struct str){s, (s) + (n), (n)}
-#define strp(b,e) (struct str){.str = (b), .end = (e), .len = cast(int, (e) - (b))}
+#define strp(b,e) (struct str){.str = (b), .end = (e), .len = casti((e) - (b))}
 #define str0(s) (struct str){(s), (s) + cstrn(s), cstrn(s)}
 #define strv(s) str(s, cntof(s)-1)
 #define strf(s) (s).len, (s).str
@@ -605,9 +848,9 @@ str__match_hash(struct str s) {
   for (const char *it = (c)->str; it < (c)->end; it += (s))
 #define fori_str(i,c,s)\
   for (int i = 0; i < (c)->len; i += (s))
-#define for_str_rng(it,a, b,e,s)\
-  for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;\
-      (it) != (a)->str + rng(b,e,s,(a)->len).hi;\
+#define for_str_rng(it,a, b,e,s)                                \
+  for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;      \
+      (it) != (a)->str + rng(b,e,s,(a)->len).hi;                \
       (it) += rng(b,e,s,(a)->len).step)
 #define for_str_tok(it, rest, src, delim)                       \
   for (struct str rest = src, it = str_split_cut(&rest, delim); \
@@ -648,7 +891,7 @@ str_fnd_tbl(struct str_fnd_tbl *fnd, struct str s) {
   if (s.len > 0) {
     int n = s.len - 1;
     for (int i = 0; i < n; ++i) {
-      unsigned char at = cast(unsigned char, s.str[i]);
+      unsigned char at = castb(s.str[i]);
       fnd->tbl[at] = n - i;
     }
   }
@@ -659,8 +902,8 @@ str_fnd_tbl_str(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
     return hay.len;
   }
   if (needle.len == 1) {
-    char *res = memchr(hay.str, needle.str[0], cast(size_t, hay.len));
-    return res ? cast(int, res - hay.str) : hay.len;
+    const char *res = cpu_str_chr(hay.str, hay.len, needle.str[0]);
+    return res ? casti(res - hay.str) : hay.len;
   }
   int hpos = 0;
   int n = needle.len - 1;
@@ -680,31 +923,12 @@ str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
   return str_fnd_tbl_str(hay, needle, fnd) >= hay.len;
 }
 static int
-str__fnd_sse(struct str hay, struct str needle) {
-  static const char unsigned ovr_msk[32] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-  };
-  chr16 ndl = chr16_ld(needle.str);
-  chr16 ovr = chr16_ld(ovr_msk + 16 - (needle.len & 15));
-  for (int i = 0; i + needle.len <= hay.len; i++) {
-    chr16 txt = chr16_ld(hay.str + i);
-    chr16 ceq = chr16_eq(ndl,txt);
-    chr16 msk = chr16_or(ceq,ovr);
-    if (chr16_tst_all_ones(msk)) {
-      return i;
-    }
-  }
-  return hay.len;
-}
-static int
 str_fnd(struct str hay, struct str needle) {
   if (needle.len == 1) {
-    char *res = memchr(hay.str, needle.str[0], cast(size_t, hay.len));
-    return res ? cast(int, res - hay.str) : hay.len;
-  } else if (needle.len <= 16) {
-    return str__fnd_sse(hay, needle);
+    const char *res = cpu_str_chr(hay.str, hay.len, needle.str[0]);
+    return res ? casti(res - hay.str) : hay.len;
+  } else if (needle.len <= CPU_STR_FND_LIMIT) {
+    return cpu_str_fnd(hay.str, hay.len, needle.str, needle.len);
   } else {
     struct str_fnd_tbl fnd;
     str_fnd_tbl(&fnd, needle);
@@ -747,10 +971,10 @@ str_fzy(struct str s, struct str p) {
       score--; run = 1;
     }
   }
-  remain = cast(int, s.end - str);
-  int val = score + remain + cast(int, s.str - str);
-  int left = cast(int, p.end - pat);
-  return cast(int, val *left - remain);
+  remain = casti(s.end - str);
+  int val = score + remain + casti(s.str - str);
+  int left = casti(p.end - pat);
+  return casti(val *left - remain);
 }
 static int
 str__match_here(struct str reg, struct str txt) {
@@ -926,7 +1150,7 @@ static int
 utf_at_idx(struct str s, int idx) {
   struct str view = utf_at(0, s, idx);
   if (view.len) {
-    return cast(int, view.str - s.str);
+    return casti(view.str - s.str);
   }
   return s.len;
 }
@@ -938,6 +1162,118 @@ utf_len(struct str s) {
     i++;
   }
   return i;
+}
+
+/* ---------------------------------------------------------------------------
+ *                                Time
+ * ---------------------------------------------------------------------------
+ */
+#define time_inf  (9223372036854775807ll)
+#define time_ninf (-9223372036854775807ll)
+#define time_ns(ns) castll((ns))
+#define time_us(us) (castll((us))*1000ll)
+#define time_ms(ms) (castll((ms))*1000000ll)
+#define time_sec(s) (castll((s))*1000000000ll)
+#define time_min(m) (castll((m))*60000000000ll)
+#define time_hours(h) (castll((m))*3600000000000ll)
+
+#define time_flt_sec(s) (castll(castd((s))*1000000000.0))
+#define time_flt_min(s) (castll(castd((s))*60000000000.0))
+#define time_flt_hour(s) (castll(castd((s))*3600000000000.0))
+
+#define time_30fps time_ns(33333333)
+#define time_60fps time_ns(16666666)
+#define time_90fps time_ns(11111111)
+#define time_120fps time_ns(8333333)
+#define time_144fps time_ns(6944444)
+#define time_240fps time_ns(4166667)
+
+#define ns_time(t) (t)
+#define us_time(t) ((t)/1000ll)
+#define ms_time(t) ((t)/1000000ll)
+#define sec_time(t) ((t)/1000000000ll)
+#define min_time(t) ((t)/60000000000ll)
+#define hour_time(t) ((t)/3600000000000ll)
+
+#define sec_flt_time(t) castf(castd(t)*(1.0/1000000000.0))
+#define min_flt_time(t) castf(castd(t)*(1.0/10000000000.0))
+#define hour_flt_time(t) castf(castd(t)*(1.0/3600000000000.0))
+
+static long long
+time_sub(long long a, long long b) {
+  if (a == time_inf) {
+    return (b == time_inf) ? 0ll : time_inf;
+  } else if (a == time_ninf) {
+    return (b == time_ninf) ? 0ll : time_ninf;
+  } else if (b == time_inf) {
+    return time_ninf;
+  } else if (b == time_ninf) {
+    return time_inf;
+  }
+  return a - b;
+}
+static long long
+time_add(long long a, long long b) {
+  if (a == time_inf) {
+    return (b == time_ninf) ? 0ll : time_inf;
+  } else if (a == time_ninf) {
+    return (b == time_inf) ? 0ll : time_ninf;
+  } else if (b == time_inf) {
+    return time_inf;
+  } else if (b == time_ninf) {
+    return time_ninf;
+  }
+  return a + b;
+}
+static long long
+time_neg(long long a) {
+  if (a == time_inf) {
+    return time_ninf;
+  } else if (a == time_ninf) {
+    return time_inf;
+  } else {
+    return -a;
+  }
+}
+static long long
+time_mul(long long a, long long b) {
+  return a * b;
+}
+static long long
+time_div(long long a, long long b) {
+  if (a == time_inf) {
+    if (b == time_inf) {
+      return 1ll;
+    } else if (b == time_ninf){
+      return -1ll;
+    } else {
+      return time_inf;
+    }
+  } else if (a == time_ninf) {
+    if (b == time_inf) {
+      return -1ll;
+    } else if (b == time_ninf){
+      return 1ll;
+    } else {
+      return time_ninf;
+    }
+  } else if (b == time_inf) {
+    return time_inf;
+  } else if (b == time_ninf) {
+    return time_ninf;
+  }
+  return a / b;
+}
+static long long
+time_mod(long long a, long long b) {
+  assert(b != 0ll);
+  if (a == time_inf || a == time_ninf) {
+    return a;
+  } else if (b == time_inf || b == time_ninf) {
+    return 0;
+  } else {
+    return a % b;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -993,7 +1329,7 @@ arena_align_off(struct arena *a, int align) {
   int msk = align - 1;
   int off = 0;
   if(res & msk) {
-    off = cast(int, (align - (res & msk)));
+    off = casti((align - (res & msk)));
   }
   return off;
 }
@@ -1060,7 +1396,9 @@ static char *
 arena_cstr(struct arena *a, struct sys *sys, struct str cs) {
   assert(a);
   assert(sys);
-
+  if (!cs.len) {
+    return 0;
+  }
   char *s = arena_alloc(a, sys, cs.len + 1);
   mcpy(s, cs.str, cs.len);
   s[cs.len] = 0;
@@ -1161,10 +1499,10 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 #define lst_last(lst) ((lst)->prv)
 #define for_lst(e,l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
 #define for_lst_safe(a,b,l) \
-    for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
+ for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
 #define for_lst_rev(e,l) for((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
 #define for_lst_rev_safe(a,b,l) \
-    for((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
+ for((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
 // clang-format on
 
 /* ---------------------------------------------------------------------------
@@ -1202,36 +1540,37 @@ struct dyn_hdr {
 #define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
 #define dyn_asn_str(b,sys, s) dyn_asn(b,sys,(s).str,(s).len)
 #define dyn_val(b,i) assert(i < dyn_cnt(b))
+#define dyn_shfl(a,p) arr_shfl(arr(a),p)
 
 #define fori_dyn(i,c)\
   for (int i = 0; i < dyn_cnt(c); ++i)
 #define for_dyn(it,c) for_arr(it, c, dyn_cnt(c))
-#define for_dyn_rng(it,a, b,e,s)                \
-  for ((it) = (a) + rng(b,e,s,dyn_cnt(a)).lo;   \
-       (it) != (a) + rng(b,e,s,dyn_cnt(a)).hi;  \
+#define for_dyn_rng(it,a, b,e,s)                    \
+  for ((it) = (a) + rng(b,e,s,dyn_cnt(a)).lo;       \
+       (it) != (a) + rng(b,e,s,dyn_cnt(a)).hi;      \
        (it) += rng(b,e,s,dyn_cnt(a)).step)
 
-#define dyn_asn(b, s, x, n) do {                  \
-  dyn_clr(b);                                   \
-  dyn_fit(b, s, n);                             \
-  mcpy(b, x, szof((b)[0]) * (n)); \
-  dyn__hdr(b)->cnt = (n);                       \
+#define dyn_asn(b, s, x, n) do {                    \
+  dyn_clr(b);                                       \
+  dyn_fit(b, s, n);                                 \
+  mcpy(b, x, szof((b)[0]) * (n));                   \
+  dyn__hdr(b)->cnt = (n);                           \
 } while (0)
 
 #define dyn_put(b, s, i, x, n) do {                                       \
-  dyn_fit(b, s, n);                                                     \
-  assert((i) <= dyn_cnt(b));                                            \
-  assert((i) < dyn_cap(b));                                             \
+  dyn_fit(b, s, n);                                                       \
+  assert((i) <= dyn_cnt(b));                                              \
+  assert((i) < dyn_cap(b));                                               \
   memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
-  mcpy((b) + (i), (x), szof((b)[0]) * (n));                             \
-  dyn__hdr(b)->cnt += (n);                                              \
+  mcpy((b) + (i), (x), szof((b)[0]) * (n));                               \
+  dyn__hdr(b)->cnt += (n);                                                \
 } while (0)
 
 #define dyn_cut(b, i, n) do {                                             \
-  assert((i) < dyn_cnt(b));                                             \
-  assert((i) + (n) <= dyn_cnt(b));                                      \
+  assert((i) < dyn_cnt(b));                                               \
+  assert((i) + (n) <= dyn_cnt(b));                                        \
   memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
-  dyn__hdr(b)->cnt -= (n);                                              \
+  dyn__hdr(b)->cnt -= (n);                                                \
 } while (0)
 // clang-format off
 
@@ -1384,7 +1723,7 @@ set__hash(unsigned long long k) {
 static int
 set__new_cap(int old, int req) {
   int nn = max(SET_MIN_SIZE, (int)((float)req * SET_MIN_GROW_PERCENT));
-  return max(nn, cast(int, SET_GROW_FACTOR * cast(float, old)));
+  return max(nn, casti( SET_GROW_FACTOR * castf( old)));
 }
 static unsigned long long*
 set_new(int old, int req, struct sys *sys) {
@@ -1406,12 +1745,12 @@ set__store(unsigned long long *keys, void *vals,
     unsigned long long off = (unsigned long long)val_siz * i;
     mcpy((unsigned char*)vals + off, val, val_siz);
   }
-  return cast(long long, i);
+  return castll(i);
 }
 static long long
 set__slot(unsigned long long *keys, void *vals, int cap,
           unsigned long long h, void *v, int val_siz) {
-  unsigned long long n = cast(unsigned long long, cap);
+  unsigned long long n = castull(cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
     unsigned long long k = keys[i];
@@ -1429,7 +1768,7 @@ set__slot(unsigned long long *keys, void *vals, int cap,
     }
     dist = d;
   } while ((i = ((i + 1) % n)) != b);
-  return cast(long long, n);
+  return castll(n);
 }
 static intptr_t
 set__put(unsigned long long *set, unsigned long long key) {
@@ -1458,13 +1797,13 @@ static long long
 set__fnd(unsigned long long *set, unsigned long long key, int cap) {
   assert(set);
   unsigned long long h = set__hash(key);
-  unsigned long long n = cast(unsigned long long, cap);
+  unsigned long long n = castull( cap);
   unsigned long long i = h % n, b = i, dist = 0;
   do {
     if (!set[i] || dist > set__dist(set[i],n,i)) {
       return cap;
     } else if(set[i] == h) {
-      return cast(long long, i);
+      return castll(i);
     }
     dist++;
   } while ((i = ((i + 1) % n)) != b);
@@ -1595,6 +1934,7 @@ ut_set(struct sys *sys) {
 
 static int
 tbl__nxt_idx(void *tbl, int i, int type_siz) {
+  assert(tbl);
   int cnt = tbl_cap(tbl);
   unsigned long long *keys = tbl__keys(tbl,type_siz);
   for (; i < cnt; ++i) {
@@ -1606,6 +1946,7 @@ tbl__nxt_idx(void *tbl, int i, int type_siz) {
 }
 static void*
 tbl__put(void *tbl, unsigned long long key, void *val, int val_siz) {
+  assert(tbl);
   unsigned long long h = set__hash(key);
   unsigned long long *keys = tbl__keys(tbl, val_siz);
   long long i = set__slot(keys, tbl, tbl_cap(tbl), h, val, val_siz);
@@ -1617,6 +1958,7 @@ tbl__put(void *tbl, unsigned long long key, void *val, int val_siz) {
 }
 static void*
 tbl__fnd(void *tbl, unsigned long long key, int val_siz) {
+  assert(tbl);
   unsigned long long *keys = tbl__keys(tbl, val_siz);
   long long i = set__fnd(keys, key, tbl_cap(tbl));
   if (i >= tbl_cap(tbl)) {
@@ -1626,6 +1968,7 @@ tbl__fnd(void *tbl, unsigned long long key, int val_siz) {
 }
 static void
 tbl__del(void *tbl, unsigned long long key, int val_siz) {
+  assert(tbl);
   if (!tbl_cap(tbl)) return;
   unsigned long long *keys = tbl__keys(tbl, val_siz);
   long long i = set__fnd(keys, key, tbl_cap(tbl));
@@ -1641,6 +1984,9 @@ tbl__resv(int val_siz, int cap) {
 }
 static void*
 tbl__setup(void *mem, struct mem_blk *blk, int cap) {
+  assert(mem);
+  assert(blk);
+
   struct dyn_hdr *hdr = cast(struct dyn_hdr*, mem);
   hdr->blk = blk;
   hdr->cap = cap;
@@ -1649,6 +1995,9 @@ tbl__setup(void *mem, struct mem_blk *blk, int cap) {
 }
 static void*
 tbl__grow(void *tbl, struct sys *sys, int val_siz, int n) {
+  assert(tbl);
+  assert(sys);
+
   int cap = set__new_cap(tbl_cap(tbl), n);
   int siz = tbl__resv(val_siz, cap);
   struct mem_blk *blk = sys->mem.alloc(0, siz, SYS_MEM_GROWABLE, 0);
@@ -1766,11 +2115,11 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
     unsigned t0 = h[0][i] + sum[0]; h[0][i] = sum[0], sum[0] = t0;
     unsigned t1 = h[1][i] + sum[1]; h[1][i] = sum[1], sum[1] = t1;
   }
-  /* sort 8-bit at a time */
+  /* sort 8-bits at a time */
   unsigned *restrict idx[] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 2; ++p, d = !d, s = !s) {
     for_cnt(i, n) {
-      unsigned at = idx[s][i] * cast(unsigned, siz);
+      unsigned at = idx[s][i] * castu(siz);
       unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
     }
@@ -1781,7 +2130,7 @@ sort_radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
   assert(out);
-  for_cnt(i,n) {out[i] = cast(unsigned,i);}
+  seq_rngu(out, rngn(n));
   sort__radix16(out, a, siz, n, off, usr, access, conv);
 }
 static void
@@ -1821,10 +2170,10 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
     unsigned t3 = h[3][i] + sum[3]; h[3][i] = sum[3], sum[3] = t3;
   }
   /* sort 8-bit at a time */
-  unsigned *restrict idx[] = {out, out + n};
+  unsigned *restrict idx[2] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 4; ++p, d = !d, s = !s) {
     for_cnt(i,n) {
-      unsigned at = idx[s][i] * cast(unsigned, siz);
+      unsigned at = idx[s][i] * castu(siz);
       unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8*p))&0xff]++] = at;
     }
@@ -1835,12 +2184,12 @@ sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
   assert(out);
-  for_cnt(i,n) {out[i] = cast(unsigned,i);}
+  seq_rngu(out, rngn(n));
   sort__radix32(out, a, siz, n, off, usr, access, conv);
 }
 static char
 sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
-  struct str * s = sort__str_get(p, access, usr);
+  struct str *s = sort__str_get(p, access, usr);
   return sort__char_at(s,d);
 }
 static void
@@ -1900,7 +2249,7 @@ sort__str(int *out, void *a, int n, int siz, int off,
           sort_access_f fn, void *u, int d) {
   /* <!> out needs to be at least size: 3*n <!> */
   /* <!> returned pointer will either be be beginnning or middle of out <!> */
-  for (int i = 0; i < n; ++i) out[i] = i;
+  seq_rng(out, rngn(n));
   return sort__radix_str(out, a, n, siz, off, 0, n-1, fn, u, d);
 }
 
@@ -1911,6 +2260,10 @@ sort__str(int *out, void *a, int n, int siz, int off,
 static int
 sorted_search(const void *vals, int cnt, int siz, void *val,
               int(*cmp_less)(const void *a, const void *b)) {
+  assert(vals);
+  assert(val);
+  assert(cmp_less);
+
   int nleft = cnt;
   const unsigned char *base = vals;
   for (;;) {
@@ -1925,8 +2278,29 @@ sorted_search(const void *vals, int cnt, int siz, void *val,
   if (nleft == 1) {
     base += cmp_less(base, val) ? siz : 0;
   }
-  return cast(int, (base - cast(const unsigned char*, vals)))/siz;
+  return casti((base - cast(const unsigned char*, vals)))/siz;
 }
+
+/* ---------------------------------------------------------------------------
+ *                            Command Arguments
+ * --------------------------------------------------------------------------- */
+// clang-format off
+#define cmd_arg_begin(argv0, argc, argv) \
+  for (argv0 = *argv, argv++, argc--; argv[0] && argv[0][1] && argv[0][0] == '-'; argc--, argv++) {\
+    char argc_, **argv_; int brk_;\
+    if (argv[0][1] == '-' && argv[0][2] == '\0') {argv++; argc--; break;}\
+    for (brk_ = 0, argv[0]++, argv_ = argv; argv[0][0] && !brk_; argv[0]++) {\
+      if (argv_ != argv) break;\
+      argc_ = argv[0][0];\
+      switch (argc_)
+#define cmd_argc() argc_
+#define cmd_arg_opt_str(argv, x) ((argv[0][1] == '\0' && argv[1] == 0)?\
+  ((x), (char *)0) : (brk_ = 1, (argv[0][1] != '\0') ?\
+    (&argv[0][1]) : (argc--, argv++, argv[0])))
+#define cmd_arg_opt_int(argv,x) cmd_arg_int(cmd_arg_opt_str(argv,x))
+#define cmd_arg_opt_flt(argv,x) cmd_arg_flt(cmd_arg_opt_str(argv,x))
+#define cmd_arg_end }}
+// clang-format on
 
 /* ---------------------------------------------------------------------------
  *                                  Image
@@ -1935,13 +2309,13 @@ sorted_search(const void *vals, int cnt, int siz, void *val,
 #define img_w(img) (img)[-2]
 #define img_h(img) (img)[-1]
 #define img_pix(img, x, y) \
-  (img)[cast(unsigned, (y)) * img_w(img) + cast(unsigned, (x))]
+  (img)[castu((y)) * img_w(img) + castu((x))]
 
 static unsigned *
 img_mk(unsigned *img, int w, int h) {
   img += 2;
-  img_w(img) = cast(unsigned, w);
-  img_h(img) = cast(unsigned, h);
+  img_w(img) = castu(w);
+  img_h(img) = castu(h);
   return img;
 }
 static unsigned *
@@ -1949,4 +2323,5 @@ img_new(struct arena *a, struct sys *s, int w, int h) {
   unsigned *img = arena_alloc(a, s, szof(unsigned) * (w * h + 2));
   return img_mk(img, w, h);
 }
+
 

@@ -12,14 +12,13 @@
 #define lerp(r,a,b,t) ((r)=(a)+(t)*((b)-(a)))
 #define lerp_smooth(r,a,b,t) lerp(r,a,b,smooth01(t))
 #define lerp_inv(r,a,b,v) (((v)-(a))/((b)-(a)))
-#define eerp(r,a,b,t) powa(a,1-t) * powa(b,t) // useful for scaling or zooming
-#define eerp_inv(a,b,v) (logf((a)/(v))/logf((a)/(b)))
-#define sincosa(a,s,c) *s = sina(a), *c = cosa(a)
-#define repeat(v,len) clamp(0.0f, (v) - floorf((v)/(len)) * (len), len) // repeats the given value in the interval specified by len
-#define pingpong(t,len) len - absf(repat(t,len * 2f)-len) // repeats a value within a range, going back and forth
-#define triwave(t,period) (1.0f-absf(2.0f*(((t)/(period))-floorf(((t)/(period))))-1.0f))
+#define eerp(r,a,b,t) math_pow(a,1-t) * math_pow(b,t) // useful for scaling or zooming
+#define eerp_inv(a,b,v) (math_log((a)/(v))/math_log((a)/(b)))
+#define repeat(v,len) clamp(0.0f, (v) - math_floor((v)/(len)) * (len), len) // repeats the given value in the interval specified by len
+#define pingpong(t,len) len - math_abs(repat(t,len * 2f)-len) // repeats a value within a range, going back and forth
+#define triwave(t,period) (1.0f-math_abs(2.0f*(((t)/(period))-math_floor(((t)/(period))))-1.0f))
 #define smooth01(x) ((x)*(x)*(3-2*(x)))
-#define smoother01(x) ((x)*(x)*(x)*((x)*((x)*6-15)+10))
+#define smoother01(x) ((x)*(x)*(x)*(6*(x)*(x)-15*(x)+10))
 #define remap(r,imin,imax,omin,omax,v) lerp(r,omin,omax, inv_lerp(imin,imax,v))
 // clang-format on
 
@@ -72,17 +71,17 @@ cmpN(const float *a, const float *b, float e, int N) {
 }
 static int
 math_floori(double x) {
-  x = cast(double, (cast(int, x) - ((x < 0.0f) ? 1 : 0)));
-  return cast(int, x);
+  x = castd((casti(x) - ((x < 0.0f) ? 1 : 0)));
+  return casti(x);
 }
 static int
 math_ceili(double x) {
   if (x < 0) {
-    int t = cast(int, x);
-    double r = x - cast(double, t);
+    int t = casti(x);
+    double r = x - castd(t);
     return (r > 0.0f) ? (t + 1) : t;
   } else {
-    int i = cast(int, x);
+    int i = casti(x);
     return (x > i) ? (i + 1) : i;
   }
 }
@@ -95,10 +94,10 @@ static float
 math_pow2(float p) {
   float o = (p < 0) ? 1.0f : 0.0f;
   float c = (p < -126) ? -126.0f : p;
-  int w = cast(int, c);
-  float t, z = c - cast(float, w) + o;
+  int w = casti(c);
+  float t, z = c - castf(w) + o;
   t = (c + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z);
-  union bit_casti v = {cast(unsigned,((1 << 23) * t))};
+  union bit_casti v = {castu(((1 << 23) * t))};
   return v.f;
 }
 static float
@@ -109,14 +108,61 @@ static float
 math_pow(float x, float p) {
   return math_pow2(p * math_log2(x));
 }
-static float
-math_rsqrt(float n) {
-  flt4_strs(&n, flt4_rsqrt(flt4_flt(n)));
-  return n;
+static inline float
+math_rsqrt(float x) {
+  return cpu_rsqrt(x);
 }
-static float
+static inline float
 math_sqrt(float x) {
-  return x * math_rsqrt(x);
+  return cpu_sqrt(x);
+}
+static inline float
+math_rsqrtp(float x) {
+  /* Exact bits: 23.62 */
+  /* δ+max = 7.362378×10^−8 */
+  /* δ−max = −7.754203×10^−8 */
+  union { float f; int i; } v = {x};
+  int k = v.i & 0x00800000;
+  float y = 0.0f;
+  if (k != 0) {
+    v.i = 0x5ed9dbc6 - (v.i >> 1);
+    y = v.f;
+    y = 2.33124018f*y*cpu_fma(-x, y*y, 1.07497406f);
+  } else {
+    v.i = 0x5f19d200 - (v.i >> 1);
+    y = v.f;
+    y = 0.824212492f*y*cpu_fma(-x, y*y, 2.14996147f);
+  }
+  {
+    float c = x*y;
+    float r = cpu_fma(y, -c, 1.0f);
+    return cpu_fma(0.5f*y, r, y);
+  }
+}
+static inline float
+math_sqrtp(float x) {
+  /* Exact bits: 23.4 */
+  /* δ+max = 8.757966×10^−8 */
+  /* δ−max = −9.037992×10^−8 */
+  union { float f; int i; } v = {x};
+  int k = v.i & 0x00800000;
+  float y, c;
+  if (k != 0) {
+    v.i = 0x5ed9d098 - (v.i >> 1);
+    y = v.f;
+    c = x*y;
+    y = 2.33139729f*c*cpu_fma(y, -c, 1.07492042f);
+  } else {
+    v.i = 0x5f19d352 - (v.i >> 1);
+    y = v.f;
+    c = x*y;
+    y = 0.82420468f*c*cpu_fma(y, -c, 2.14996147f);
+  }
+  {
+    float l = x*y;
+    float r = cpu_fma(y, -l, 1.0f);
+    return cpu_fma(0.5f*l, r, l);
+  }
 }
 static double
 math_round(double x) {
@@ -149,7 +195,33 @@ math_round(double x) {
 static int
 math_roundi(double x) {
   double f = math_round(x);
-  return cast(int, f);
+  return casti(f);
+}
+static float
+math_floor(float x) {
+  union {float f; unsigned i;} u = {x};
+  int e = (int)(u.i >> 23 & 0xff) - 0x7f;
+  unsigned m;
+  if (e >= 23) {
+    return x;
+  }
+  if (e >= 0) {
+    m = 0x007fffff >> e;
+    if ((u.i & m) == 0) {
+      return x;
+    }
+    if (u.i >> 31) {
+      u.i += m;
+    }
+    u.i &= ~m;
+  } else {
+    if (u.i >> 31 == 0) {
+      u.i = 0;
+    } else if (u.i << 1) {
+      u.f = -1.0;
+    }
+  }
+  return u.f;
 }
 static float
 math_mod(float x, float y) {
@@ -211,6 +283,67 @@ math_mod(float x, float y) {
   ux.i = uxi;
   return ux.f;
 }
+static inline float
+math_rintf(float x) {
+  return cpu_rintf(x);
+}
+static inline float
+math_fma(float x, float y, float z) {
+  return cpu_fma(x,y,z);
+}
+static void
+math_sin_cos_pi(float *sp, float *cp, float a) {
+  int i;
+  float c, r, s, az = a * 0.0f; // must be evaluated with IEEE-754 semantics
+  /* for |a| > 2**24, cospi(a) = 1.0f, but cospi(Inf) = NaN */
+  a = (math_abs(a) < 0x1.0p24f) ? a : az;
+  r = math_rintf(a + a); // must use IEEE-754 "to nearest" rounding
+  i = casti(r);
+  float t = math_fma(-0.5f, r, a);
+  /* compute core approximations */
+  s = t * t;
+  /* Approximate cos(pi*x) for x in [-0.25,0.25] */
+  r = 0x1.d9e000p-3f;
+  r = math_fma(r, s, -0x1.55c400p+0f);
+  r = math_fma(r, s,  0x1.03c1cep+2f);
+  r = math_fma(r, s, -0x1.3bd3ccp+2f);
+  c = math_fma(r, s,  0x1.000000p+0f);
+  /* Approximate sin(pi*x) for x in [-0.25,0.25] */
+  r = -0x1.310000p-1f;
+  r = math_fma(r, s,  0x1.46737ep+1f);
+  r = math_fma(r, s, -0x1.4abbfep+2f);
+  r = (t * s) * r;
+  s = math_fma(t, 0x1.921fb6p+1f, r);
+  if (i & 2) {
+    s = 0.0f - s; // must be evaluated with IEEE-754 semantics
+    c = 0.0f - c; // must be evaluated with IEEE-754 semantics
+  }
+  if (i & 1) {
+    t = 0.0f - s; // must be evaluated with IEEE-754 semantics
+    s = c;
+    c = t;
+  }
+  /* IEEE-754: sinPi(+n) is +0 and sinPi(-n) is -0 for positive integers n */
+  if (a == math_floor(a)) {
+    s = az;
+  }
+  *sp = s;
+  *cp = c;
+}
+static float
+math_sin_pi(float x) {
+  float s = 0.0f;
+  float c = 0.0f;
+  math_sin_cos_pi(&s, &c, x);
+  return s;
+}
+static float
+math_cos_pi(float x) {
+  float s = 0.0f;
+  float c = 0.0f;
+  math_sin_cos_pi(&s, &c, x);
+  return c;
+}
 static void
 math_sin_cos(float *vsin, float *vcos, float a) {
   assert(vsin);
@@ -223,7 +356,7 @@ math_sin_cos(float *vsin, float *vcos, float a) {
   unsigned sin_sign = u.i & 0x80000000U;
   union bit_castf x = {.i = u.i ^ sin_sign};
   // x / (PI / 2) rounded to nearest int gives us the quadrant closest to x
-  unsigned quad = cast(unsigned, (0.6366197723675814f * x.f + 0.5f));
+  unsigned quad = castu((0.6366197723675814f * x.f + 0.5f));
 
   // Make x relative to the closest quadrant.
   // This does x = x - quadrant * PI / 2 using a two step Cody-Waite argument reduction.
@@ -291,15 +424,15 @@ math_cos(float x) {
 }
 static float
 math_tan(float a) {
-  /* Implementation based on tanf.c from the cephes library, see Vec4::SinCos for further details
+  /* Implementation based on tanf.c from the cephes library,
    * original implementation by Stephen L. Moshier (See: http://www.moshier.net/) */
   union bit_castf u = {.f = a};
   unsigned tan_sign = (u.i & 0x80000000u);
   union bit_castf x = {.i = u.i ^ tan_sign};
   /* x / (PI / 2) rounded to nearest int gives us the quadrant closest to x */
-  unsigned quad = cast(unsigned, 0.6366197723675814f * x.f + 0.5f);
+  unsigned quad = castu(0.6366197723675814f * x.f + 0.5f);
   /* remap x to range [-PI / 4, PI / 4], see sin cos */
-  float flt_quad = cast(float, quad);
+  float flt_quad = castf(quad);
   x.f = ((x.f - flt_quad * 1.5703125f) - flt_quad * 0.0004837512969970703125f) - flt_quad * 7.549789948768648e-8f;
   float x2 = x.f * x.f;
   // roughly equivalent to the Taylor expansion:
@@ -415,108 +548,6 @@ math_atan2(float in_y, float in_x) {
 }
 
 /* ---------------------------------------------------------------------------
- *                              Half-Float
- * ---------------------------------------------------------------------------
- */
-union flt {
-  unsigned u;
-  float f;
-  struct {
-    unsigned mant : 23;
-    unsigned expo : 8;
-    unsigned sign : 1;
-  };
-};
-union hflt {
-  unsigned short u;
-  struct {
-    unsigned mant : 10;
-    unsigned Expo : 5;
-    unsigned sign : 1;
-  };
-};
-static unsigned short
-hfltc(float in) {
-  union flt f = {.f = in};
-  union flt f32infty = { 255 << 23 };
-  union flt f16max   = { (127 + 16) << 23 };
-  union flt denorm_magic = { ((127 - 15) + (23 - 10) + 1) << 23 };
-  uint sign_mask = 0x80000000u;
-  union hflt o = { 0u };
-  unsigned sign = f.u & sign_mask;
-  f.u ^= sign;
-  // NOTE all the integer compares in this function can be safely
-  // compiled into signed compares since all operands are below
-  // 0x80000000. Important if you want fast straight SSE2 code
-  // (since there's no unsigned PCMPGTD).
-  if (f.u >= f16max.u) { // result is Inf or NaN (all exponent bits set)
-      o.u = (f.u > f32infty.u) ? 0x7e00 : 0x7c00; // NaN->qNaN and Inf->Inf
-  } else { // (De)normalized number or zero
-    if (f.u < (113u << 23u)) { // resulting FP16 is subnormal or zero
-      // use a magic value to align our 10 mantissa bits at the bottom of
-      // the float. as long as FP addition is round-to-nearest-even this just works.
-      f.f += denorm_magic.f;
-      // and one integer subtract of the bias later, we have our final float!
-      o.u = cast(unsigned short, f.u - denorm_magic.u);
-    } else {
-      unsigned mant_odd = (f.u >> 13u) & 1u; // resulting mantissa is odd
-      // update exponent, rounding bias part 1
-      f.u += ((15 - 127) << 23) + 0xfff; // rounding bias part 2
-      f.u += mant_odd;
-      o.u = cast(unsigned short, f.u >> 13u); // take the bits!
-    }
-  }
-  o.u |= sign >> 16;
-  return o.u;
-}
-static int4
-hflt4c(flt4 f) {
-  int4 mask_sign = int4_uint(0x80000000u);
-  int4 c_f16max = int4_int((127 + 16) << 23);
-  int4 c_nanbit = int4_int(0x200);
-  int4 c_infty_as_fp16 = int4_int(0x7c00);
-  int4 c_min_normal = int4_int((127 - 14) << 23); // smallest FP32 that yields a normalized FP16
-  int4 c_subnorm_magic = int4_int(((127 - 15) + (23 - 10) + 1) << 23);
-  int4 c_normal_bias = int4_int(0xfff - ((127 - 15) << 23)); // adjust exponent and add mantissa rounding
-
-  flt4 msign = flt4_int4(mask_sign);
-  flt4 justsign = flt4_and(msign, f);
-  flt4 absf = flt4_xor(f, justsign);
-  int4 absf_int = int4_flt4(absf);// the cast is "free" (extra bypass latency, but no thruput hit)
-  int4 f16max = c_f16max;
-  flt4 b_isnan = flt4_cmpu(absf, absf);
-  int4 b_isregular = int4_cmp_gt(f16max, absf_int);
-  int4 nanbit = int4_and(int4_flt4(b_isnan), c_nanbit);
-  int4 inf_or_nan = int4_or(nanbit, c_infty_as_fp16);
-
-  int4 min_normal = c_min_normal;
-  int4 b_issub = int4_cmp_gt(min_normal, absf_int);
-  // "result is subnormal" path
-  flt4 subnorm1 = flt4_add(absf, flt4_int4(c_subnorm_magic)); // magic value to round output mantissa
-  int4 subnorm2 = int4_sub(int4_flt4(subnorm1), c_subnorm_magic); // subtract out bias
-  // "result is normal" path
-  int4 mantoddbit = int4_sll(absf_int, 31 - 13);
-  int4 mantodd = int4_sra(mantoddbit, 31);
-
-  int4 round1 = int4_add(absf_int, c_normal_bias);
-  int4 round2 = int4_sub(round1, mantodd); // if mantissa LSB odd, bias towards rounding up (RTNE)
-  int4 normal = int4_srl(round2, 13); // rounded result
-  // combine the two non-specials
-  int4 nonspecial = int4_or(int4_and(subnorm2, b_issub), int4_andnot(b_issub, normal));
-  // merge in specials as well
-  int4 joined = int4_or(int4_and(nonspecial, b_isregular), int4_andnot(b_isregular, inf_or_nan));
-  int4 sign_shift = int4_srl(int4_flt4(justsign), 16);
-  int4 final = int4_or(joined, sign_shift);
-  return final;
-}
-static inline unsigned short
-hflt(float in) {
-  flt4 i = flt4_flt(in);
-  union bit_castqi v = {.hflt = hflt4_flt4(i)};
-  return v.u16[0];
-}
-
-/* ---------------------------------------------------------------------------
  *                                Vector
  * ---------------------------------------------------------------------------
  */
@@ -568,7 +599,7 @@ hflt(float in) {
 #define sub2(d,a,b)     op2(d,=,a,-,b,+,0)
 #define mul2(d,a,s)     op2s(d,=,a,*,s)
 #define dot2(a,b)       ((a)[0]*(b)[0]+(a)[1]*(b)[1])
-#define len2(v)         sqrta(dot2(v,v))
+#define len2(v)         math_sqrt(dot2(v,v))
 #define adds2(d,a,b,s)  op2(d,=,a,+,b,*,s)
 #define subs2(d,a,b,s)  op2(d,=,a,-,b,*,s)
 #define norm2(n,v)      mul2(n,v,rsqrt(dot2(v, v)))
@@ -627,15 +658,15 @@ box3(const float *a, const float *b, const float *c) {
 #define sub4(d,a,b)     op4(d,=,a,-,b,+,0)
 #define mul4(d,a,s)     op4s(d,=,a,*,s)
 #define dot4(a,b)       ((a)[0]*(b)[0]+(a)[1]*(b)[1]+(a)[2]*(b)[2]+(a)[3]*(b)[3])
-#define len4(v)         sqrta(dot4(v,v))
+#define len4(v)         math_sqrt(dot4(v,v))
 #define adds4(d,a,b,s)  op4(d,=,a,+,b,*,s)
 #define subs4(d,a,b,s)  op4(d,=,a,-,b,*,s)
 #define norm4(n,v)      mul4(n,v,math_rsqrt(dot4(v, v)))
 #define normaleq4(v)    norm4(v,v)
 #define lerp4(r,a,b,t)  lerpN(r,a,b,t,4)
 #define cmp4(a,b,e)     cmpN(a,b,e,4)
-#define min4(r,a,b)     minN(r,a,b,3)
-#define max4(r,a,b)     maxN(r,a,b,3)
+#define min4(r,a,b)     minN(r,a,b,4)
+#define max4(r,a,b)     maxN(r,a,b,4)
 #define map4(r,fn,a)    mapN(r,fn,a,4);
 #define clamp4(r,i,v,x) clampN(r,i,v,x,4)
 #define swzl4(r,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
@@ -668,6 +699,7 @@ angle3(const float *restrict a3, const float *restrict b3) {
  */
 #define col_get(u) \
   (struct color) { col_r(u), col_g(u), col_b(u), col_a(u) }
+#define col_unpaq(d,u) set4(d, col_r(u), col_g(u), col_b(u), col_a(u))
 #define col_paq(c) col_rgba((c)->r, (c)->g, (c)->b, (c)->a)
 
 #define col_msk(c, i) (((c) >> i) & 0xFF)
@@ -686,9 +718,11 @@ angle3(const float *restrict a3, const float *restrict b3) {
 #define col_rgba(r,g,b,a)\
   (col_shl(r, COL_R) | col_shl(g, COL_G) | col_shl(b, COL_B) | col_shl(a, COL_A))
 #define col_rgb(r, g, b) col_rgba(r, g, b, 0xFFu)
+#define col_rgbav(a) col_rgba((a)[0],(a)[1],(a)[2],(a)[3])
+#define col_rgbv(a) col_rgba((a)[0],(a)[1],(a)[2],0xff)
 
-#define byte_flt(x) clamp(0u, cast(unsigned char, 0.5f + 255.0f * (x)), 255u)
-#define flt_byte(x) (cast(float,(x)) * (1.0f/255.0f))
+#define byte_flt(x) clamp(0u, castb(0.5f + 255.0f * (x)), 255u)
+#define flt_byte(x) (castf((x)) * (1.0f/255.0f))
 
 static float
 col_srgb_linear(float x) {
@@ -787,19 +821,73 @@ col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
 }
 
 /* ---------------------------------------------------------------------------
+ *                                Matrix
+ * ---------------------------------------------------------------------------
+ */
+static void
+m3x3q(float *restrict m, const float *restrict q) {
+  float x2 = q[0] + q[0];
+  float y2 = q[1] + q[1];
+  float z2 = q[2] + q[2];
+
+  float xx = q[0]*x2;
+  float xy = q[0]*y2;
+  float xz = q[0]*z2;
+
+  float yy = q[1]*y2;
+  float yz = q[1]*z2;
+  float zz = q[2]*z2;
+
+  float wx = q[3]*x2;
+  float wy = q[3]*y2;
+  float wz = q[3]*z2;
+
+  m[0*3+0] = 1.0f - (yy + zz);
+  m[0*3+1] = xy - wz;
+  m[0*3+2] = xz + wy;
+
+  m[1*3+0] = xy + wz;
+  m[1*3+1] = 1.0f - (xx + zz);
+  m[1*3+2] = yz - wx;
+
+  m[2*3+0] = xz - wy;
+  m[2*3+1] = yz + wx;
+  m[2*3+2] = 1.0f - (xx + yy);
+}
+static void
+m3x3T(float *restrict t, const float *restrict m) {
+  t[3*0+0] = m[3*0+0], t[3*0+1] = m[3*1+0], t[3*0+2] = m[3*2+0];
+  t[3*1+0] = m[3*0+1], t[3*1+1] = m[3*1+1], t[3*1+2] = m[3*2+1];
+  t[3*2+0] = m[3*0+2], t[3*2+1] = m[3*1+2], t[3*2+2] = m[3*2+2];
+}
+static void
+mul3x3(float *restrict d, const float *restrict a, const float *restrict b) {
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      *d++ = a[0] * b[0*3+j] + a[1] * b[1*3+j] + a[2] * b[2*3+j];
+    }
+    a += 3;
+  }
+}
+
+/* ---------------------------------------------------------------------------
  *                                Quaternion
  * ---------------------------------------------------------------------------
  */
 static void
 quatf(float *restrict q, float angle, float x, float y, float z) {
-  float s, c;
-  math_sin_cos(&s, &c, angle * 0.5f);
-  q[0] = x * s, q[1] = y * s, q[2] = z * s,
-  q[3] = c;
+  assert(q);
+  float s, c; math_sin_cos(&s, &c, angle * 0.5f);
+  q[0] = x * s, q[1] = y * s;
+  q[2] = z * s, q[3] = c;
 }
 static void
 qrot3(float *restrict out, const float *restrict qrot,
       const float *restrict vec) {
+  assert(out);
+  assert(qrot);
+  assert(vec);
+
   float q[4]; cpy4(q,qrot);
   float v[3]; cpy3(v,vec);
   float a[3]; mul3(a, q, 2.0f * dot3(q,v));
@@ -813,6 +901,10 @@ qrot3(float *restrict out, const float *restrict qrot,
 static void
 qalign3(float *restrict q, const float *restrict from3,
         const float *restrict to3) {
+  assert(q);
+  assert(from3);
+  assert(to3);
+
   float w[3] = {0};
   float u[3]; cpy3(u,from3);
   float v[3]; cpy3(v,to3);
@@ -833,6 +925,7 @@ qalign3(float *restrict q, const float *restrict from3,
 }
 static void
 qeuler(float *qout, float yaw, float pitch, float roll) {
+  assert(qout);
   float sr, cr; math_sin_cos(&sr, &cr, roll * 0.5f);
   float sp, cp; math_sin_cos(&sp, &cp, pitch * 0.5f);
   float sy, cy; math_sin_cos(&sy, &cy, yaw * 0.5f);
@@ -846,6 +939,9 @@ qeuler(float *qout, float yaw, float pitch, float roll) {
 }
 static void
 eulerq(float *restrict out3, const float *restrict qin) {
+  assert(out3);
+  assert(qin);
+
   float q[4]; cpy4(q, qin);
   float y_sq = q[1] * q[1];
   float t0 = 2.0f * (q[3] * q[0] + q[1] * q[2]);
@@ -855,24 +951,32 @@ eulerq(float *restrict out3, const float *restrict qin) {
   t2 = t2 < -1.0f ? -1.0f : t2;
   float t3 = 2.0f * (q[3] * q[2] + q[0] * q[1]);
   float t4 = 1.0f - 2.0f * (y_sq + q[2] * q[2]);
-  float v[3]; set3(v, math_atan2(t0, t1), math_asin(t2), math_atan2(t3, t4));
+  float v[3] = {math_atan2(t0, t1), math_asin(t2), math_atan2(t3, t4)};
   cpy3(out3, v);
 }
 static void
 qtransform(float *restrict o3, const float *restrict in3,
            const float *restrict qrot, const float *restrict mov3) {
+  assert(o3);
+  assert(in3);
+  assert(qrot);
+  assert(mov3);
+
   float v3[3]; cpy3(v3, in3);
   float q[4]; cpy4(q, qrot);
   float t3[3]; cpy3(t3, mov3);
-
-  float tmp[3], ret[3];
-  qrot3(tmp, q, v3);
-  add3(ret, tmp, t3);
+  float tmp[3]; qrot3(tmp, q, v3);
+  float ret[3]; add3(ret, tmp, t3);
   cpy3(o3, ret);
 }
 static void
 qtransformI(float *restrict o3, const float *restrict in3,
             const float *restrict qrot, const float *restrict mov3) {
+  assert(o3);
+  assert(in3);
+  assert(qrot);
+  assert(mov3);
+
   float v3[3]; cpy3(v3, in3);
   float q[4]; cpy4(q, qrot);
   float t3[3]; cpy3(t3, mov3);
@@ -884,6 +988,8 @@ qtransformI(float *restrict o3, const float *restrict in3,
 }
 static void
 qaxis(float *restrict o3, const float *restrict q) {
+  assert(o3);
+  assert(q);
   float n = len3(q);
   if (n < 1.0e-9f) {
     set3(o3,-1, 0, 0);
@@ -895,10 +1001,14 @@ qaxis(float *restrict o3, const float *restrict q) {
 }
 static float
 qangle(const float *q) {
+  assert(q);
   return 2.0f * math_acos(clamp(-1.0f, q[3], 1.0f));
 }
 static void
 qpow(float *restrict qo, const float *restrict q, float exp) {
+  assert(qo);
+  assert(q);
+
   float axis[3]; qaxis(axis, q);
   float angle = qangle(q) * exp;
   float ret[4]; quat(ret, angle, axis);
@@ -907,6 +1017,10 @@ qpow(float *restrict qo, const float *restrict q, float exp) {
 static void
 qintegrate(float *restrict qo, const float *restrict qq,
            const float *restrict qv, float dt) {
+  assert(qo);
+  assert(qq);
+  assert(qv);
+
   float p[4]; qpow(p, qv, dt);
   float r[4]; qmul(r, p, qq);
   cpy4(qo, r);
@@ -914,6 +1028,9 @@ qintegrate(float *restrict qo, const float *restrict qq,
 static void
 qintegratev(float *restrict qo, const float *restrict qrot,
             float *restrict angle_vel3, float dt) {
+  assert(qo);
+  assert(qrot);
+  assert(angle_vel3);
   // omega: angular velocity (direction is axis, magnitude is angle)
   // https://fgiesen.wordpress.com/2012/08/24/quaternion-differentiation/
   // https://www.ashwinnarayan.com/post/how-to-integrate-quaternions/
@@ -928,19 +1045,39 @@ qintegratev(float *restrict qo, const float *restrict qrot,
 static void
 qnlerp(float *restrict qres, const float *restrict qfrom,
        const float *restrict qto, float t) {
-  t = clamp(0.0f, t, 1.0f);
-  float adj[4]; cpy4(adj,qfrom);
-  if (dot4(qfrom, qto) < 0.0f) {
-    mul4(adj,qfrom,-1.0f);
+  assert(qres);
+  assert(qfrom);
+  assert(qto);
+
+  float b[4]; cpy4(b, qto);
+  float dot = dot4(qfrom, qto);
+  float cosT = clamp(-1.0f, dot, 1.0f);
+  if (cosT < 0.0f) {
+    /* flip quaternions if on opposite hemispheres */
+    cosT = -cosT;
+    mul4(b,b,-1.0f);
   }
-  float r[4];
-  lerp4(r, adj, qto, t);
-  normaleq4(r);
-  cpy4(qres, r);
+  float beta = 1.0f - t;
+  if (cosT < (1.0f - FLT_EPSILON)) {
+    /* if the quats are far apart, do spherical interpolation. */
+    float theta = math_acos(cosT);
+    float cosec_theta = 1.0f / math_sin(theta);
+    beta = cosec_theta * math_sin(beta * theta);
+    t = cosec_theta * math_sin(t * theta);
+  }
+  float q[4];
+  q[0] = beta * qfrom[0] + t * b[0];
+  q[1] = beta * qfrom[1] + t * b[1];
+  q[2] = beta * qfrom[2] + t * b[2];
+  q[3] = beta * qfrom[3] + t * b[3];
+  norm4(qres, q);
 }
 static void
 qslerp(float *restrict qres, const float *restrict qfrom,
        const float *restrict qto, float t) {
+  assert(qres);
+  assert(qfrom);
+  assert(qto);
   if (t <= 0.0f) {
     cpy4(qres,qfrom);
     return;
@@ -971,6 +1108,116 @@ qslerp(float *restrict qres, const float *restrict qfrom,
   float b[4]; mul4(b,tmp,scale1);
   add4(qres,a,b);
 }
+static void
+qdiag(float *restrict qres, const float *restrict A) {
+  assert(qres);
+  assert(A);
+  /* Symmetric Matrix 3x3 Diagonalizer: http://melax.github.io/diag.html
+   * -------------------------------------------------------------------
+    'A' must be a symmetric matrix.
+    Returns quaternion q such that corresponding matrix Q
+    can be used to Diagonalize 'A'
+
+    Diagonal matrix D = Q * A * Transpose(Q);  and  A = QT*D*Q
+    The rows of Q are the eigenvectors, D's diagonal is the eigenvalues
+    As per 'row' convention if float3x3 Q = q.getmatrix(); then v*Q = q*v*conj(q)
+  */
+  float q[4]; qid(q);
+  for (int i = 0; i < 8; ++i) {
+    float Q[9]; m3x3q(Q, q); /* v*Q == q*v*conj(q) */
+    float QT[9]; m3x3T(QT,Q);
+    float QA[9]; mul3x3(QA,Q,A);
+    float D[9]; mul3x3(D,QA,QT); /* A = Q^T*D*Q */
+    float offdiag[3]; set3(offdiag, D[1*3+2], D[0*3+2], D[0*3+1]);
+    float om[3]; map3(om, (float)math_abs, offdiag);
+    int k = (om[0] > om[1] && om[0] > om[2]) ? 0: (om[1] > om[2]) ? 1 : 2;
+    int k1 = (k+1)%3;
+    int k2 = (k+2)%3;
+    if (offdiag[k]==0.0f) {
+      break;  /* diagonal already */
+    }
+    float sthet = (D[k2*3+k2]-D[k1*3+k1])/(2.0f*offdiag[k]);
+    float sgn = (sthet > 0.0f)?1.0f:-1.0f;
+    float thet = sthet * sgn; /* make it positive */
+    float t = sgn /(thet +((thet < 1.E6f)?math_sqrt(thet*thet+1.0f):thet));
+    float c = 1.0f/math_sqrt(t*t+1.0f); /* c= 1/(t^2+1) , t=s/c */
+    if (c==1.0f) {
+      break;  /* no room for improvement - reached machine precision. */
+    }
+    float jr[4] = {0.0f};
+    /* using 1/2 angle identity sin(a/2) = sqrt((1-cos(a))/2) */
+    jr[k] = sgn*math_sqrt((1.0f-c)/2.0f);
+    jr[k] *= -1.0f; /* since our quat-to-mat conv was for v*M instead of M*v */
+    jr[3] = math_sqrt(1.0f - jr[k]*jr[k]);
+    if(jr[3] == 1.0f) {
+      break; /* reached limits of floating point precision */
+    }
+    qmul(q,q,jr);
+    normaleq4(q);
+  }
+  cpy4(qres, q);
+}
+static void
+eigensym(float *e_val, float *e_vec33, const float *a33) {
+  assert(e_val);
+  assert(e_vec33);
+  assert(a33);
+
+  /* calculate eigensystem from symmetric 3x3 matrix */
+  float q[4]; qdiag(q, a33);
+  float Q[9]; m3x3q(Q, q);
+  float QT[9]; m3x3T(QT, Q);
+  float QA[9]; mul3x3(QA, Q, a33);
+  float D[9]; mul3x3(D, QA, QT);
+  float ev[3]; set3(ev, D[0*3+0], D[1*3+1], D[2*3+2]);
+
+  /* 3-way sort eigenvalues and eigenvectors */
+  float aev[3]; map3(aev,(float)math_abs,ev);
+  if (aev[0] >= aev[1] && aev[1] >= aev[2]) {
+    cpy3(e_val, ev);
+    mcpy(e_vec33, Q, szof(Q));
+  } else if (aev[1] >= aev[0] && aev[0] >= aev[2]) {
+    e_val[0] = ev[1];
+    e_val[1] = ev[0];
+    e_val[2] = ev[2];
+
+    cpy3(e_vec33, Q+3);
+    cpy3(e_vec33+3, Q+0);
+    cpy3(e_vec33+6, Q+6);
+  } else if (aev[2] >= aev[0] && aev[0] >= aev[1]) {
+    e_val[0] = ev[2];
+    e_val[1] = ev[0];
+    e_val[2] = ev[1];
+
+    cpy3(e_vec33, Q+6);
+    cpy3(e_vec33+3, Q+0);
+    cpy3(e_vec33+6, Q+3);
+  } else if (aev[0] >= aev[1] && aev[2] >= aev[1]) {
+    e_val[0] = ev[0];
+    e_val[1] = ev[2];
+    e_val[2] = ev[1];
+
+    cpy3(e_vec33, Q+0);
+    cpy3(e_vec33+3, Q+6);
+    cpy3(e_vec33+6, Q+3);
+  } else if (aev[2] >= aev[1] && aev[1] >= aev[0]) {
+    e_val[0] = ev[2];
+    e_val[1] = ev[1];
+    e_val[2] = ev[0];
+
+    cpy3(e_vec33, Q+6);
+    cpy3(e_vec33+3, Q+3);
+    cpy3(e_vec33+6, Q+0);
+  } else if (aev[1] >= aev[2] && aev[2] >= aev[0]) {
+    e_val[0] = ev[1];
+    e_val[1] = ev[2];
+    e_val[2] = ev[0];
+
+    cpy3(e_vec33, Q+3);
+    cpy3(e_vec33+3, Q+6);
+    cpy3(e_vec33+6, Q+0);
+  }
+}
 
 /* ---------------------------------------------------------------------------
  *                                Swing-Twist
@@ -979,6 +1226,10 @@ qslerp(float *restrict qres, const float *restrict qfrom,
 static void
 qtwist(float *restrict qtwist, const float *restrict qin,
        const float *restrict axis) {
+  assert(qtwist);
+  assert(qin);
+  assert(axis);
+
   float q[4]; cpy4(q, qin);
   float d = dot3(q,axis);
   float t[4]; mul3(t,axis,d); t[3] = q[3];
@@ -994,6 +1245,10 @@ qtwist(float *restrict qtwist, const float *restrict qin,
 static void
 qst_get(float *restrict qswing, float *restrict qtwist,
         const float *restrict qin){
+  assert(qswing);
+  assert(qtwist);
+  assert(qin);
+
   float q[4]; cpy4(q,qin);
   float s = math_sqrt((q[3]*q[3]) + (q[0]*q[0]));
   if (s != 0.0f) {
@@ -1012,6 +1267,11 @@ qst_get(float *restrict qswing, float *restrict qtwist,
 static void
 qst__decomp(float *restrict qswing, float *restrict qtwist,
             const float *restrict q, const float *restrict axis3) {
+  assert(qswing);
+  assert(qtwist);
+  assert(q);
+  assert(axis3);
+
   if (dot3(q,q) < 1.0e-9f) {
     /* singularity: rotation by 180 degree */
     float rot_twist_axis[3]; qrot3(rot_twist_axis, q, axis3);
@@ -1022,7 +1282,7 @@ qst__decomp(float *restrict qswing, float *restrict qtwist,
     } else {
       set4(qswing, 0,0,0,1);
     }
-    // always twist 180 degree on singularity
+    /* always twist 180 degree on singularity */
     quat(qswing, rad(180.0f), axis3);
     return;
   }
@@ -1037,6 +1297,12 @@ static void
 qst_decomp(float *restrict qfull_swing, float *restrict qfull_twist,
            const float *restrict qa, const float *restrict qb,
            const float *restrict twist_axis3) {
+  assert(qfull_swing);
+  assert(qfull_twist);
+  assert(qa);
+  assert(qb);
+  assert(twist_axis3);
+
   float inv[4]; qconj(inv, qa);
   float q[4]; qmul(q, qb, inv);
   qst__decomp(qfull_swing, qfull_twist, q, twist_axis3);
@@ -1045,6 +1311,12 @@ static void
 qst__nlerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
            const float *restrict qfull_swing, const float *restrict qfull_twist,
            float t_swing, float t_twist) {
+  assert(qres);
+  assert(qswing);
+  assert(qtwist);
+  assert(qfull_swing);
+  assert(qfull_twist);
+
   static const float qid[4] = {0,0,0,1};
   lerp4(qswing, qid, qfull_swing, t_swing);
   lerp4(qtwist, qid, qfull_twist, t_twist);
@@ -1053,6 +1325,9 @@ qst__nlerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
 static void
 qst_nlerp(float *restrict qres, const float *restrict qfull_swing,
           const float *restrict qfull_twist, float t_swing, float t_twist) {
+  assert(qres);
+  assert(qfull_swing);
+  assert(qfull_twist);
   float swing[4], twist[4];
   qst__nlerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist);
 }
@@ -1060,6 +1335,12 @@ static void
 qst__slerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
            const float *restrict qfull_swing, const float *restrict qfull_twist,
            float t_swing, float t_twist) {
+  assert(qres);
+  assert(qswing);
+  assert(qtwist);
+  assert(qfull_swing);
+  assert(qfull_twist);
+
   static const float qid[4] = {0,0,0,1};
   qslerp(qswing, qid, qfull_swing, t_swing);
   qslerp(qtwist, qid, qfull_twist, t_twist);
@@ -1068,6 +1349,9 @@ qst__slerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
 static void
 qst_slerp(float *restrict qres, const float *restrict qfull_swing,
           const float *restrict qfull_twist, float t_swing, float t_twist) {
+  assert(qres);
+  assert(qfull_swing);
+  assert(qfull_twist);
   float swing[4], twist[4];
   qst__slerp(qres, swing, twist, qfull_swing, qfull_twist, t_swing, t_twist) ;
 }
@@ -1235,7 +1519,7 @@ transform_compose(float *m44, struct transform *tfm) {
  *                                Bspline
  * ---------------------------------------------------------------------------
  */
-#define bspline_linear_len(ctrl_cnt) cast(float,((ctrl_cnt-1)/3))
+#define bspline_linear_len(ctrl_cnt) castf(((ctrl_cnt-1)/3))
 #define bspline_is_key(ctrl_idx) ((ctrl_idx % 3) == 0u)
 #define bspline_is_after_key(pnt_idx) ((ctrl_idx % 3) == 1u)
 #define bspline_is_before_key(pnt_idx) ((ctrl_idx % 3) == 2u)
@@ -1287,7 +1571,8 @@ bspline__arc_len(const float *restrict p0, const float *restrict p1,
 
     * - original control vertices (p0 - p3, input)
     h - helper control vertex at half between p1 and p2
-    x - at half between p0 and p1 (np1, control vertex of output) and half between p2 and p3 (np5, control vertex of output)
+    x - at half between p0 and p1 (np1, control vertex of output) and half
+        between p2 and p3 (np5, control vertex of output)
     # - at half between x and h (np2 and np4, control vertices of output)
     + - at half between np2 and np4 (np3, control vertex of output)
   */
@@ -1297,7 +1582,9 @@ bspline__arc_len(const float *restrict p0, const float *restrict p1,
   float np2[dim]; opN(np2,=,np1,+,h,*,0.5f,dim);
   float np4[dim]; opN(np4,=,h,+,np5,*,0.5f,dim);
   float np3[dim]; opN(np3,=,np2,+,np4,*,0.5f,dim);
-  return bspline__arc_len(p0, np1, np2, np3,dim) + bspline__arc_len(np3, np4, np5, p3,dim);
+  float lhs = bspline__arc_len(p0, np1, np2, np3,dim);
+  float rhs = bspline__arc_len(np3, np4, np5, p3,dim);
+  return lhs + rhs;
 }
 static float
 bspline_arc_len(const float *cvs, int cnt, int dim) {
@@ -1319,8 +1606,8 @@ bspline_pos(float *pos, float linear_pos, const float *cvs, int cnt,
   assert(dim > 0);
   assert(cnt > 0);
 
-  float val = cast(float, cast(int, linear_pos));
-  int idx = cast(int, val) * 3;
+  float val = castf(casti(linear_pos));
+  int idx = casti(val) * 3;
   if (idx + 1 >= cnt) {
     /* reached the end.. */
     if (is_closed) {
@@ -1355,8 +1642,8 @@ bspline_tangent(float *tangent, float linear_pos, const float *cvs, int cnt,
   assert(cnt > 0);
   assert(tangent);
 
-  float val = cast(float, cast(int, linear_pos));
-  int idx = cast(int, val) * 3;
+  float val = castf(casti(linear_pos));
+  int idx = casti(val) * 3;
   if (idx + 1 >= cnt) {
     /* reached the end.. */
     if (is_closed) {
@@ -1398,7 +1685,7 @@ bspline_nearest_cv(const float *restrict cvs, int cnt,
     lenN(dist, v, dim);
     if (dist < best_dist) {
       best_dist = dist;
-      r = cast(float, i) / 3.0f;
+      r = castf(i) / 3.0f;
     }
   }
   return r;
@@ -1533,8 +1820,8 @@ bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
                             int dim) {
   /* calculate modification of old helper points */
   float fac = linear_pos - math_floori(linear_pos);
-  float val = cast(float, cast(int, linear_pos ));
-  int idx = cast(int, val) * 3;
+  float val = castf(casti(linear_pos ));
+  int idx = casti(val) * 3;
 
   float h[dim]; opN(h,=,cvs+(1*dim),-,cvs+(0*dim),*,fac,dim);
   float len1; lenN(len1, h, dim);
@@ -1551,8 +1838,8 @@ bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
   float rlen; lenN(rlen,h,dim); rlen = math_rsqrt(rlen);
   opNs(h,=,h,*,rlen,dim);
 
-  memcpy(new_pnts+(1*dim), new_pnts+(2*dim), szof(float) * dim);
-  memcpy(new_pnts+(3*dim), new_pnts+(2*dim), szof(float) * dim);
+  mcpy(new_pnts+(1*dim), new_pnts+(2*dim), szof(float) * dim);
+  mcpy(new_pnts+(3*dim), new_pnts+(2*dim), szof(float) * dim);
 
   opNs(new_pnts+(1*dim),+=,h,*,(-len1 * 0.5f),dim);
   opNs(new_pnts+(3*dim),+=,h,*,(len2 * 0.5f),dim);
@@ -2146,13 +2433,6 @@ gjk_analyze(const struct gjk_simplex *s) {
  *                                Plane
  * ---------------------------------------------------------------------------
  */
-static inline void
-planeq(float *restrict r, const float *restrict n, const float *restrict p) {
-  cpy3(r,n);
-  r[3] = -dot3(n,p);
-}
-static inline void
-planeqf(float *r, float nx, float ny, float nz, float px, float py, float pz) {
   /* Plane: ax + by + cz + d
    * Equation:
    *      n * (p - p0) = 0
@@ -2164,48 +2444,66 @@ planeqf(float *r, float nx, float ny, float nz, float px, float py, float pz) {
    *
    *  Plane: |a b c d| d = -|a b c| * p0
    */
-  float n[3]; set3(n,nx,ny,nz);
-  float p[3]; set3(p,px,py,pz);
-  planeq(r, n, p);
-}
+#define planeq(p, n, o) cpy3(p,n), p[3] = -dot3(n,o)
+
 static inline void
 plane_tri(float *restrict r, const float *restrict p0, const float *restrict p1,
           const float *restrict p2) {
+  assert(r);
+  assert(p0);
+  assert(p1);
+  assert(p2);
+
   float d10[3]; sub3(d10, p0, p1);
   float d20[3]; sub3(d20, p0, p2);
   float n[3]; cross3(n, d10, d20); normeq3(n);
-  cpy3(r,n);
-  r[3] = -dot3(p0, n);
+  cpy3(r,n), r[3] = -dot3(p0, n);
 }
 static inline float
-plane_signed_dist_pnt(const float *restrict plane, const float *restrict pnt) {
+plane_dist_pnt(const float *restrict plane, const float *restrict pnt) {
+  assert(plane);
+  assert(pnt);
   float p[4] = {0,0,0,1}; cpy3(p, pnt);
   return dot4(p, plane);
 }
 static inline float
 plane_abs_dist_pnt(const float *plane, const float *pnt) {
-  float d = plane_signed_dist_pnt(plane, pnt);
-  return cast(float, math_abs(d));
+  assert(plane);
+  assert(pnt);
+  float d = plane_dist_pnt(plane, pnt);
+  return castf(math_abs(d));
 }
 static inline int
 plane_pnts_same_side(const float *restrict plane, const float *restrict a,
                      const float *restrict b) {
-  float da = plane_signed_dist_pnt(plane, a);
-  float db = plane_signed_dist_pnt(plane, b);
+  assert(plane);
+  assert(a);
+  assert(b);
+
+  float da = plane_dist_pnt(plane, a);
+  float db = plane_dist_pnt(plane, b);
   return (da * db) >= 0.0f;
 }
 static inline int
 plane_pnt_is_front(const float *restrict plane, const float *pnt) {
-  float d = plane_signed_dist_pnt(plane, pnt);
+  assert(plane);
+  assert(pnt);
+  float d = plane_dist_pnt(plane, pnt);
   return d >= 0.0f;
 }
 static inline int
 plane_pnt_is_behind(const float *restrict plane, const float *pnt) {
-  float d = plane_signed_dist_pnt(plane, pnt);
+  assert(plane);
+  assert(pnt);
+  float d = plane_dist_pnt(plane, pnt);
   return d < 0.0f;
 }
 static inline void
 plane_proj_pnt(float *restrict r, const float *restrict plane, const float *pnt) {
+  assert(r);
+  assert(plane);
+  assert(pnt);
+
   float p[4] = {0,0,0,1}; cpy3(p, pnt);
   float n[4] = {0,0,0,0}; cpy3(n,plane); mul3(n,n,-1.0f);
   float d = dot4(p, plane);
@@ -2213,6 +2511,10 @@ plane_proj_pnt(float *restrict r, const float *restrict plane, const float *pnt)
 }
 static inline void
 plane_proj_vec(float *restrict r, const float *restrict plane, const float *v) {
+  assert(r);
+  assert(plane);
+  assert(v);
+
   float d = dot3(v, plane);
   float n[4]; mul4(n,plane,-1.0f);
   op4(r,=,v,+,n,*,d);
@@ -2224,6 +2526,11 @@ plane_proj_vec(float *restrict r, const float *restrict plane, const float *v) {
  */
 static void
 seg_get_pnt_to_pnt(float *res, const float *a, const float *b, const float *p) {
+  assert(res);
+  assert(a);
+  assert(b);
+  assert(p);
+
   float ab[3]; sub3(ab, b,a);
   float pa[3]; sub3(pa, p,a);
   float t = dot3(pa,ab) / dot3(ab,ab);
@@ -2235,6 +2542,10 @@ seg_get_pnt_to_pnt(float *res, const float *a, const float *b, const float *p) {
 static float
 seg_get_pnt_to_pnt_sqdist(const float *restrict a, const float *restrict b,
                           const float *p) {
+  assert(a);
+  assert(b);
+  assert(p);
+
   float ab[3]; sub3(ab,a,b);
   float ap[3]; sub3(ap,a,p);
   float bp[3]; sub3(bp,a,p);
@@ -2250,6 +2561,15 @@ static float
 seg_get_pnt_to_seg(float *t1, float *t2, float *c1, float *c2,
                     const float *p1, const float *q1,
                     const float *p2, const float *q2) {
+  assert(t1);
+  assert(t2);
+  assert(c1);
+  assert(c2);
+  assert(p1);
+  assert(q1);
+  assert(p2);
+  assert(q2);
+
   float d1[3]; sub3(d1, q1, p1); /* direction vector segment s1 */
   float d2[3]; sub3(d2, q2, p2); /* direction vector segment s2 */
   float r[3]; sub3(r, p1, p2);
@@ -2314,6 +2634,9 @@ seg_get_pnt_to_seg(float *t1, float *t2, float *c1, float *c2,
  */
 static float
 ray_hit_plane(const float *ro, const float *rd, const float *plane) {
+  assert(ro);
+  assert(rd);
+  assert(plane);
   /* Ray: P = origin + rd * t
    * Plane: plane_normal * P + d = 0
    *
@@ -2335,14 +2658,21 @@ ray_hit_plane(const float *ro, const float *rd, const float *plane) {
    *      Intersection point: ro + rd * t
    */
   float n = -(dot3(plane,ro) + plane[3]);
-  if (math_abs(n) < 0.0001f) {
+  float p = dot3(plane,rd);
+  if (math_abs(p) < 0.0001f) {
     return 0.0f;
   }
-  return n/(dot3(plane,rd));
+  return n/p;
 }
 static float
 ray_hit_tri(const float *ro, const float *rd, const float *p0,
             const float *p1, const float *p2) {
+  assert(ro);
+  assert(rd);
+  assert(p0);
+  assert(p1);
+  assert(p2);
+
   /* calculate triangle normal */
   float d10[3]; sub3(d10, p1,p0);
   float d20[3]; sub3(d20, p2,p0);
@@ -2370,18 +2700,20 @@ ray_hit_tri(const float *ro, const float *rd, const float *p0,
   float in1[3]; cross3(in1, d21, di1);
   float in2[3]; cross3(in2, d02, di2);
 
-  if (dot3(in0,n) < 0.0f) {
-    return -1;
-  } else if (dot3(in1,n) < 0.0f) {
-    return -1;
-  } else if (dot3(in2,n) < 0.0f) {
-    return -1;
-  }
-  return t;
+  float din0 = dot3(in0,n);
+  float din1 = dot3(in1,n);
+  float din2 = dot3(in2,n);
+  return (din0 < 0.0f || din1 < 0.0f || din2 < 0.0f) ? -1 : t;
 }
 static int
 ray_hit_sphere(float *t0, float *t1, const float *ro, const float *rd,
                const float *c, float r) {
+  assert(t0);
+  assert(t1);
+  assert(ro);
+  assert(rd);
+  assert(c);
+
   float a[3]; sub3(a,c,ro);
   float tc = dot3(rd,a);
   if (tc < 0) {
@@ -2399,9 +2731,18 @@ ray_hit_sphere(float *t0, float *t1, const float *ro, const float *rd,
   return 1;
 }
 static int
-ray_hit_aabb(float *t0, float *t1,
-  const float *ro, const float *rd,
-  const float *min, const float *max) {
+ray_hit_aabb(float *restrict t0, float *restrict t1,
+  const float *restrict ro, const float *restrict rd,
+  const float *restrict aabb) {
+
+  assert(t0);
+  assert(t1);
+  assert(ro);
+  assert(rd);
+  assert(aabb);
+
+  const float *min = aabb;
+  const float *max = aabb + 3;
 
   float t0x = (min[0] - ro[0]) / rd[0];
   float t0y = (min[1] - ro[1]) / rd[1];
@@ -2433,8 +2774,8 @@ ray_hit_aabb(float *t0, float *t1,
  *                                Sphere
  * ---------------------------------------------------------------------------
  * 4 floats:
- *    3 float center,
- *    1 float radius
+ *    3 center,
+ *    1 radius
  */
 static int aabb_hit_sphere(const float *restrict a, const float *restrict s);
 static int capsule_hit_sphere(const float *c, const float *s);
@@ -2442,6 +2783,10 @@ static int capsule_hit_sphere(const float *c, const float *s);
 static void
 sphere_closest_pnt(float *restrict res, const float *restrict s,
                    const float *restrict p) {
+  assert(res);
+  assert(s);
+  assert(p);
+
   float d[3]; sub3(d, p, s);
   float n[3]; norm3(n,d);
   mul3(res,n,s[3]);
@@ -2449,6 +2794,8 @@ sphere_closest_pnt(float *restrict res, const float *restrict s,
 }
 static int
 sphere_hit_sphere(const float *restrict a, const float *restrict b) {
+  assert(a);
+  assert(b);
   float d[3]; sub3(d, b, a);
   float r = a[3] + b[3];
   if (dot3(d,d) > r*r) {
@@ -2458,10 +2805,14 @@ sphere_hit_sphere(const float *restrict a, const float *restrict b) {
 }
 static int
 sphere_hit_aabb(const float *restrict s, const float *restrict a) {
+  assert(s);
+  assert(a);
   return aabb_hit_sphere(a, s);
 }
 static int
 sphere_hit_capsule(const float *s, const float *c) {
+  assert(s);
+  assert(c);
   return capsule_hit_sphere(c, s);
 }
 
@@ -2469,8 +2820,8 @@ sphere_hit_capsule(const float *s, const float *c) {
  *                                AABB
  * ---------------------------------------------------------------------------
  * 6 floats:
- *    3 float min,
- *    3 float max
+ *    3 min,
+ *    3 max
  */
 static inline float* aabb_min(float *a) { return a; }
 static inline float* aabb_max(float *a) { return a + 3; }
@@ -2478,33 +2829,49 @@ static int capsule_hit_aabb(const float *c, const float *a);
 
 static void
 aabb_add_pnt(float *restrict a, const float *restrict pnt) {
+  assert(a);
+  assert(pnt);
   min3(a, a, pnt);
   max3(a + 3, a + 3, pnt);
 }
 static void
-aabb_ext(float *e, const float *restrict a) {
+aabb_ext(float *restrict e, const float *restrict a) {
+  assert(e);
+  assert(a);
   float d[3]; sub3(d, a + 3, a);
   mul3(e, e, 0.5f);
 }
 static void
-aabb_ctr(float *ctr, const float *restrict a) {
+aabb_ctr(float *restrict ctr, const float *restrict a) {
+  assert(ctr);
+  assert(a);
   float e[3]; aabb_ext(e, a);
   add3(ctr, a, e);
 }
 static void
 aabb_build(float *restrict a, const float *restrict ctr,
            const float *restrict ext) {
+  assert(a);
+  assert(ctr);
+  assert(ext);
   sub3(a, ctr, ext);
   add3(a + 3, ctr, ext);
 }
 static void
-aabb_mov(float *restrict a, const float *ctr) {
+aabb_mov(float *restrict a, const float *restrict ctr) {
+  assert(a);
+  assert(ctr);
   float e[3]; aabb_ext(e, a);
   aabb_build(a, ctr, e);
 }
 static void
-aabb_rebalance(float *restrict b, const float *a, const float *restrict m,
-               const float *restrict t) {
+aabb_rebalance(float *restrict b, const float *restrict a,
+               const float *restrict m, const float *restrict t) {
+  assert(b);
+  assert(a);
+  assert(m);
+  assert(t);
+
   for (int i = 0; i < 3; ++i) {
     b[i] = b[3+i] = t[i];
     for (int j = 0; j < 3; ++j) {
@@ -2521,18 +2888,30 @@ aabb_rebalance(float *restrict b, const float *a, const float *restrict m,
   }
 }
 static void
-aabb_merge(float *r, const float *a, const float *b) {
+aabb_merge(float *restrict r, const float *restrict a, const float *restrict b) {
+  assert(b);
+  assert(r);
+  assert(a);
+
   min3(r, a, b);
   max3(r+3, a+3, b+3);
 }
 static void
 aabb_intersect(float *r, const float *a, const float *b) {
+  assert(r);
+  assert(a);
+  assert(b);
+
   max3(r, a, b);
   min3(r+3, a+3, b+3);
 }
 static void
 aabb_closest_pnt(float *restrict res, const float *restrict a,
                  const float *restrict p) {
+  assert(res);
+  assert(a);
+  assert(p);
+
   for (int i = 0; i < 3; ++i) {
     float v = p[i];
     if (v < a[i]) v = a[i];
@@ -2542,6 +2921,9 @@ aabb_closest_pnt(float *restrict res, const float *restrict a,
 }
 static float
 aabb_sqdist_to_pnt(const float *a, const float *p) {
+  assert(a);
+  assert(p);
+
   float r = 0;
   for (int i = 0; i < 3; ++i) {
     float v = p[i];
@@ -2554,6 +2936,9 @@ aabb_sqdist_to_pnt(const float *a, const float *p) {
 }
 static int
 aabb_has_pnt(const float *restrict a, const float *restrict p) {
+  assert(a);
+  assert(p);
+
   if (p[0] < a[0] || p[0] > a[3]) return 0;
   if (p[1] < a[1] || p[1] > a[4]) return 0;
   if (p[2] < a[2] || p[2] > a[5]) return 0;
@@ -2561,6 +2946,9 @@ aabb_has_pnt(const float *restrict a, const float *restrict p) {
 }
 static int
 aabb_has_aabb(const float *restrict a, const float *restrict b) {
+  assert(a);
+  assert(b);
+
   if (a[3] < b[0] || a[0] > b[3]) return 0;
   if (a[4] < b[1] || a[1] > b[4]) return 0;
   if (a[5] < b[2] || a[2] > b[5]) return 0;
@@ -2568,6 +2956,8 @@ aabb_has_aabb(const float *restrict a, const float *restrict b) {
 }
 static int
 aabb_hit_sphere(const float *restrict a, const float *restrict s) {
+  assert(a);
+  assert(s);
   /* compute squared distance between sphere center and aabb */
   float d2 = aabb_sqdist_to_pnt(a, s);
   /* intersection if distance is smaller/equal sphere radius*/
@@ -2575,6 +2965,8 @@ aabb_hit_sphere(const float *restrict a, const float *restrict s) {
 }
 static int
 aabb_hit_capsule(const float *restrict a, const float *restrict c) {
+  assert(a);
+  assert(c);
   return capsule_hit_aabb(c, a);
 }
 
@@ -2582,17 +2974,22 @@ aabb_hit_capsule(const float *restrict a, const float *restrict c) {
  *                                Capsule
  * ---------------------------------------------------------------------------
  * 7 floats:
- *    3 float center0,
- *    3 float center1
- *    1 float radius
+ *    3 center0,
+ *    3 center1
+ *    1 radius
  */
 static float
 capsule_pnt_sqdist(const float *c, const float *p) {
+  assert(c);
+  assert(p);
   float d2 = seg_get_pnt_to_pnt_sqdist(c, c+3, p);
   return d2 - (c[6]*c[6]);
 }
 static void
 capsule_closest_pnt(float *res, const float *restrict c, const float *restrict p) {
+  assert(res);
+  assert(c);
+  assert(p);
   /* calculate closest point to internal capsule segment */
   float pp[3]; seg_get_pnt_to_pnt(pp, c, c + 3, p);
   /* extend point out by radius in normal direction */
@@ -2602,6 +2999,9 @@ capsule_closest_pnt(float *res, const float *restrict c, const float *restrict p
 }
 static int
 capsule_hit_capsule(const float *a, const float *b) {
+  assert(a);
+  assert(b);
+
   float t1, t2, c1[3], c2[3];
   float d2 = seg_get_pnt_to_seg(&t1, &t2, c1, c2, a, a+3, b, b+3);
   float r = a[6] + b[6];
@@ -2609,6 +3009,8 @@ capsule_hit_capsule(const float *a, const float *b) {
 }
 static int
 capsule_hit_sphere(const float *c, const float *s) {
+  assert(c);
+  assert(s);
   /* squared distance bwetween sphere center and capsule line segment */
   float d2 = seg_get_pnt_to_pnt_sqdist(c,c+3,s);
   float r = s[4] + c[6];
@@ -2616,6 +3018,8 @@ capsule_hit_sphere(const float *c, const float *s) {
 }
 static int
 capsule_hit_aabb(const float *c, const float *a) {
+  assert(c);
+  assert(a);
   /* calculate aabb center point */
   float ac[3]; sub3(ac, a, a+3);
   mul3(ac, ac, 0.5f);
@@ -2691,7 +3095,6 @@ struct cam {
   float proj[4][4];
   float proj_inv[4][4];
   float view_proj[4][4];
-
   union {
     struct cam_planes {
       float left[4];
@@ -2725,11 +3128,11 @@ cam_init(struct cam *c) {
   c->near = 0.01f;
   c->far = 10000;
 
-  memcpy(c->q, qid, sizeof(qid));
-  memcpy(c->view, m4id, sizeof(m4id));
-  memcpy(c->view_inv, m4id, sizeof(m4id));
-  memcpy(c->proj, m4id, sizeof(m4id));
-  memcpy(c->proj_inv, m4id, sizeof(m4id));
+  mcpy(c->q, qid, sizeof(qid));
+  mcpy(c->view, m4id, sizeof(m4id));
+  mcpy(c->view_inv, m4id, sizeof(m4id));
+  mcpy(c->proj, m4id, sizeof(m4id));
+  mcpy(c->proj_inv, m4id, sizeof(m4id));
 }
 static void
 cam_build(struct cam *c) {
@@ -2795,7 +3198,7 @@ cam_build(struct cam *c) {
     c->q[1] = a[3]*b[1] + a[1]*b[3] + a[2]*b[0] - a[0]*b[2];
     c->q[2] = a[3]*b[2] + a[2]*b[3] + a[0]*b[1] - a[1]*b[0];
     c->q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
-    memset(c->ear, 0, sizeof(c->ear));
+    mset(c->ear, 0, sizeof(c->ear));
   }
   /* Convert quaternion to matrix
   Next up we want to convert our camera quaternion orientation into a 3x3 matrix
@@ -2811,34 +3214,35 @@ cam_build(struct cam *c) {
 
   So to get the matrix M you first multiply out the quaternion transformation and
   group each x,y and z term into a column. The end result is: */
-  float x2 = c->q[0] + c->q[0];
-  float y2 = c->q[1] + c->q[1];
-  float z2 = c->q[2] + c->q[2];
+  {
+    float x2 = c->q[0] + c->q[0];
+    float y2 = c->q[1] + c->q[1];
+    float z2 = c->q[2] + c->q[2];
 
-  float xx = c->q[0]*x2;
-  float xy = c->q[0]*y2;
-  float xz = c->q[0]*z2;
+    float xx = c->q[0]*x2;
+    float xy = c->q[0]*y2;
+    float xz = c->q[0]*z2;
 
-  float yy = c->q[1]*y2;
-  float yz = c->q[1]*z2;
-  float zz = c->q[2]*z2;
+    float yy = c->q[1]*y2;
+    float yz = c->q[1]*z2;
+    float zz = c->q[2]*z2;
 
-  float wx = c->q[3]*x2;
-  float wy = c->q[3]*y2;
-  float wz = c->q[3]*z2;
+    float wx = c->q[3]*x2;
+    float wy = c->q[3]*y2;
+    float wz = c->q[3]*z2;
 
-  c->m[0][0] = 1.0f - (yy + zz);
-  c->m[0][1] = xy - wz;
-  c->m[0][2] = xz + wy;
+    c->m[0][0] = 1.0f - (yy + zz);
+    c->m[0][1] = xy - wz;
+    c->m[0][2] = xz + wy;
 
-  c->m[1][0] = xy + wz;
-  c->m[1][1] = 1.0f - (xx + zz);
-  c->m[1][2] = yz - wx;
+    c->m[1][0] = xy + wz;
+    c->m[1][1] = 1.0f - (xx + zz);
+    c->m[1][2] = yz - wx;
 
-  c->m[2][0] = xz - wy;
-  c->m[2][1] = yz + wx;
-  c->m[2][2] = 1.0f - (xx + yy);
-
+    c->m[2][0] = xz - wy;
+    c->m[2][1] = yz + wx;
+    c->m[2][2] = 1.0f - (xx + yy);
+  }
   /* View matrix
   The general transform pipeline is object space to world space to local camera
   space to screenspace to clipping space. While this particular matrix, the view matrix,
@@ -2861,36 +3265,37 @@ cam_build(struct cam *c) {
           |R   RF+T|
       C = |0      1|
   */
-  /* 1.) copy orientation matrix */
-  c->view_inv[0][0] = c->m[0][0]; c->view_inv[0][1] = c->m[0][1];
-  c->view_inv[0][2] = c->m[0][2]; c->view_inv[1][0] = c->m[1][0];
-  c->view_inv[1][1] = c->m[1][1]; c->view_inv[1][2] = c->m[1][2];
-  c->view_inv[2][0] = c->m[2][0]; c->view_inv[2][1] = c->m[2][1];
-  c->view_inv[2][2] = c->m[2][2];
+  {
+    /* 1.) copy orientation matrix */
+    c->view_inv[0][0] = c->m[0][0]; c->view_inv[0][1] = c->m[0][1];
+    c->view_inv[0][2] = c->m[0][2]; c->view_inv[1][0] = c->m[1][0];
+    c->view_inv[1][1] = c->m[1][1]; c->view_inv[1][2] = c->m[1][2];
+    c->view_inv[2][0] = c->m[2][0]; c->view_inv[2][1] = c->m[2][1];
+    c->view_inv[2][2] = c->m[2][2];
 
-  /* 2.) transform offset by camera orientation and add translation */
-  c->view_inv[3][0] = c->view_inv[0][0] * c->off[0];
-  c->view_inv[3][1] = c->view_inv[0][1] * c->off[0];
-  c->view_inv[3][2] = c->view_inv[0][2] * c->off[0];
+    /* 2.) transform offset by camera orientation and add translation */
+    c->view_inv[3][0] = c->view_inv[0][0] * c->off[0];
+    c->view_inv[3][1] = c->view_inv[0][1] * c->off[0];
+    c->view_inv[3][2] = c->view_inv[0][2] * c->off[0];
 
-  c->view_inv[3][0] += c->view_inv[1][0] * c->off[1];
-  c->view_inv[3][1] += c->view_inv[1][1] * c->off[1];
-  c->view_inv[3][2] += c->view_inv[1][2] * c->off[1];
+    c->view_inv[3][0] += c->view_inv[1][0] * c->off[1];
+    c->view_inv[3][1] += c->view_inv[1][1] * c->off[1];
+    c->view_inv[3][2] += c->view_inv[1][2] * c->off[1];
 
-  c->view_inv[3][0] += c->view_inv[2][0] * c->off[2];
-  c->view_inv[3][1] += c->view_inv[2][1] * c->off[2];
-  c->view_inv[3][2] += c->view_inv[2][2] * c->off[2];
+    c->view_inv[3][0] += c->view_inv[2][0] * c->off[2];
+    c->view_inv[3][1] += c->view_inv[2][1] * c->off[2];
+    c->view_inv[3][2] += c->view_inv[2][2] * c->off[2];
 
-  c->view_inv[3][0] += c->pos[0];
-  c->view_inv[3][1] += c->pos[1];
-  c->view_inv[3][2] += c->pos[2];
+    c->view_inv[3][0] += c->pos[0];
+    c->view_inv[3][1] += c->pos[1];
+    c->view_inv[3][2] += c->pos[2];
 
-  /* 3.) fill last empty 4x4 matrix row */
-  c->view_inv[0][3] = 0;
-  c->view_inv[1][3] = 0;
-  c->view_inv[2][3] = 0;
-  c->view_inv[3][3] = 1.0f;
-
+    /* 3.) fill last empty 4x4 matrix row */
+    c->view_inv[0][3] = 0;
+    c->view_inv[1][3] = 0;
+    c->view_inv[2][3] = 0;
+    c->view_inv[3][3] = 1.0f;
+  }
   /* Now we have a matrix to transform from local camera space into world
   camera space. But remember we are looking for the opposite transform since we
   want to transform the world around the camera. So to get the other way
@@ -2926,71 +3331,73 @@ cam_build(struct cam *c) {
       V = |0          1|
 
   Now we finally have our matrix composition and can fill out the view matrix:
+  */
+  {
+    /*1.) Inverse camera orientation by transpose */
+    c->view[0][0] = c->m[0][0];
+    c->view[0][1] = c->m[1][0];
+    c->view[0][2] = c->m[2][0];
 
-  1.) Inverse camera orientation by transpose */
-  c->view[0][0] = c->m[0][0];
-  c->view[0][1] = c->m[1][0];
-  c->view[0][2] = c->m[2][0];
+    c->view[1][0] = c->m[0][1];
+    c->view[1][1] = c->m[1][1];
+    c->view[1][2] = c->m[2][1];
 
-  c->view[1][0] = c->m[0][1];
-  c->view[1][1] = c->m[1][1];
-  c->view[1][2] = c->m[2][1];
+    c->view[2][0] = c->m[0][2];
+    c->view[2][1] = c->m[1][2];
+    c->view[2][2] = c->m[2][2];
 
-  c->view[2][0] = c->m[0][2];
-  c->view[2][1] = c->m[1][2];
-  c->view[2][2] = c->m[2][2];
+    /* 2.) Transform inverted position vector by transposed orientation and subtract offset */
+    float pos_inv[3];
+    pos_inv[0] = -c->pos[0];
+    pos_inv[1] = -c->pos[1];
+    pos_inv[2] = -c->pos[2];
 
-  /* 2.) Transform inverted position vector by transposed orientation and subtract offset */
-  float pos_inv[3];
-  pos_inv[0] = -c->pos[0];
-  pos_inv[1] = -c->pos[1];
-  pos_inv[2] = -c->pos[2];
+    c->view[3][0] = c->view[0][0] * pos_inv[0];
+    c->view[3][1] = c->view[0][1] * pos_inv[0];
+    c->view[3][2] = c->view[0][2] * pos_inv[0];
 
-  c->view[3][0] = c->view[0][0] * pos_inv[0];
-  c->view[3][1] = c->view[0][1] * pos_inv[0];
-  c->view[3][2] = c->view[0][2] * pos_inv[0];
+    c->view[3][0] += c->view[1][0] * pos_inv[1];
+    c->view[3][1] += c->view[1][1] * pos_inv[1];
+    c->view[3][2] += c->view[1][2] * pos_inv[1];
 
-  c->view[3][0] += c->view[1][0] * pos_inv[1];
-  c->view[3][1] += c->view[1][1] * pos_inv[1];
-  c->view[3][2] += c->view[1][2] * pos_inv[1];
+    c->view[3][0] += c->view[2][0] * pos_inv[2];
+    c->view[3][1] += c->view[2][1] * pos_inv[2];
+    c->view[3][2] += c->view[2][2] * pos_inv[2];
 
-  c->view[3][0] += c->view[2][0] * pos_inv[2];
-  c->view[3][1] += c->view[2][1] * pos_inv[2];
-  c->view[3][2] += c->view[2][2] * pos_inv[2];
+    c->view[3][0] -= c->off[0];
+    c->view[3][1] -= c->off[1];
+    c->view[3][2] -= c->off[2];
 
-  c->view[3][0] -= c->off[0];
-  c->view[3][1] -= c->off[1];
-  c->view[3][2] -= c->off[2];
+    /* 3.) fill last empty 4x4 matrix row */
+    c->view[0][3] = 0; c->view[1][3] = 0;
+    c->view[2][3] = 0; c->view[3][3] = 1.0f;
+  }
+  {
+    /* fill vectors with data */
+    c->right[0] = c->view_inv[0][0];
+    c->right[1] = c->view_inv[0][1];
+    c->right[2] = c->view_inv[0][2];
 
-  /* 3.) fill last empty 4x4 matrix row */
-  c->view[0][3] = 0; c->view[1][3] = 0;
-  c->view[2][3] = 0; c->view[3][3] = 1.0f;
+    c->left[0] = -c->view_inv[0][0];
+    c->left[1] = -c->view_inv[0][1];
+    c->left[2] = -c->view_inv[0][2];
 
-  /* fill vectors with data */
-  c->right[0] = c->view_inv[0][0];
-  c->right[1] = c->view_inv[0][1];
-  c->right[2] = c->view_inv[0][2];
+    c->up[0] = c->view_inv[1][0];
+    c->up[1] = c->view_inv[1][1];
+    c->up[2] = c->view_inv[1][2];
 
-  c->left[0] = -c->view_inv[0][0];
-  c->left[1] = -c->view_inv[0][1];
-  c->left[2] = -c->view_inv[0][2];
+    c->down[0] = -c->view_inv[1][0];
+    c->down[1] = -c->view_inv[1][1];
+    c->down[2] = -c->view_inv[1][2];
 
-  c->up[0] = c->view_inv[1][0];
-  c->up[1] = c->view_inv[1][1];
-  c->up[2] = c->view_inv[1][2];
+    c->forward[0] = c->view_inv[2][0];
+    c->forward[1] = c->view_inv[2][1];
+    c->forward[2] = c->view_inv[2][2];
 
-  c->down[0] = -c->view_inv[1][0];
-  c->down[1] = -c->view_inv[1][1];
-  c->down[2] = -c->view_inv[1][2];
-
-  c->forward[0] = c->view_inv[2][0];
-  c->forward[1] = c->view_inv[2][1];
-  c->forward[2] = c->view_inv[2][2];
-
-  c->backward[0] = -c->view_inv[2][0];
-  c->backward[1] = -c->view_inv[2][1];
-  c->backward[2] = -c->view_inv[2][2];
-
+    c->backward[0] = -c->view_inv[2][0];
+    c->backward[1] = -c->view_inv[2][1];
+    c->backward[2] = -c->view_inv[2][2];
+  }
   /*  Projection matrix
   While the view matrix transforms from world space to local camera space,
   tranforms the perspective projection matrix from camera space to screen space.
@@ -3032,7 +3439,7 @@ cam_build(struct cam *c) {
   if (c->far >= 0) {
     /* We are still missing A and B to map between the frustum near/far
     and the clipping cube near/far value. So we take the lower right part
-    of our perspective matrix and multiply by a vector containing the missing
+    of our projection matrix and multiply by a vector containing the missing
     z and w value, which gives us the resulting clipping cube z;
 
         |A  B|   |z|    |Az + B |           B
@@ -3185,43 +3592,45 @@ cam_build(struct cam *c) {
       m1 += 4;
     }
   }
-  /* calculate the 6 planes enclosing the camera volume */
-  c->plane.left[0] = c->view_proj[0][3] + c->view_proj[0][0];
-  c->plane.left[1] = c->view_proj[1][3] + c->view_proj[1][0];
-  c->plane.left[2] = c->view_proj[2][3] + c->view_proj[2][0];
-  c->plane.left[3] = c->view_proj[3][3] + c->view_proj[3][0];
+  {
+    /* calculate the 6 planes enclosing the camera volume */
+    c->plane.left[0] = c->view_proj[0][3] + c->view_proj[0][0];
+    c->plane.left[1] = c->view_proj[1][3] + c->view_proj[1][0];
+    c->plane.left[2] = c->view_proj[2][3] + c->view_proj[2][0];
+    c->plane.left[3] = c->view_proj[3][3] + c->view_proj[3][0];
 
-  c->plane.right[0] = c->view_proj[0][3] - c->view_proj[0][0];
-  c->plane.right[1] = c->view_proj[1][3] - c->view_proj[1][0];
-  c->plane.right[2] = c->view_proj[2][3] - c->view_proj[2][0];
-  c->plane.right[3] = c->view_proj[3][3] - c->view_proj[3][0];
+    c->plane.right[0] = c->view_proj[0][3] - c->view_proj[0][0];
+    c->plane.right[1] = c->view_proj[1][3] - c->view_proj[1][0];
+    c->plane.right[2] = c->view_proj[2][3] - c->view_proj[2][0];
+    c->plane.right[3] = c->view_proj[3][3] - c->view_proj[3][0];
 
-  c->plane.bot[0] = c->view_proj[0][3] + c->view_proj[0][1];
-  c->plane.bot[1] = c->view_proj[1][3] + c->view_proj[1][1];
-  c->plane.bot[2] = c->view_proj[2][3] + c->view_proj[2][1];
-  c->plane.bot[3] = c->view_proj[3][3] + c->view_proj[3][1];
+    c->plane.bot[0] = c->view_proj[0][3] + c->view_proj[0][1];
+    c->plane.bot[1] = c->view_proj[1][3] + c->view_proj[1][1];
+    c->plane.bot[2] = c->view_proj[2][3] + c->view_proj[2][1];
+    c->plane.bot[3] = c->view_proj[3][3] + c->view_proj[3][1];
 
-  c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][1];
-  c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][1];
-  c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][1];
-  c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][1];
+    c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][1];
+    c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][1];
+    c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][1];
+    c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][1];
 
-  c->plane.near[0] = c->view_proj[0][3] + c->view_proj[0][2];
-  c->plane.near[1] = c->view_proj[1][3] + c->view_proj[1][2];
-  c->plane.near[2] = c->view_proj[2][3] + c->view_proj[2][2];
-  c->plane.near[3] = c->view_proj[3][3] + c->view_proj[3][2];
+    c->plane.near[0] = c->view_proj[0][3] + c->view_proj[0][2];
+    c->plane.near[1] = c->view_proj[1][3] + c->view_proj[1][2];
+    c->plane.near[2] = c->view_proj[2][3] + c->view_proj[2][2];
+    c->plane.near[3] = c->view_proj[3][3] + c->view_proj[3][2];
 
-  c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][2];
-  c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][2];
-  c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][2];
-  c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][2];
+    c->plane.top[0] = c->view_proj[0][3] - c->view_proj[0][2];
+    c->plane.top[1] = c->view_proj[1][3] - c->view_proj[1][2];
+    c->plane.top[2] = c->view_proj[2][3] - c->view_proj[2][2];
+    c->plane.top[3] = c->view_proj[3][3] - c->view_proj[3][2];
 
-  normaleq4(c->plane.left);
-  normaleq4(c->plane.right);
-  normaleq4(c->plane.bot);
-  normaleq4(c->plane.top);
-  normaleq4(c->plane.near);
-  normaleq4(c->plane.far);
+    normaleq4(c->plane.left);
+    normaleq4(c->plane.right);
+    normaleq4(c->plane.bot);
+    normaleq4(c->plane.top);
+    normaleq4(c->plane.near);
+    normaleq4(c->plane.far);
+  }
 }
 static void
 cam_lookatf(struct cam *c,
@@ -3395,7 +3804,7 @@ cam_ray(float *ro, float *rd, const struct cam *c,
 static enum cam_intersect
 cam_intersect_pnt(const struct cam *c, const float *restrict pnt) {
   for (int i = 0; i < 6; ++i) {
-    float d = plane_signed_dist_pnt(c->planes+i*4, pnt);
+    float d = plane_dist_pnt(c->planes+i*4, pnt);
     if (d < 0.0f) {
       return CAM_PLANE_OUTSIDE;
     }
@@ -3405,7 +3814,7 @@ cam_intersect_pnt(const struct cam *c, const float *restrict pnt) {
 static enum cam_intersect
 cam_intersect_sphere(const struct cam *c, const float *s) {
   for (int i = 0; i < 6; ++i) {
-    float d = plane_signed_dist_pnt(c->planes+i*4, s);
+    float d = plane_dist_pnt(c->planes+i*4, s);
     if (d + s[3] < 0) {
       return CAM_PLANE_OUTSIDE;
     }
@@ -3421,7 +3830,7 @@ cam_intersect_aabb(const struct cam *c, const float *aabb) {
   float ext[3]; aabb_ext(ext, aabb);
   for (int i = 0; i < 6; ++i) {
     float abs_plane[4]; mapN(abs_plane, (float)math_abs, c->planes+i*4,3);
-    float d = plane_signed_dist_pnt(c->planes+i*4, ctr);
+    float d = plane_dist_pnt(c->planes+i*4, ctr);
     float r = dot3(ext, abs_plane);
     if ((d + r) < 0.0f) {
       return CAM_PLANE_OUTSIDE;

@@ -8,9 +8,26 @@
 
 // clang-format off
 #define unused(a) ((void)a)
-#define cast(t, p) ((t)(p))
 #define szof(a) ((int)sizeof(a))
 #define cntof(a) ((int)(sizeof(a) / sizeof((a)[0])))
+#define ptr(p,v) cast(p,cast(uintptr_t,v))
+
+#define cast(t, p) ((t)(p))
+#define castc(p) cast(char,p)
+#define castb(p) cast(unsigned char,p)
+#define casts(p) cast(short,p)
+#define castus(p) cast(unsigned short,p)
+#define casti(p) cast(int,p)
+#define castu(p) cast(unsigned,p)
+#define castl(p) cast(long,p)
+#define castul(p) cast(unsigned long,p)
+#define castll(p) cast(long long,p)
+#define castull(p) cast(unsigned long long,p)
+#define castf(p) cast(float,p)
+#define castd(p) cast(double,p)
+#define castsz(p) cast(size_t,p)
+#define castss(p) cast(ssize_t,p)
+#define recast(T,p) ((T)cast(void*,(p)))
 
 #define xglue(x, y) x##y
 #define glue(x, y) xglue(x, y)
@@ -24,15 +41,17 @@
 #define max3i(a,b,c) max(a,max(b,c))
 #define clamp(a, v, b) (max(min(b, v), a))
 #define clamp01(v) clamp(0,v,1)
+
 #define zero(d, sz) memset(d, 0, (size_t)(sz))
 #define offsetof(st, m) ((int)((uintptr_t) & (((st *)0)->m)))
 #define containerof(ptr, type, member)                           \
   (type *)((void *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
 #define div_round_up(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
+
 #define between(x, a, b) ((a) <= (x) && (x) < (b))
 #define inbox(px, py, x, y, w, h)(between(px, x, x + w) && between(py, y, y + h))
-#define ptr(p,v) cast(p,cast(uintptr_t,v))
+#define iswap(x,y) ((x) ^= (y), (y) ^= (x), (x) ^= (y))
 
 #define alignof(t)((int)((char *)(&((struct {char c;t _h;}*)0)->_h)-(char *)0))
 #define isaligned(x, mask) (!((uintptr_t)(x) & (uintptr_t)(mask - 1)))
@@ -96,6 +115,12 @@ struct lst_elm {
 };
 struct color {
   unsigned char r, g, b, a;
+};
+struct guid {
+  unsigned d1;
+  unsigned short d2;
+  unsigned short d3;
+  unsigned char d4[8];
 };
 
 #define dyn(T) T*
