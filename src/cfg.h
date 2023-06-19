@@ -14,8 +14,6 @@
 #define CFG_COLOR_TEXT          0xFF101010
 #endif
 
-#define CFG_DB_MAX_MEMORY       MB(1)
-
 /* shortcuts  */
 static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_ACT]                = {.key = {SYS_KEY_RETURN, 0}},
@@ -78,10 +76,5 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_EDIT_SEL_WORD_LEFT] = {.key = {SYS_KEY_LEFT, SYS_KEYMOD_CTRL|SYS_KEYMOD_SHIFT}},
   [GUI_KEY_EDIT_SEL_WORD_RIGHT]= {.key = {SYS_KEY_RIGHT, SYS_KEYMOD_CTRL|SYS_KEYMOD_SHIFT}},
 };
-
-/* shortcut operations */
-static const struct app_op app_ops[APP_OP_CNT] = {
-  [APP_OP_QUIT]     = {.key = {'q', SYS_KEYMOD_CTRL}, .handler = app_op_quit},
-};
-
 // clang-format on
+

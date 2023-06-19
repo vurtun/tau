@@ -77,6 +77,9 @@ struct sys_mouse {
 /* memory */
 enum sys_mem_blk_flags {
   SYS_MEM_GROWABLE  = 0x1,
+  SYS_MEM_CHK_UFLW  = 0x2,
+  SYS_MEM_CHK_OFLW  = 0x4,
+  SYS_MEM_CHK_FIT   = 0x8,
 };
 struct sys_mem_stats {
   int blk_cnt;
@@ -127,21 +130,10 @@ enum sys_color {
   SYS_COL_CNT
 };
 
-/* renderer */
-#define sys_rect(x, y, w, h) (struct sys_rect) { x, y, w, h }
-struct sys_rect {
-  int x,y,w,h;
-};
-struct sys_ren_target {
-  int resized;
-  int w, h;
-  unsigned *pixels;
-  dyn(struct sys_rect) dirty_rects;
-};
-
 /* window */
 struct sys_win {
-  int w, h;
+  int x, y, w, h;
+  const char *title;
   unsigned resized:1;
 };
 
@@ -184,10 +176,10 @@ struct sys_mem_api {
   struct arena *arena;
   struct arena *tmp;
 
-  struct mem_blk*(*alloc)(struct mem_blk* opt_old, int siz, unsigned flags, unsigned long long tag);
-  void (*free)(struct mem_blk *blk);
-  void (*free_tag)(unsigned long long tag);
-  void (*info)(struct sys_mem_stats *stats);
+  struct mem_blk*(*alloc)(struct sys *s, struct mem_blk* opt_old, int siz, unsigned flags, unsigned long long tag);
+  void (*free)(struct sys *s, struct mem_blk *blk);
+  void (*free_tag)(struct sys *s, unsigned long long tag);
+  void (*info)(struct sys *s, struct sys_mem_stats *stats);
 };
 enum sys_file_type {
   SYS_FILE_DEF,
@@ -203,14 +195,14 @@ struct sys_file_info {
   enum sys_file_type type;
 };
 struct sys_file_api {
-  int (*info)(struct sys_file_info *info, struct str path, struct arena *tmp);
+  int (*info)(struct sys*, struct sys_file_info *info, struct str path, struct arena *tmp);
 };
 struct sys_dir_api {
   #define for_dir_lst(s, i, a, p)\
-    for ((s)->dir.lst((i), (a), (p)); (i)->valid; (s)->dir.nxt((i), (a)))
-  void (*lst)(struct sys_dir_iter *it, struct arena *a, struct str path);
-  void (*nxt)(struct sys_dir_iter *it, struct arena *a);
-  int (*exists)(struct str path, struct arena *tmp);
+    for ((s)->dir.lst((s), (i), (a), (p)); (i)->valid; (s)->dir.nxt((s), (i), (a)))
+  void (*lst)(struct sys *s, struct sys_dir_iter *it, struct arena *a, struct str path);
+  void (*nxt)(struct sys *s, struct sys_dir_iter *it, struct arena *a);
+  int (*exists)(struct sys *s, struct str path, struct arena *tmp);
 };
 struct sys_clip_api {
   void (*set)(struct str s, struct arena *a);
@@ -219,18 +211,18 @@ struct sys_clip_api {
 struct sys_time_api {
   unsigned long long (*timestamp)(void);
 };
-struct sys_console_api {
+struct sys_con_api {
   void(*log)(const char *fmt, ...);
   void(*warn)(const char *fmt, ...);
   void(*err)(const char *fmt, ...);
 };
-struct sys_rnd {
+struct sys_rnd_api {
   uintptr_t gen;
   uintptr_t(*open)(void);
+  void(*close)(uintptr_t hdl);
   unsigned (*gen32)(uintptr_t hdl);
   unsigned long long(*gen64)(uintptr_t hdl);
   void(*gen128)(uintptr_t hdl, void *dst);
-  void(*close)(uintptr_t hdl);
 };
 
 /* platform */
@@ -239,10 +231,6 @@ struct sys {
   int running;
   unsigned seq;
   int version;
-
-  /* args */
-  int argc;
-  char **argv;
 
   struct cpu_info cpu;
   enum sys_cur_style cursor;
@@ -255,13 +243,11 @@ struct sys {
   unsigned style_mod:1;
   unsigned col[SYS_COL_CNT];
   float fnt_pnt_size;
-  float ui_scale;
+  float dpi_scale;
 
   /* modules */
   void *platform;
-  void *renderer;
-  void *debug;
-  void *app;
+  void *ren;
 
   /* api */
   struct sys_mem_api mem;
@@ -269,11 +255,11 @@ struct sys {
   struct sys_file_api file;
   struct sys_clip_api clipboard;
   struct sys_time_api time;
-  struct sys_console_api con;
-  struct ren_api ren;
-  struct sys_rnd rnd;
+  struct sys_con_api con;
+  struct sys_rnd_api rnd;
+  struct gfx_api gfx;
 
-  /* input */
+  /* poll */
   unsigned key_mod:1;
   unsigned dnd_mod:1;
   unsigned btn_mod:1;
@@ -281,7 +267,10 @@ struct sys {
   unsigned mouse_mod:1;
   unsigned mouse_grap:1;
   unsigned scrl_mod:1;
+  unsigned resized:1;
+  unsigned drw:1;
 
+  /* input */
   int txt_len;
   #define SYS_MAX_INPUT 1024
   char txt[SYS_MAX_INPUT];
@@ -289,8 +278,13 @@ struct sys {
   unsigned focus;
   struct sys_mouse mouse;
   unsigned long keys[bits_to_long(SYS_KEY_CNT)];
-
-  /* render */
-  struct sys_ren_target ren_target;
 };
+struct sys_api {
+  int version;
+  int(*init)(struct sys *s);
+  int(*pull)(struct sys *s);
+  void(*push)(struct sys *s);
+  void(*shutdown)(struct sys *s);
+};
+extern void sys_api(void *export, void *import);
 

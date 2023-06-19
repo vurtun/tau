@@ -86,7 +86,7 @@ math_ceili(double x) {
   }
 }
 static inline int
-math_flteq(float a, float b, int epsilon) {
+math_flteq(float a, float b, float epsilon) {
   /* http://realtimecollisiondetection.net/blog/?p=89 */
   return math_abs(a - b) < epsilon * max(1.0f, max(math_abs(a), math_abs(b)));
 }
@@ -825,6 +825,12 @@ col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
  * ---------------------------------------------------------------------------
  */
 static void
+m3x3id(float *m) {
+  m[0*3+0] = 1.0f, m[0*3+1] = 0.0f, m[0*3+2] = 0.0f;
+  m[1*3+0] = 0.0f; m[1*3+1] = 1.0f; m[1*3+2] = 0.0f;
+  m[2*3+0] = 0.0f; m[2*3+1] = 0.0f; m[2*3+2] = 1.0f;
+}
+static void
 m3x3q(float *restrict m, const float *restrict q) {
   float x2 = q[0] + q[0];
   float y2 = q[1] + q[1];
@@ -1108,117 +1114,6 @@ qslerp(float *restrict qres, const float *restrict qfrom,
   float b[4]; mul4(b,tmp,scale1);
   add4(qres,a,b);
 }
-static void
-qdiag(float *restrict qres, const float *restrict A) {
-  assert(qres);
-  assert(A);
-  /* Symmetric Matrix 3x3 Diagonalizer: http://melax.github.io/diag.html
-   * -------------------------------------------------------------------
-    'A' must be a symmetric matrix.
-    Returns quaternion q such that corresponding matrix Q
-    can be used to Diagonalize 'A'
-
-    Diagonal matrix D = Q * A * Transpose(Q);  and  A = QT*D*Q
-    The rows of Q are the eigenvectors, D's diagonal is the eigenvalues
-    As per 'row' convention if float3x3 Q = q.getmatrix(); then v*Q = q*v*conj(q)
-  */
-  float q[4]; qid(q);
-  for (int i = 0; i < 8; ++i) {
-    float Q[9]; m3x3q(Q, q); /* v*Q == q*v*conj(q) */
-    float QT[9]; m3x3T(QT,Q);
-    float QA[9]; mul3x3(QA,Q,A);
-    float D[9]; mul3x3(D,QA,QT); /* A = Q^T*D*Q */
-    float offdiag[3]; set3(offdiag, D[1*3+2], D[0*3+2], D[0*3+1]);
-    float om[3]; map3(om, (float)math_abs, offdiag);
-    int k = (om[0] > om[1] && om[0] > om[2]) ? 0: (om[1] > om[2]) ? 1 : 2;
-    int k1 = (k+1)%3;
-    int k2 = (k+2)%3;
-    if (offdiag[k]==0.0f) {
-      break;  /* diagonal already */
-    }
-    float sthet = (D[k2*3+k2]-D[k1*3+k1])/(2.0f*offdiag[k]);
-    float sgn = (sthet > 0.0f)?1.0f:-1.0f;
-    float thet = sthet * sgn; /* make it positive */
-    float t = sgn /(thet +((thet < 1.E6f)?math_sqrt(thet*thet+1.0f):thet));
-    float c = 1.0f/math_sqrt(t*t+1.0f); /* c= 1/(t^2+1) , t=s/c */
-    if (c==1.0f) {
-      break;  /* no room for improvement - reached machine precision. */
-    }
-    float jr[4] = {0.0f};
-    /* using 1/2 angle identity sin(a/2) = sqrt((1-cos(a))/2) */
-    jr[k] = sgn*math_sqrt((1.0f-c)/2.0f);
-    jr[k] *= -1.0f; /* since our quat-to-mat conv was for v*M instead of M*v */
-    jr[3] = math_sqrt(1.0f - jr[k]*jr[k]);
-    if(jr[3] == 1.0f) {
-      break; /* reached limits of floating point precision */
-    }
-    qmul(q,q,jr);
-    normaleq4(q);
-  }
-  cpy4(qres, q);
-}
-static void
-eigensym(float *e_val, float *e_vec33, const float *a33) {
-  assert(e_val);
-  assert(e_vec33);
-  assert(a33);
-
-  /* calculate eigensystem from symmetric 3x3 matrix */
-  float q[4]; qdiag(q, a33);
-  float Q[9]; m3x3q(Q, q);
-  float QT[9]; m3x3T(QT, Q);
-  float QA[9]; mul3x3(QA, Q, a33);
-  float D[9]; mul3x3(D, QA, QT);
-  float ev[3]; set3(ev, D[0*3+0], D[1*3+1], D[2*3+2]);
-
-  /* 3-way sort eigenvalues and eigenvectors */
-  float aev[3]; map3(aev,(float)math_abs,ev);
-  if (aev[0] >= aev[1] && aev[1] >= aev[2]) {
-    cpy3(e_val, ev);
-    mcpy(e_vec33, Q, szof(Q));
-  } else if (aev[1] >= aev[0] && aev[0] >= aev[2]) {
-    e_val[0] = ev[1];
-    e_val[1] = ev[0];
-    e_val[2] = ev[2];
-
-    cpy3(e_vec33, Q+3);
-    cpy3(e_vec33+3, Q+0);
-    cpy3(e_vec33+6, Q+6);
-  } else if (aev[2] >= aev[0] && aev[0] >= aev[1]) {
-    e_val[0] = ev[2];
-    e_val[1] = ev[0];
-    e_val[2] = ev[1];
-
-    cpy3(e_vec33, Q+6);
-    cpy3(e_vec33+3, Q+0);
-    cpy3(e_vec33+6, Q+3);
-  } else if (aev[0] >= aev[1] && aev[2] >= aev[1]) {
-    e_val[0] = ev[0];
-    e_val[1] = ev[2];
-    e_val[2] = ev[1];
-
-    cpy3(e_vec33, Q+0);
-    cpy3(e_vec33+3, Q+6);
-    cpy3(e_vec33+6, Q+3);
-  } else if (aev[2] >= aev[1] && aev[1] >= aev[0]) {
-    e_val[0] = ev[2];
-    e_val[1] = ev[1];
-    e_val[2] = ev[0];
-
-    cpy3(e_vec33, Q+6);
-    cpy3(e_vec33+3, Q+3);
-    cpy3(e_vec33+6, Q+0);
-  } else if (aev[1] >= aev[2] && aev[2] >= aev[0]) {
-    e_val[0] = ev[1];
-    e_val[1] = ev[2];
-    e_val[2] = ev[0];
-
-    cpy3(e_vec33, Q+3);
-    cpy3(e_vec33+3, Q+6);
-    cpy3(e_vec33+6, Q+0);
-  }
-}
-
 /* ---------------------------------------------------------------------------
  *                                Swing-Twist
  * ---------------------------------------------------------------------------
@@ -1873,6 +1768,179 @@ bspline_calc_new_pnts_del(float *restrict new_pnts, int idx,
   opN(h,=,cvs+((idx+2)*dim),-,cvs+((idx+3)*dim),*,len/arc_len_2,dim);
   opN(new_pnts+dim,=,h,+,cvs+((idx+3) * dim),+,0,dim);
 }
+
+/* ---------------------------------------------------------------------------
+ *                                  Eigen
+ * ---------------------------------------------------------------------------
+ */
+static void
+qdiag(float *restrict qres, const float *restrict A) {
+  assert(qres);
+  assert(A);
+  /* Symmetric Matrix 3x3 Diagonalizer: http://melax.github.io/diag.html
+   * -------------------------------------------------------------------
+    'A' must be a symmetric matrix.
+    Returns quaternion q such that corresponding matrix Q
+    can be used to Diagonalize 'A'
+
+    Diagonal matrix D = Q * A * Transpose(Q);  and  A = QT*D*Q
+    The rows of Q are the eigenvectors, D's diagonal is the eigenvalues
+    As per 'row' convention if float3x3 Q = q.getmatrix(); then v*Q = q*v*conj(q)
+  */
+  float q[4]; qid(q);
+  for (int i = 0; i < 8; ++i) {
+    float Q[9]; m3x3q(Q, q); /* v*Q == q*v*conj(q) */
+    float QT[9]; m3x3T(QT,Q);
+    float QA[9]; mul3x3(QA,Q,A);
+    float D[9]; mul3x3(D,QA,QT); /* A = Q^T*D*Q */
+    float offdiag[3]; set3(offdiag, D[1*3+2], D[0*3+2], D[0*3+1]);
+    float om[3]; map3(om, (float)math_abs, offdiag);
+    int k = (om[0] > om[1] && om[0] > om[2]) ? 0: (om[1] > om[2]) ? 1 : 2;
+    int k1 = (k+1)%3;
+    int k2 = (k+2)%3;
+    if (offdiag[k]==0.0f) {
+      break;  /* diagonal already */
+    }
+    float sthet = (D[k2*3+k2]-D[k1*3+k1])/(2.0f*offdiag[k]);
+    float sgn = (sthet > 0.0f)?1.0f:-1.0f;
+    float thet = sthet * sgn; /* make it positive */
+    float t = sgn /(thet +((thet < 1.E6f)?math_sqrt(thet*thet+1.0f):thet));
+    float c = 1.0f/math_sqrt(t*t+1.0f); /* c= 1/(t^2+1) , t=s/c */
+    if (c==1.0f) {
+      break;  /* no room for improvement - reached machine precision. */
+    }
+    float jr[4] = {0.0f};
+    /* using 1/2 angle identity sin(a/2) = sqrt((1-cos(a))/2) */
+    jr[k] = sgn*math_sqrt((1.0f-c)/2.0f);
+    jr[k] *= -1.0f; /* since our quat-to-mat conv was for v*M instead of M*v */
+    jr[3] = math_sqrt(1.0f - jr[k]*jr[k]);
+    if(jr[3] == 1.0f) {
+      break; /* reached limits of floating point precision */
+    }
+    qmul(q,q,jr);
+    normaleq4(q);
+  }
+  cpy4(qres, q);
+}
+static void
+eigensym(float *e_val, float *e_vec33, const float *a33) {
+  assert(e_val);
+  assert(e_vec33);
+  assert(a33);
+
+  /* calculate eigensystem from symmetric 3x3 matrix */
+  float q[4]; qdiag(q, a33);
+  float Q[9]; m3x3q(Q, q);
+  float QT[9]; m3x3T(QT, Q);
+  float QA[9]; mul3x3(QA, Q, a33);
+  float D[9]; mul3x3(D, QA, QT);
+  float ev[3]; set3(ev, D[0*3+0], D[1*3+1], D[2*3+2]);
+
+  /* 3-way sort eigenvalues and eigenvectors */
+  float aev[3]; map3(aev,(float)math_abs,ev);
+  if (aev[0] >= aev[1] && aev[1] >= aev[2]) {
+    cpy3(e_val, ev);
+    mcpy(e_vec33, Q, szof(Q));
+  } else if (aev[1] >= aev[0] && aev[0] >= aev[2]) {
+    e_val[0] = ev[1];
+    e_val[1] = ev[0];
+    e_val[2] = ev[2];
+
+    cpy3(e_vec33, Q+3);
+    cpy3(e_vec33+3, Q+0);
+    cpy3(e_vec33+6, Q+6);
+  } else if (aev[2] >= aev[0] && aev[0] >= aev[1]) {
+    e_val[0] = ev[2];
+    e_val[1] = ev[0];
+    e_val[2] = ev[1];
+
+    cpy3(e_vec33, Q+6);
+    cpy3(e_vec33+3, Q+0);
+    cpy3(e_vec33+6, Q+3);
+  } else if (aev[0] >= aev[1] && aev[2] >= aev[1]) {
+    e_val[0] = ev[0];
+    e_val[1] = ev[2];
+    e_val[2] = ev[1];
+
+    cpy3(e_vec33, Q+0);
+    cpy3(e_vec33+3, Q+6);
+    cpy3(e_vec33+6, Q+3);
+  } else if (aev[2] >= aev[1] && aev[1] >= aev[0]) {
+    e_val[0] = ev[2];
+    e_val[1] = ev[1];
+    e_val[2] = ev[0];
+
+    cpy3(e_vec33, Q+6);
+    cpy3(e_vec33+3, Q+3);
+    cpy3(e_vec33+6, Q+0);
+  } else if (aev[1] >= aev[2] && aev[2] >= aev[0]) {
+    e_val[0] = ev[1];
+    e_val[1] = ev[2];
+    e_val[2] = ev[0];
+
+    cpy3(e_vec33, Q+3);
+    cpy3(e_vec33+3, Q+6);
+    cpy3(e_vec33+6, Q+0);
+  }
+}
+static void
+compute_mean(float *restrict mean, const float *restrict pnts, int n) {
+  assert(mean);
+  assert(pnts);
+  zero3(mean);
+  if (!n) {
+    return;
+  }
+  for_cnt(i, n) {
+    add3(mean, mean, pnts + i * 3);
+  }
+  float div = 1.0f / castf(n);
+  mul3(mean, mean, div);
+}
+static void
+covar(float *restrict mat33, const float *restrict pnts, int n) {
+  assert(mat33);
+  assert(pnts);
+  m3x3id(mat33);
+  if (n <= 0) {
+    return;
+  }
+  float mean[3] = {0};
+  compute_mean(mean, pnts, n);
+
+  float div = 1.0f / castf(n);
+  float xx = 0.0f, yy = 0.0f, zz = 0.0f;
+  float xy = 0.0f, xz = 0.0f, yz = 0.0f;
+  for_cnt(i,n) {
+    float p[3]; sub3(p, pnts+i*3, mean);
+    xx += p[0] * p[0], xy += p[0] * p[1];
+    xz += p[0] * p[2], yy += p[1] * p[1];
+    yz += p[1] * p[2], zz += p[2] * p[2];
+  }
+  xx *= div, xy *= div;
+  xz *= div, yy *= div;
+  yz *= div, zz *= div;
+
+  mat33[0*3+0] = xx;
+  mat33[0*3+1] = xy;
+  mat33[0*3+2] = xz;
+
+  mat33[1*3+0] = xy;
+  mat33[1*3+1] = yy;
+  mat33[1*3+2] = yz;
+
+  mat33[2*3+0] = xz;
+  mat33[2*3+1] = yz;
+  mat33[2*3+2] = zz;
+}
+static void
+obb(float *restrict axis33, float *ext3, const float *restrict pnts, int n) {
+  float cvar[9];
+  covar(cvar, pnts, n);
+  eigensym(ext3, axis33, cvar);
+}
+
+
 /* ----------------------------------------------------------------------------
  *                                  GJK
  * ---------------------------------------------------------------------------- */
@@ -2525,8 +2593,8 @@ plane_proj_vec(float *restrict r, const float *restrict plane, const float *v) {
  * ---------------------------------------------------------------------------
  */
 static void
-seg_get_pnt_to_pnt(float *res, const float *a, const float *b, const float *p) {
-  assert(res);
+seg_get_pnt_to_pnt(float *ret, const float *a, const float *b, const float *p) {
+  assert(ret);
   assert(a);
   assert(b);
   assert(p);
@@ -2536,8 +2604,8 @@ seg_get_pnt_to_pnt(float *res, const float *a, const float *b, const float *p) {
   float t = dot3(pa,ab) / dot3(ab,ab);
   if (t < 0.0f) t = 0.0f;
   if (t > 1.0f) t = 1.0f;
-  mul3(res, ab, t);
-  add3(res, a, res);
+  mul3(ret, ab, t);
+  add3(ret, a, ret);
 }
 static float
 seg_get_pnt_to_pnt_sqdist(const float *restrict a, const float *restrict b,
@@ -2781,16 +2849,16 @@ static int aabb_hit_sphere(const float *restrict a, const float *restrict s);
 static int capsule_hit_sphere(const float *c, const float *s);
 
 static void
-sphere_closest_pnt(float *restrict res, const float *restrict s,
+sphere_closest_pnt(float *restrict ret, const float *restrict s,
                    const float *restrict p) {
-  assert(res);
+  assert(ret);
   assert(s);
   assert(p);
 
   float d[3]; sub3(d, p, s);
   float n[3]; norm3(n,d);
-  mul3(res,n,s[3]);
-  add3(res,s,res);
+  mul3(ret,n,s[3]);
+  add3(ret,s,ret);
 }
 static int
 sphere_hit_sphere(const float *restrict a, const float *restrict b) {
@@ -2906,9 +2974,9 @@ aabb_intersect(float *r, const float *a, const float *b) {
   min3(r+3, a+3, b+3);
 }
 static void
-aabb_closest_pnt(float *restrict res, const float *restrict a,
+aabb_closest_pnt(float *restrict ret, const float *restrict a,
                  const float *restrict p) {
-  assert(res);
+  assert(ret);
   assert(a);
   assert(p);
 
@@ -2916,7 +2984,7 @@ aabb_closest_pnt(float *restrict res, const float *restrict a,
     float v = p[i];
     if (v < a[i]) v = a[i];
     if (v > a[3+i]) v = a[3+i];
-    res[i] = v;
+    ret[i] = v;
   }
 }
 static float
@@ -2986,16 +3054,16 @@ capsule_pnt_sqdist(const float *c, const float *p) {
   return d2 - (c[6]*c[6]);
 }
 static void
-capsule_closest_pnt(float *res, const float *restrict c, const float *restrict p) {
-  assert(res);
+capsule_closest_pnt(float *ret, const float *restrict c, const float *restrict p) {
+  assert(ret);
   assert(c);
   assert(p);
   /* calculate closest point to internal capsule segment */
   float pp[3]; seg_get_pnt_to_pnt(pp, c, c + 3, p);
   /* extend point out by radius in normal direction */
   float d[3]; sub3(d,p,pp); normeq3(d);
-  mul3(res, d, c[6]);
-  add3(res, pp, res);
+  mul3(ret, d, c[6]);
+  add3(ret, pp, ret);
 }
 static int
 capsule_hit_capsule(const float *a, const float *b) {
@@ -3693,7 +3761,7 @@ cam_movef(struct cam *c, float x, float y, float z) {
   c->pos[2] += c->view_inv[2][2] * z;
 }
 static void
-cam_screen_to_world(float *res, const struct cam *c, float width, float height,
+cam_screen_to_world(float *ret, const struct cam *c, float width, float height,
                     float screen_x, float screen_y, float cam_z) {
   /* Screen space to world space coordinates
   To convert from screen space coordinates to world coordinates we
@@ -3757,24 +3825,24 @@ cam_screen_to_world(float *res, const struct cam *c, float width, float height,
   float dz = c->proj_inv[2][3]*z;
   float w = c->proj_inv[3][3] + dz;
 
-  res[0] = c->proj_inv[3][2] * c->view_inv[2][0];
-  res[0] += c->proj_inv[3][3] * c->view_inv[3][0];
-  res[0] += ax * c->view_inv[0][0];
-  res[0] += by * c->view_inv[1][0];
-  res[0] += dz * c->view_inv[3][0];
+  ret[0] = c->proj_inv[3][2] * c->view_inv[2][0];
+  ret[0] += c->proj_inv[3][3] * c->view_inv[3][0];
+  ret[0] += ax * c->view_inv[0][0];
+  ret[0] += by * c->view_inv[1][0];
+  ret[0] += dz * c->view_inv[3][0];
 
-  res[1] = c->proj_inv[3][2] * c->view_inv[2][1];
-  res[1] += c->proj_inv[3][3] * c->view_inv[3][1];
-  res[1] += ax * c->view_inv[0][1];
-  res[1] += by * c->view_inv[1][1];
-  res[1] += dz * c->view_inv[3][1];
+  ret[1] = c->proj_inv[3][2] * c->view_inv[2][1];
+  ret[1] += c->proj_inv[3][3] * c->view_inv[3][1];
+  ret[1] += ax * c->view_inv[0][1];
+  ret[1] += by * c->view_inv[1][1];
+  ret[1] += dz * c->view_inv[3][1];
 
-  res[2] = c->proj_inv[3][2] * c->view_inv[2][2];
-  res[2] += c->proj_inv[3][3] * c->view_inv[3][2];
-  res[2] += ax * c->view_inv[0][2];
-  res[2] += by * c->view_inv[1][2];
-  res[2] += dz * c->view_inv[3][2];
-  res[0] /= w; res[1] /= w; res[2] /= w;
+  ret[2] = c->proj_inv[3][2] * c->view_inv[2][2];
+  ret[2] += c->proj_inv[3][3] * c->view_inv[3][2];
+  ret[2] += ax * c->view_inv[0][2];
+  ret[2] += by * c->view_inv[1][2];
+  ret[2] += dz * c->view_inv[3][2];
+  ret[0] /= w; ret[1] /= w; ret[2] /= w;
 }
 static void
 cam_ray(float *ro, float *rd, const struct cam *c,

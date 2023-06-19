@@ -1,3 +1,16 @@
+static inline int
+npow2(int x) {
+  unsigned int v = castu(x);
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return casti(v);
+}
+
 /* ---------------------------------------------------------------------------
  *                                Memory
  * ---------------------------------------------------------------------------
@@ -7,6 +20,7 @@ mcpy(void* restrict dst, void const *restrict src, int n) {
   assert(dst);
   assert(src);
   assert(n >= 0);
+
   unsigned char *restrict d = dst;
   const unsigned char *restrict s = src;
   for (int i = 0; i < n; ++i) {
@@ -47,13 +61,13 @@ mset(void *addr, int c, int n) {
 #define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d), (r)->mid += (d)
 #define rng_percent(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
 
-static inline int
+static force_inline int
 rng__bnd(int i, int n) {
   int l = max(n, 1) - 1;
   int v = (i < 0) ? (n - i) : i;
   return clamp(v, 0, l);
 }
-static inline struct rng
+static force_inline struct rng
 rng_mk(int lo, int hi, int s) {
   struct rng r = {.lo = lo, .hi = hi, .step = s};
   assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
@@ -80,7 +94,7 @@ rng_mk(int lo, int hi, int s) {
 #define FNV1A32_HASH_INITIAL 2166136261u
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
 
-static unsigned
+static inline unsigned
 fnv1a32(const void *ptr, int size, unsigned h) {
   const unsigned char *p = ptr;
   for (int i = 0; i < size; ++i) {
@@ -88,7 +102,7 @@ fnv1a32(const void *ptr, int size, unsigned h) {
   }
   return h;
 }
-static unsigned long long
+static inline unsigned long long
 fnv1a64(const void *ptr, int len, unsigned long long h) {
   const unsigned char *p = ptr;
   for (int i = 0; i < len; ++i) {
@@ -113,38 +127,38 @@ hash_ptr(const void *ptr) {
  *                                  Random
  * ---------------------------------------------------------------------------
  */
-static unsigned long long
+static inline unsigned long long
 rnd_gen(unsigned long long x, int n) {
   return x + castull(n) * 0x9E3779B97F4A7C15llu;
 }
-static unsigned long long
+static inline unsigned long long
 rnd_mix(unsigned long long z) {
   z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9llu;
   z = (z ^ (z >> 27)) * 0x94D049BB133111EBllu;
   return z ^ (z >> 31llu);
 }
-static unsigned long long
+static inline unsigned long long
 rnd_split_mix(unsigned long long *x, int i) {
   *x = rnd_gen(*x, i);
   return rnd_mix(*x);
 }
-static unsigned long long
+static inline unsigned long long
 rnd(unsigned long long *x) {
   return rnd_split_mix(x, 1);
 }
-static unsigned
+static inline unsigned
 rndu(unsigned long long *x) {
   unsigned long long z = rnd(x);
   return castu(z & 0xffffffffu);
 }
-static int
+static inline int
 rndi(unsigned long long *x) {
   unsigned z = rndu(x);
   long long n = castll(z) - (UINT_MAX/2);
   assert(n >= INT_MIN && n <= INT_MAX);
   return casti(n);
 }
-static double
+static inline double
 rndn(unsigned long long *x) {
   unsigned n = rndu(x);
   return castd(n) / castd(UINT_MAX);
@@ -167,7 +181,7 @@ rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
     return mini + v % n;
   }
 }
-static float
+static inline float
 rndf01(unsigned long long *x) {
   unsigned u = rndu(x);
   double du = castd(u);
@@ -184,6 +198,7 @@ rnduf(unsigned long long *x, float mini, float maxi) {
   double div = castd((unsigned)-1);
   return lo + rng * castf(du/div);
 }
+
 /* ---------------------------------------------------------------------------
  *                                  Guid
  * ---------------------------------------------------------------------------
@@ -194,13 +209,13 @@ rnduf(unsigned long long *x, float mini, float maxi) {
 #define guid_hash32(g) ((g)->d1)
 #define guid_eq(a,b) (a)->d1 == (b)->d1 && (a)->d2 == (b)->d2 && (a)->d3 == (b)->d3 && !memcmp((a)->d4, (b)->d4)
 
-static void
+static inline void
 guid_gen(struct guid *ret, struct sys *s, uintptr_t gen) {
   assert(s);
   assert(ret);
   s->rnd.gen128(gen, cast(void*,ret));
 }
-static int
+static inline int
 guid__hex4(unsigned char *dst, int c) {
   assert(dst);
   if (c >= '0' && c <= '9') {
@@ -214,7 +229,7 @@ guid__hex4(unsigned char *dst, int c) {
   }
   return 1;
 }
-static int
+static inline int
 guid__hex8(unsigned char *dst, const char *s) {
   assert(s);
   assert(dst);
@@ -226,7 +241,7 @@ guid__hex8(unsigned char *dst, const char *s) {
   *dst = castb((v[0] << 4) | v[1]);
   return 1;
 }
-static int
+static inline int
 guid__hex16(unsigned short *dst, const char *s) {
   assert(s);
   assert(dst);
@@ -238,7 +253,7 @@ guid__hex16(unsigned short *dst, const char *s) {
   *dst = castus((v[0] << 8) | v[1]);
   return 1;
 }
-static int
+static inline int
 guid__hex32(unsigned *dst, const char *s) {
   assert(s);
   assert(dst);
@@ -252,12 +267,12 @@ guid__hex32(unsigned *dst, const char *s) {
   *dst = castu((v[0] << 24) | (v[1] << 16) | (v[2] << 8) | (v[3]));
   return 1;
 }
-static int
+static force_inline int
 guid__sep(const char *s) {
   assert(s);
   return *s == '-';
 }
-static int
+static inline int
 guid_str(struct guid *g, struct str gstr) {
   assert(g);
   if (gstr.len < GUID_STR_LEN) {
@@ -285,7 +300,7 @@ guid_str(struct guid *g, struct str gstr) {
   }
   return ret;
 }
-static void
+static inline void
 guid__put(char *dst, int byte) {
   static const char *hex_chars = "0123456789abcdef";
   dst[0] = hex_chars[byte >> 4];
@@ -317,7 +332,7 @@ str_guid(char *buf, const struct guid *g) {
   guid__put(buf + 32, src[14]);
   guid__put(buf + 34, src[15]);
 }
-static unsigned long long
+static inline unsigned long long
 guid_hash64(const struct guid *g) {
   unsigned long long v[2] = {0};
   compiler_assert(szof(v) == sizeof(*g));
@@ -378,7 +393,7 @@ seq_rnd(int *seq, int n, unsigned long long *r) {
     iswap(seq[i], seq[at]);
   }
 }
-static void
+static inline void
 seq_fix(int *p, int n) {
   for (int i = 0; i < n; ++i) {
     p[i] = -1 - p[i];
@@ -421,7 +436,23 @@ bit_eqv(unsigned x, unsigned y) {
  */
 #define for_bitset(i,x,s,n) \
   for (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
+static int bit_xor(unsigned long *addr, int nr);
 
+static int
+bit_tst(const unsigned long *addr, int nr) {
+  assert(addr);
+  unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
+  return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
+}
+static int
+bit_tst_clr(unsigned long *addr, int nr) {
+  assert(addr);
+  if (bit_tst(addr, nr)) {
+    bit_xor(addr, nr);
+    return 1;
+  }
+  return 0;
+}
 static int
 bit_set(unsigned long *addr, int nr) {
   unsigned long m = bit_mask(nr);
@@ -466,21 +497,6 @@ bit_fill(unsigned long *addr, int byte, int nbits) {
   mset(addr, byte, n * szof(long));
 }
 static int
-bit_tst(const unsigned long *addr, int nr) {
-  assert(addr);
-  unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
-  return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
-}
-static int
-bit_tst_clr(unsigned long *addr, int nr) {
-  assert(addr);
-  if (bit_tst(addr, nr)) {
-    bit_xor(addr, nr);
-    return 1;
-  }
-  return 0;
-}
-static int
 bit_ffs(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
   unsigned long off = bit_word_idx(idx);
@@ -492,7 +508,7 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
       off = bit_word_nxt(off);
       continue;
     }
-    int pos = __builtin_ctzl(c);
+    int pos = cpu_bit_ffs64(c);
     return (int)(i * BITS_PER_LONG) + pos;
   }
   return nbits;
@@ -512,7 +528,7 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
       off = bit_word_nxt(off);
       continue;
     }
-    int pos = __builtin_ctzl(c);
+    int pos = cpu_bit_ffs64(c);
     return (int)(i * BITS_PER_LONG) + pos;
   }
   return nbits;
@@ -530,14 +546,14 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   }
   unsigned long w = addr[widx] & ~cmsk;
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
-  int cnt = __builtin_popcountll(w);
+  int cnt = cpu_bit_cnt64(w);
   for (unsigned long i = widx + 1; i < n; ++i) {
     w = addr[i];
     if ((unsigned long)nbits - BITS_PER_LONG * i < BITS_PER_LONG) {
       cmsk |= ~(bit_mask(nbits) - 1u);
       w = w & ~cmsk;
     }
-    cnt += __builtin_popcountll(w);
+    cnt += cpu_bit_cnt64(w);
   }
   return cnt;
 }
@@ -554,14 +570,14 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   }
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   unsigned long w = addr[widx] & ~cmsk;
-  int cnt = __builtin_popcountll(~w);
+  int cnt = cpu_bit_cnt64(~w);
   for (unsigned long i = widx + 1; i < n; ++i) {
     w = addr[i];
     if ((unsigned long)nbits - BITS_PER_LONG * i < BITS_PER_LONG) {
       cmsk |= ~(bit_mask(nbits) - 1u);
       w = w & ~cmsk;
     }
-    cnt += __builtin_popcountll(~w);
+    cnt += cpu_bit_cnt64(~w);
   }
   return min(nbits, cnt);
 }
@@ -902,8 +918,8 @@ str_fnd_tbl_str(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
     return hay.len;
   }
   if (needle.len == 1) {
-    const char *res = cpu_str_chr(hay.str, hay.len, needle.str[0]);
-    return res ? casti(res - hay.str) : hay.len;
+    const char *ret = cpu_str_chr(hay.str, hay.len, needle.str[0]);
+    return ret ? casti(ret - hay.str) : hay.len;
   }
   int hpos = 0;
   int n = needle.len - 1;
@@ -925,8 +941,8 @@ str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
 static int
 str_fnd(struct str hay, struct str needle) {
   if (needle.len == 1) {
-    const char *res = cpu_str_chr(hay.str, hay.len, needle.str[0]);
-    return res ? casti(res - hay.str) : hay.len;
+    const char *ret = cpu_str_chr(hay.str, hay.len, needle.str[0]);
+    return ret ? casti(ret - hay.str) : hay.len;
   } else if (needle.len <= CPU_STR_FND_LIMIT) {
     return cpu_str_fnd(hay.str, hay.len, needle.str, needle.len);
   } else {
@@ -943,13 +959,13 @@ static struct str
 str_split_cut(struct str *s, struct str delim) {
   int p = str_fnd(*s, delim);
   if (p < s->len) {
-    struct str res = str_lhs(*s, p);
+    struct str ret = str_lhs(*s, p);
     str_cut_lhs(s, p + 1);
-    return res;
+    return ret;
   } else {
-    struct str res = *s;
+    struct str ret = *s;
     *s = str_nil;
-    return res;
+    return ret;
   }
 }
 static int
@@ -1016,8 +1032,8 @@ str_regex(struct str txt, struct str reg) {
   return 0;
 }
 static void
-ut_str(struct sys *sys) {
-  unused(sys);
+ut_str(struct sys *s) {
+  unused(s);
   static const struct str hay = strv("cmd[stk?utf/boot/usr/str_bootbany.exe");
   int dot_pos = str_fnd(hay, strv("["));
   assert(dot_pos == 3);
@@ -1066,15 +1082,15 @@ utf_dec(unsigned *rune, struct str *s) {
     return strp(s->end, s->end);
   }
   int n = 0;
-  unsigned res = 0;
+  unsigned ret = 0;
   const char *p = s->str;
   switch (*p & 0xf0) {
     // clang-format off
-    case 0xf0: res = (*p & 0x07), n = 3; break;
-    case 0xe0: res = (*p & 0x0f), n = 2; break;
-    case 0xc0: res = (*p & 0x1f), n = 1; break;
-    case 0xd0: res = (*p & 0x1f), n = 1; break;
-    default:   res = (*p & 0xff), n = 0; break;
+    case 0xf0: ret = (*p & 0x07), n = 3; break;
+    case 0xe0: ret = (*p & 0x0f), n = 2; break;
+    case 0xc0: ret = (*p & 0x1f), n = 1; break;
+    case 0xd0: ret = (*p & 0x1f), n = 1; break;
+    default:   ret = (*p & 0xff), n = 0; break;
     // clang-format on
   }
   if (s->str + n + 1 > s->end) {
@@ -1084,10 +1100,10 @@ utf_dec(unsigned *rune, struct str *s) {
   }
   struct str view = str(p, n + 1);
   for (int i = 0; i < n; ++i) {
-    res = (res << 6) | (*(++p) & 0x3f);
+    ret = (ret << 6) | (*(++p) & 0x3f);
   }
   if (rune) {
-    *rune = res;
+    *rune = ret;
   }
   *s = strp(s->str + n + 1, s->end);
   return view;
@@ -1168,8 +1184,8 @@ utf_len(struct str s) {
  *                                Time
  * ---------------------------------------------------------------------------
  */
-#define time_inf  (9223372036854775807ll)
-#define time_ninf (-9223372036854775807ll)
+#define time_inf    (9223372036854775807ll)
+#define time_ninf   (-9223372036854775807ll)
 #define time_ns(ns) castll((ns))
 #define time_us(us) (castll((us))*1000ll)
 #define time_ms(ms) (castll((ms))*1000000ll)
@@ -1177,13 +1193,13 @@ utf_len(struct str s) {
 #define time_min(m) (castll((m))*60000000000ll)
 #define time_hours(h) (castll((m))*3600000000000ll)
 
-#define time_flt_sec(s) (castll(castd((s))*1000000000.0))
-#define time_flt_min(s) (castll(castd((s))*60000000000.0))
-#define time_flt_hour(s) (castll(castd((s))*3600000000000.0))
+#define time_flt_sec(s)   (castll(castd((s))*1000000000.0))
+#define time_flt_min(s)   (castll(castd((s))*60000000000.0))
+#define time_flt_hour(s)  (castll(castd((s))*3600000000000.0))
 
-#define time_30fps time_ns(33333333)
-#define time_60fps time_ns(16666666)
-#define time_90fps time_ns(11111111)
+#define time_30fps  time_ns(33333333)
+#define time_60fps  time_ns(16666666)
+#define time_90fps  time_ns(11111111)
 #define time_120fps time_ns(8333333)
 #define time_144fps time_ns(6944444)
 #define time_240fps time_ns(4166667)
@@ -1310,7 +1326,7 @@ lck_rel(struct lck *lck) {
 // clang-format off
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
 #define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
-#define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(sizeof(T) * (n))), (n)))
+#define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(szof(T) * (n))), (n)))
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
 #define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, n))
 
@@ -1325,11 +1341,11 @@ lck_rel(struct lck *lck) {
 
 static int
 arena_align_off(struct arena *a, int align) {
-  intptr_t res = (intptr_t)a->blk->base + a->blk->used;
+  intptr_t ret = (intptr_t)a->blk->base + a->blk->used;
   int msk = align - 1;
   int off = 0;
-  if(res & msk) {
-    off = casti((align - (res & msk)));
+  if(ret & msk) {
+    off = casti((align - (ret & msk)));
   }
   return off;
 }
@@ -1339,46 +1355,48 @@ arena_size_for(struct arena *a, int size_init) {
   return size_init + off;
 }
 static void*
-arena_alloc(struct arena *a, struct sys *sys, int size_init) {
+arena_alloc(struct arena *a, struct sys *s, int size_init) {
   assert(a);
-  assert(sys);
+  assert(s);
 
   int siz = 0;
-  void *res = 0;
+  void *ret = 0;
   if (a->blk) {
     siz = arena_size_for(a, size_init);
   }
   if (!a->blk || ((a->blk->used + siz) > a->blk->size)) {
     siz = size_init; /* allocate new block */
     int blksiz = max(!a->blksiz ? ARENA_BLOCK_SIZE : a->blksiz, siz);
-    struct mem_blk *blk = sys->mem.alloc(0, blksiz, 0, 0);
+    struct mem_blk *blk = s->mem.alloc(s, 0, blksiz, 0, 0);
     blk->prv = a->blk;
     a->blk = blk;
   }
   assert((a->blk->used + siz) <= a->blk->size);
   int align_off = arena_align_off(a, ARENA_ALIGNMENT);
   int off = a->blk->used + align_off;
-  res = a->blk->base + off;
+  ret = a->blk->base + off;
   a->blk->used += siz;
 
   assert(siz >= size_init);
   assert(a->blk->used <= a->blk->size);
-  mset(res, 0, size_init);
-  return res;
+  mset(ret, 0, size_init);
+  return ret;
 }
 static void *
-arena_cpy(struct arena *a, struct sys *sys, const void *src, int siz) {
+arena_cpy(struct arena *a, struct sys *s, const void *src, int siz) {
   assert(a);
+  assert(s);
   assert(src);
   assert(siz > 0);
 
-  void *dst = arena_alloc(a, sys, siz);
+  void *dst = arena_alloc(a, s, siz);
   mcpy(dst, src, siz);
   return dst;
 }
 static struct str
-arena_fmt(struct arena *a, struct sys *sys, const char *fmt, ...) {
+arena_fmt(struct arena *a, struct sys *s, const char *fmt, ...) {
   assert(a);
+  assert(s);
   assert(fmt);
 
   va_list args;
@@ -1386,29 +1404,29 @@ arena_fmt(struct arena *a, struct sys *sys, const char *fmt, ...) {
   int n = fmtvsn(0, 0, fmt, args);
   va_end(args);
 
-  char *res = arena_alloc(a, sys, n + 1);
+  char *ret = arena_alloc(a, s, n + 1);
   va_start(args, fmt);
-  fmtvsn(res, n + 1, fmt, args);
+  fmtvsn(ret, n + 1, fmt, args);
   va_end(args);
-  return str(res, n);
+  return str(ret, n);
 }
 static char *
-arena_cstr(struct arena *a, struct sys *sys, struct str cs) {
+arena_cstr(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
-  assert(sys);
+  assert(s);
   if (!cs.len) {
     return 0;
   }
-  char *s = arena_alloc(a, sys, cs.len + 1);
-  mcpy(s, cs.str, cs.len);
-  s[cs.len] = 0;
-  return s;
+  char *ret = arena_alloc(a, s, cs.len + 1);
+  mcpy(ret, cs.str, cs.len);
+  ret[cs.len] = 0;
+  return ret;
 }
 static struct str
-arena_str(struct arena *a, struct sys *sys, struct str cs) {
+arena_str(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
-  char *s = arena_cstr(a, sys, cs);
-  return str(s, cs.len);
+  char *ret = arena_cstr(a, s, cs);
+  return str(ret, cs.len);
 }
 static void
 arena_free_last_blk(struct arena *a, struct sys *s) {
@@ -1417,7 +1435,7 @@ arena_free_last_blk(struct arena *a, struct sys *s) {
 
   struct mem_blk *blk = a->blk;
   a->blk = blk->prv;
-  s->mem.free(blk);
+  s->mem.free(s, blk);
 }
 static void
 arena_reset(struct arena *a, struct sys *s) {
@@ -1464,12 +1482,12 @@ mem_scp_begin(struct mem_scp *s, struct arena *a) {
   return 1;
 }
 static int
-mem_scp_end(struct mem_scp *s, struct arena *a, struct sys *sys) {
+mem_scp_end(struct mem_scp *s, struct arena *a, struct sys *_sys) {
   assert(s);
   assert(a);
-  assert(sys);
+  assert(_sys);
   while (a->blk != s->blk) {
-    arena_free_last_blk(a, sys);
+    arena_free_last_blk(a, _sys);
   }
   if (a->blk) {
     assert(a->blk->used >= s->used);
@@ -1535,10 +1553,10 @@ struct dyn_hdr {
 #define dyn_del(b, i) (dyn_cnt(b) ? (b)[i] = (b)[--dyn__hdr(b)->cnt] : 0);
 #define dyn_rm(a, i) (dyn_cnt(a) ? memmove(&((a)[i]), &((a)[i+1]),(size_t)((--(dyn__hdr(a)->cnt)) - i) * sizeof((a)[0])) :0)
 #define dyn_fmt(b, s, fmt, ...) ((b) = dyn__fmt((b), (s), (fmt), __VA_ARGS__))
-#define dyn_free(b,s) ((!(b))?0:(dyn__hdr(b)->cap <= 0) ? (b) = 0 : ((s)->mem.free(dyn__hdr(b)->blk), (b) = 0))
+#define dyn_free(b,s) ((!(b))?0:(dyn__hdr(b)->cap <= 0) ? (b) = 0 : ((s)->mem.free((s),dyn__hdr(b)->blk), (b) = 0))
 #define dyn_str(b) str(dyn_begin(b), dyn_cnt(b))
 #define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
-#define dyn_asn_str(b,sys, s) dyn_asn(b,sys,(s).str,(s).len)
+#define dyn_asn_str(b,_sys,s) dyn_asn(b,_sys,(s).str,(s).len)
 #define dyn_val(b,i) assert(i < dyn_cnt(b))
 #define dyn_shfl(a,p) arr_shfl(arr(a),p)
 
@@ -1575,7 +1593,7 @@ struct dyn_hdr {
 // clang-format off
 
 static void *
-dyn__grow(void *buf, struct sys *sys, int new_len, int elem_size) {
+dyn__grow(void *buf, struct sys *s, int new_len, int elem_size) {
   struct dyn_hdr *hdr = 0;
   int cap = dyn_cap(buf);
   int new_cap = max(32, max(2 * cap + 1, new_len));
@@ -1583,13 +1601,13 @@ dyn__grow(void *buf, struct sys *sys, int new_len, int elem_size) {
   assert(new_len <= new_cap);
   if (!buf) {
     /* allocate new array */
-    struct mem_blk *blk = sys->mem.alloc(0, new_size, SYS_MEM_GROWABLE, 0);
+    struct mem_blk *blk = s->mem.alloc(s, 0, new_size, SYS_MEM_GROWABLE, 0);
     hdr = cast(struct dyn_hdr*, (void*)blk->base);
     hdr->blk = blk;
     hdr->cnt = 0;
   } else if (dyn__hdr(buf)->cap < 0) {
     /* static memory so allocate and copy to heap */
-    struct mem_blk *blk = sys->mem.alloc(0, new_size, SYS_MEM_GROWABLE, 0);
+    struct mem_blk *blk = s->mem.alloc(s, 0, new_size, SYS_MEM_GROWABLE, 0);
     hdr = cast(struct dyn_hdr*, (void*)blk->base);
     hdr->blk = blk;
     hdr->cnt = dyn_cnt(buf);
@@ -1599,7 +1617,7 @@ dyn__grow(void *buf, struct sys *sys, int new_len, int elem_size) {
     int n = dyn_cnt(buf);
     hdr = dyn__hdr(buf);
 
-    struct mem_blk *blk = sys->mem.alloc(hdr->blk, new_size, SYS_MEM_GROWABLE, 0);
+    struct mem_blk *blk = s->mem.alloc(s, hdr->blk, new_size, SYS_MEM_GROWABLE, 0);
     hdr = cast(struct dyn_hdr*, (void*)blk->base);
     hdr->blk = blk;
     hdr->cnt = n;
@@ -1618,7 +1636,7 @@ dyn__static(void *buf, int n) {
   return hdr->buf;
 }
 static char *
-dyn__fmt(char *buf, struct sys *sys, const char *fmt, ...) {
+dyn__fmt(char *buf, struct sys *s, const char *fmt, ...) {
   assert(buf);
   assert(fmt);
 
@@ -1630,7 +1648,7 @@ dyn__fmt(char *buf, struct sys *sys, const char *fmt, ...) {
   va_end(args);
 
   if (n > cap) {
-    dyn_fit(buf, sys, n + dyn_cnt(buf));
+    dyn_fit(buf, s, n + dyn_cnt(buf));
     va_start(args, fmt);
     int new_cap = dyn_cap(buf) - dyn_cnt(buf);
     n = 1 + fmtvsn(dyn_end(buf), new_cap, fmt, args);
@@ -1658,7 +1676,7 @@ path_norm(char *path) {
   }
 }
 static dyn(char)
-path_push(dyn(char) path, struct sys *sys, struct str src) {
+path_push(dyn(char) path, struct sys *s, struct str src) {
   char *p = dyn_end(path);
   while (p != path && p[-1] == '/') {
     dyn_pop(path);
@@ -1666,7 +1684,7 @@ path_push(dyn(char) path, struct sys *sys, struct str src) {
   if (src.str[0] == '/') {
     src = str_rhs(src, 1);
   }
-  dyn_fmt(path, sys, "/%.*s", strf(src));
+  dyn_fmt(path, s, "/%.*s", strf(src));
   return path;
 }
 static struct str
@@ -1726,9 +1744,9 @@ set__new_cap(int old, int req) {
   return max(nn, casti( SET_GROW_FACTOR * castf( old)));
 }
 static unsigned long long*
-set_new(int old, int req, struct sys *sys) {
+set_new(int old, int req, struct sys *s) {
   int cap = set__new_cap(old, req);
-  return dyn__grow(0, sys, cap, sizeof(unsigned long long));
+  return dyn__grow(0, s, cap, sizeof(unsigned long long));
 }
 static void
 set__swap(void *a, void *b, void *tmp, int siz) {
@@ -1782,15 +1800,15 @@ set__put(unsigned long long *set, unsigned long long key) {
   return cast(intptr_t, i);
 }
 static unsigned long long*
-set__grow(unsigned long long *old, struct sys *sys, int n) {
-  unsigned long long *set = set_new(set_cap(old), n, sys);
+set__grow(unsigned long long *old, struct sys *s, int n) {
+  unsigned long long *set = set_new(set_cap(old), n, s);
   for (int i = 0; i < set_cap(old); ++i) {
     assert(i < set_cap(old));
     if (set__key(old[i])) {
       set__put(set, old[i]);
     }
   }
-  dyn_free(old, sys);
+  dyn_free(old, s);
   return set;
 }
 static long long
@@ -1824,12 +1842,12 @@ set__del(unsigned long long* set, unsigned long long key, int cap) {
   return i;
 }
 static void
-ut_set(struct sys *sys) {
+ut_set(struct sys *s) {
   {
     unsigned long long *set = 0;
     unsigned long long h = STR_HASH8("Command");
 
-    long long at = set_put(set, sys, h);
+    long long at = set_put(set, s, h);
     assert(set != 0);
     assert(set_cnt(set) == 1);
     assert(set_cap(set) > 0);
@@ -1852,23 +1870,23 @@ ut_set(struct sys *sys) {
     has = set_fnd(set, h);
     assert(has == 0);
 
-    long long at2 = set_put(set, sys, h);
+    long long at2 = set_put(set, s, h);
     assert(set_cnt(set) == 1);
     assert(set_cap(set) > 0);
     assert(at == at2);
     assert(set[at2] == set__hash(h));
 
-    set_free(set, sys);
+    set_free(set, s);
     assert(set == 0);
     assert(set_cnt(set) == 0);
     assert(set_cap(set) == 0);
   }
   struct arena a = {0};
   {
-    unsigned long long *set = arena_set(&a, sys, 64);
+    unsigned long long *set = arena_set(&a, s, 64);
 
     unsigned long long h = STR_HASH8("Command");
-    long long at = set_put(set, sys, h);
+    long long at = set_put(set, s, h);
     assert(set != 0);
     assert(set_cnt(set) == 1);
     assert(set_cap(set) > 0);
@@ -1888,7 +1906,7 @@ ut_set(struct sys *sys) {
     assert(set_cap(set) > 0);
     assert(set[at] == (set__hash(h)|0x8000000000000000llu));
 
-    long long at2 = set_put(set, sys, h);
+    long long at2 = set_put(set, s, h);
     assert(set_cnt(set) == 1);
     assert(set_cap(set) > 0);
     assert(at == at2);
@@ -1897,12 +1915,12 @@ ut_set(struct sys *sys) {
     has = set_fnd(set, h);
     assert(has == 1);
 
-    set_free(set, sys);
+    set_free(set, s);
     assert(set == 0);
     assert(set_cnt(set) == 0);
     assert(set_cap(set) == 0);
   }
-  arena_free(&a, sys);
+  arena_free(&a, s);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1928,7 +1946,7 @@ ut_set(struct sys *sys) {
 #define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_del(t,k) tbl__del(t, k, szof(*(t)))
 #define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; mset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
-#define tbl_free(t,s) do {if(tbl_cap(t)){(s)->mem.free(dyn__hdr(t)->blk); (t) = 0;}} while(0)
+#define tbl_free(t,s) do {if(tbl_cap(t)){(s)->mem.free(s,dyn__hdr(t)->blk); (t) = 0;}} while(0)
 #define for_tbl(n,i,t) for (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
 // clang-format on
 
@@ -1994,13 +2012,12 @@ tbl__setup(void *mem, struct mem_blk *blk, int cap) {
   return hdr + 1;
 }
 static void*
-tbl__grow(void *tbl, struct sys *sys, int val_siz, int n) {
-  assert(tbl);
-  assert(sys);
+tbl__grow(void *tbl, struct sys *s, int val_siz, int n) {
+  assert(s);
 
   int cap = set__new_cap(tbl_cap(tbl), n);
   int siz = tbl__resv(val_siz, cap);
-  struct mem_blk *blk = sys->mem.alloc(0, siz, SYS_MEM_GROWABLE, 0);
+  struct mem_blk *blk = s->mem.alloc(s, 0, siz, SYS_MEM_GROWABLE, 0);
   void *new_tbl = tbl__setup(blk->base, blk, cap);
 
   unsigned long long *keys = tbl__keys(new_tbl,val_siz);
@@ -2011,12 +2028,12 @@ tbl__grow(void *tbl, struct sys *sys, int val_siz, int n) {
     }
   }
   if (tbl && dyn__hdr(tbl)->blk) {
-    sys->mem.free(dyn__hdr(tbl)->blk);
+    s->mem.free(s, dyn__hdr(tbl)->blk);
   }
   return new_tbl;
 }
 static void
-ut_tbl(struct sys *sys) {
+ut_tbl(struct sys *s) {
   static const unsigned long long h = STR_HASH8("Command");
   int val = 1337;
 
@@ -2024,7 +2041,7 @@ ut_tbl(struct sys *sys) {
   int *v = tbl_fnd(t, h);
   assert(v == 0);
 
-  tbl_put(t, sys, h, &val);
+  tbl_put(t, s, h, &val);
   assert(tbl_cnt(t) == 1);
   assert(tbl_cap(t) == 64);
 
@@ -2039,11 +2056,11 @@ ut_tbl(struct sys *sys) {
   assert(tbl_cnt(t) == 0);
   assert(tbl_cap(t) > 0);
 
-  tbl_put(t, sys, h, &val);
+  tbl_put(t, s, h, &val);
   assert(tbl_cnt(t) == 1);
   assert(tbl_cap(t) > 0);
 
-  tbl_free(t, sys);
+  tbl_free(t, s);
   assert(tbl_cnt(t) == 0);
   assert(tbl_cap(t) == 0);
 }
@@ -2060,12 +2077,12 @@ typedef void*(sort_access_f)(const void *data, void *usr);
 
 /* conversion functions from type -> sortable unsigned short/integer representation */
 typedef unsigned(*sort_conv_f)(const void *p);
-static inline unsigned sort__cast_ushort(const void *p) {return *(const unsigned short*)p;}
-static inline unsigned sort__cast_short(const void *p) {union bit_castu {short i; unsigned short u;} v = {.i = *(const short*)p}; return v.u ^ (1u << 15u);}
-static inline unsigned sort__cast_hflt(const void *p) {unsigned short u = *(const unsigned short*)p; if ((u >> 15u) == 1u) {u *= (unsigned short)-1; u ^= (1u << 15u);} return u ^ (1u << 15u);}
-static inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
-static inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; unsigned u;} v = {.i = *(const int*)p}; return v.u ^ (1u << 31u);}
-static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);} return v.u ^ (1u << 31u);}
+static force_inline unsigned sort__cast_ushort(const void *p) {return *(const unsigned short*)p;}
+static force_inline unsigned sort__cast_short(const void *p) {union bit_castu {short i; unsigned short u;} v = {.i = *(const short*)p}; return v.u ^ (1u << 15u);}
+static force_inline unsigned sort__cast_hflt(const void *p) {unsigned short u = *(const unsigned short*)p; if ((u >> 15u) == 1u) {u *= (unsigned short)-1; u ^= (1u << 15u);} return u ^ (1u << 15u);}
+static force_inline unsigned sort__cast_uint(const void *p) {return *(const unsigned*)p;}
+static force_inline unsigned sort__cast_int(const void *p) {union bit_castu {int i; unsigned u;} v = {.i = *(const int*)p}; return v.u ^ (1u << 31u);}
+static force_inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; unsigned u;} v = {.f = *(const float*)p}; if ((v.u >> 31u) == 1u) {v.u *= (unsigned)-1; v.u ^= (1u << 31u);} return v.u ^ (1u << 31u);}
 
 #define sort_short(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_short)
 #define sort_ushort(out,a,siz,n,off) sort_radix16(out,a,siz,n,off,0,0,sort__cast_ushort)
@@ -2083,7 +2100,7 @@ static inline unsigned sort__cast_flt(const void *p) {union bit_castu {float f; 
 #define sort_flts(out,a,n) sort_flt(out,a,szof(float),n,0)
 // clang-format on
 
-static void
+static force_inline void
 sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
@@ -2125,7 +2142,7 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
     }
   }
 }
-static void
+static force_inline void
 sort_radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
@@ -2133,7 +2150,7 @@ sort_radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   seq_rngu(out, rngn(n));
   sort__radix16(out, a, siz, n, off, usr, access, conv);
 }
-static void
+static force_inline void
 sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
@@ -2179,7 +2196,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
     }
   }
 }
-static void
+static force_inline void
 sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
              void *usr, sort_access_f access, sort_conv_f conv) {
   assert(a);
@@ -2238,8 +2255,8 @@ sort__radix_str(int *o, void *a, int n, int siz, int off,
   for (int i = 1; i < 256; ++i) {
     if (c[i + 1] == 0) continue;
     lo = bsum, hi = bsum + c[i+1]-1;
-    int *res = sort__radix_str(o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
-    if (res != r) tmp = r, r = r2, r2 = tmp;
+    int *ret = sort__radix_str(o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
+    if (ret != r) tmp = r, r = r2, r2 = tmp;
     bsum += c[i+1];
   }
   return r;
@@ -2323,5 +2340,4 @@ img_new(struct arena *a, struct sys *s, int w, int h) {
   unsigned *img = arena_alloc(a, s, szof(unsigned) * (w * h + 2));
   return img_mk(img, w, h);
 }
-
 

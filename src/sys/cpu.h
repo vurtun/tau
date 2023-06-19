@@ -29,7 +29,10 @@
 /* compiler specific intrinisics */
 #ifdef _MSC_VER
 
-#define alignto(x) __declspec(align(x))
+define alignto(x) __declspec(align(x))
+#define cpu_bit_cnt(u) __popcnt(u)
+#define cpu_bit_cnt64(u) __popcnt64(u)
+#define cpu_bit_ffs64(u) _BitScanForward64
 
 #define lfence() _ReadBarrier()
 #define sfence() _WriteBarrier()
@@ -44,6 +47,9 @@
 #else
 
 #define alignto(x) __attribute__((aligned(x)))
+#define cpu_bit_cnt(u) __builtin_popcount(u)
+#define cpu_bit_cnt64(u) __builtin_popcountll(u)
+#define cpu_bit_ffs64(u) __builtin_ctzll(u)
 
 #define lfence() asm volatile("" ::: "memory")
 #define sfence() asm volatile("" ::: "memory")
@@ -371,18 +377,6 @@ hflt(float in) {
 
 static inline const char*
 cpu_str_chr(const char *s, int n, int chr) {
-  static const char unsigned hi_msk[32] = {
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-  };
-  static const char unsigned uflw_msk[32] = {
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-  };
   static const char unsigned ovr_msk[64] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
@@ -392,18 +386,12 @@ cpu_str_chr(const char *s, int n, int chr) {
   };
   const char *e = s + n;
   __m256i m = _mm256_set1_epi8(chr & 0xff);
-  __m256i hi = _mm256_loadu_si256((const __m256i*)(const void*)hi_msk);
-  __m256i uf = _mm256_loadu_si256((const __m256i*)(const void*)uflw_msk);
   for (; s < e; s += 32) {
     int r = (int)(e - s); r = r > 32 ? 32 : r;
     __m256i o = _mm256_loadu_si256((const __m256i*)(ovr_msk + 32 - r));
     __m256i d = _mm256_loadu_si256((const __m256i*)(const void*)s);
     __m256i v = _mm256_and_si128(d, o);
-    __m256i c = _mm256_and_si128(~v, hi);
-    __m256i x = _mm256_xor_si128(v, m);
-    __m256i u = _mm256_sub_epi8(x, uf);
-    __m256i f = _mm256_and_si128(u, c);
-    unsigned msk = _mm256_movemask_epi8(f);
+    unsigned msk = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v,m));
     if (msk) {
       return s + (31 - __builtin_clz(msk));
     }
@@ -438,14 +426,6 @@ cpu_str_fnd(const char *hay, int hay_len, const char *needle, int needle_len) {
 
 static inline const char*
 cpu_str_chr(const char *s, int n, int chr) {
-  static const char unsigned hi_msk[16] = {
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-  };
-  static const char unsigned uflw_msk[16] = {
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-  };
   static const char unsigned ovr_msk[32] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
@@ -453,18 +433,12 @@ cpu_str_chr(const char *s, int n, int chr) {
   };
   const char *e = s + n;
   __m128i m = _mm_set1_epi8(chr & 0xff);
-  __m128i hi = _mm_loadu_si128((const __m128i *)(const void*)hi_msk);
-  __m128i uf = _mm_loadu_si128((const __m128i *)(const void*)uflw_msk);
   for (; s < e; s += 16) {
     int r = (int)(e - s); r = r > 16 ? 16 : r;
     __m128i o = _mm_loadu_si128((const __m128i *)(ovr_msk + 16 - r));
     __m128i d = _mm_loadu_si128((const __m128i *)(const void*)s);
     __m128i v = _mm_and_si128(d, o);
-    __m128i c = _mm_and_si128(~v, hi);
-    __m128i x = _mm_xor_si128(v, m);
-    __m128i u = _mm_sub_epi8(x, uf);
-    __m128i f = _mm_and_si128(u, c);
-    unsigned msk = _mm_movemask_epi8(f);
+    unsigned msk = _mm_movemask_epi8(_mm_cmpeq_epi8(v,m));
     if (msk) {
       return s + (31 - __builtin_clz(msk));
     }
@@ -472,24 +446,24 @@ cpu_str_chr(const char *s, int n, int chr) {
   return e;
 }
 static inline int
-cpu_str_fnd(const char *hay, int hay_len, const char *needle, int needle_len) {
+cpu_str_fnd(const char *h, int hlen, const char *n, int nlen) {
   #define CPU_STR_FND_LIMIT 16
   static const char unsigned ovr_msk[32] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
   };
-  __m128i ndl = _mm_loadu_si128((const __m128i *)(const void*)(needle);
-  __m128i ovr = _mm_loadu_si128((const __m128i *)(const void*)(ovr_msk + 16 - (needle_len & 15));
-  for (int i = 0; i + needle_len <= hay_len; i++) {
-    __m128i txt = _mm_loadu_si128((const __m128i *)(const void*)(hay + i);
+  __m128i ndl = _mm_loadu_si128((const __m128i *)(const void*)(n);
+  __m128i ovr = _mm_loadu_si128((const __m128i *)(const void*)(ovr_msk + 16 - (nlen & 15));
+  for (int i = 0; i + nlen <= hlen; i++) {
+    __m128i txt = _mm_loadu_si128((const __m128i *)(const void*)(h + i);
     __m128i ceq = _mm_cmpeq_epi8(ndl,txt);
     __m128i msk = _mm_or_si128(ceq,ovr);
     if (_mm_test_all_ones(msk)) {
       return i;
     }
   }
-  return hay_len;
+  return hlen;
 }
 
 #endif
@@ -653,24 +627,16 @@ static inline int
 chr16_tst_all_ones(uint8x16_t a) {
   unsigned long long lo = vgetq_lane_u64(vreinterpretq_u64_u8(a), 0);
   unsigned long long hi = vgetq_lane_u64(vreinterpretq_u64_u8(a), 1);
-  return (lo & hi) == (unsigned long long)-1;
+  return (lo&hi) == (unsigned long long)-1;
 }
 static inline int
 chr16_tst_all_zero(uint8x16_t a) {
   unsigned long long lo = vgetq_lane_u64(vreinterpretq_u64_u8(a), 0);
   unsigned long long hi = vgetq_lane_u64(vreinterpretq_u64_u8(a), 1);
-  return (lo | hi) == 0u;
+  return (lo|hi) == 0u;
 }
 static inline const char*
 cpu_str_chr(const char *s, int n, int chr) {
-  static const char unsigned hi_msk[16] = {
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-  };
-  static const char unsigned uflw_msk[16] = {
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-  };
   static const char unsigned ovr_msk[32] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
@@ -678,23 +644,20 @@ cpu_str_chr(const char *s, int n, int chr) {
   };
   const char *e = s + n;
   uint8x16_t m = vdupq_n_u8(chr & 0xff);
-  uint8x16_t hi = vld1q_u8(hi_msk);
-  uint8x16_t uf = vld1q_u8(uflw_msk);
   for (; s < e; s += 16) {
     int r = (int)(e - s); r = r > 16 ? 16 : r;
     uint8x16_t o = vld1q_u8(ovr_msk + 16 - r);
     uint8x16_t d = vld1q_u8((const unsigned char*)s);
     uint8x16_t v = vandq_u8(d, o);
-    uint8x16_t c = vandq_u8(~v, hi);
-    uint8x16_t x = veorq_u8(v, m);
-    uint8x16_t u = vsubq_u8(x, uf);
-    uint8x16_t f = vandq_u8(u, c);
-    unsigned long long vlo = vgetq_lane_u64(vreinterpretq_u64_u8(f), 0);
-    unsigned long long vhi = vgetq_lane_u64(vreinterpretq_u64_u8(f), 1);
+    uint8x16_t c = vceqq_u8(v, m);
+    uint64x2_t p = vreinterpretq_u64_u8(c);
+    uint64_t vlo = vgetq_lane_u64(p, 0);
     if (vlo) {
-      return s + ((__builtin_ctzll(vlo)) >> 3);
-    } else if (vhi) {
-      return s + 8 + ((__builtin_ctzll(vhi)) >> 3);
+      return s + ((cpu_bit_ffs64(vlo)) >> 3);
+    }
+    uint64_t vhi = vgetq_lane_u64(p, 1);
+    if (vhi) {
+      return s + 8 + ((cpu_bit_ffs64(vhi)) >> 3);
     }
   }
   return e;

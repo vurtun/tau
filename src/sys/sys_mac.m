@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE
+
 /* std */
 #include <assert.h>
 #include <stddef.h>
@@ -23,61 +25,34 @@
 #include <unistd.h>
 #include <time.h>
 #include <dlfcn.h>
+#include <ucontext.h>
 
 #import <Cocoa/Cocoa.h>
-#import <MetalKit/MetalKit.h>
 
 /* usr */
 #include "cpu.h"
 #include "../lib/fmt.h"
 #include "../lib/fmt.c"
 #include "../lib/std.h"
-#include "ren.h"
+#include "gfx.h"
 #include "sys.h"
 #include "../lib/std.c"
 #include "../lib/math.c"
-#include "../app.h"
-#include "ren_cpu.c"
+#include "gfx_mtl.c"
 
-@interface sys__mac_app_delegate : NSObject<NSApplicationDelegate>
-@end
-@interface sys__mac_window : NSWindow
-@end
 @interface sys__mac_window_delegate : NSObject<NSWindowDelegate>
 @end
 @interface sys__mac_view : MTKView
+@property (nonatomic, assign) struct sys *sys;
 @end
 @interface sys__mac_view_delegate : NSViewController<MTKViewDelegate>
+@property (nonatomic, assign) struct sys *sys;
 @end
 
 struct sys_mem_blk {
   struct mem_blk blk;
   struct lst_elm hook;
   unsigned long long tags;
-};
-struct sys_app_sym_table {
-  void (*dlEntry)(struct sys *s);
-  void (*dlRegister)(struct sys *s);
-};
-struct sys_ren_sym_table {
-  void (*dlInit)(struct sys *s);
-  void (*dlBegin)(struct sys *s);
-  void (*dlEnd)(struct sys *s);
-  void (*dlShutdown)(struct sys *s);
-};
-struct sys_mac_vertex {
-  float x, y, z, w;
-};
-#define SYS_MAX_TEX_BUF 2
-struct sys_mac_metal {
-  id<MTLDevice> dev;
-  id<MTLLibrary> lib;
-  dispatch_semaphore_t sem;
-  id<MTLCommandQueue> cmd_que;
-  id<MTLRenderPipelineState> pipe_state;
-  id<MTLTexture> tex[SYS_MAX_TEX_BUF];
-  int cur_buf;
-  struct sys_mac_vertex verts[4];
 };
 struct sys_mac {
   int quit;
@@ -89,26 +64,28 @@ struct sys_mac {
   struct arena tmp;
   enum sys_cur_style cursor;
   struct str exe_path;
-
-  struct sys_ren_sym_table ren;
-  struct sys_app_sym_table app;
+  struct gfx_mtl mtl;
 
   NSWindow* win;
-  NSTrackingArea *track_area;
-  sys__mac_app_delegate *app_dlg;
   sys__mac_window_delegate *win_dlg;
   sys__mac_view *view;
   sys__mac_view_delegate *view_dlg;
-  struct sys_mac_metal metal;
   unsigned long long tooltip;
 
-  float dpi_scale[2];
-  int win_w, win_h, buf_stride;
-  unsigned *backbuf;
-};
-static struct sys_mac _mac;
-static struct sys _sys;
+  char* run_loop_fiber_stack;
+  ucontext_t run_loop_fiber;
+  ucontext_t main_fiber;
 
+  float dpi_scale[2];
+  int win_w, win_h;
+};
+
+static void sys_mac_prep(struct sys *s);
+
+/* ---------------------------------------------------------------------------
+ *                                Util
+ * ---------------------------------------------------------------------------
+ */
 #if __has_feature(objc_arc)
 #define SYS__OBJ_REL(obj) { obj = nil; }
 #else
@@ -125,11 +102,29 @@ xpanic(const char *fmt, ...) {
   va_end(args);
   exit(EXIT_FAILURE);
 }
+static unsigned
+sys__mac_col(NSColor *col) {
+  @autoreleasepool {
+    NSColor *ref = [col colorUsingColorSpace: [NSColorSpace deviceRGBColorSpace]];
+    unsigned char r = castb([ref redComponent] * 255.0);
+    unsigned char g = castb([ref greenComponent] * 255.0);
+    unsigned char b = castb([ref blueComponent] * 255.0);
+    unsigned char a = castb([ref alphaComponent] * 255.0);
+    return col_rgba(r,g,b,a);
+  }
+}
+static unsigned long long
+sys_mac_timestamp(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  unsigned long long sec = castull(ts.tv_sec) * 1000000llu;
+  unsigned long long usec = castull(ts.tv_nsec) / 1000;
+  unsigned long long ret = sec + usec;
+  return ret;
+}
 
 /* ---------------------------------------------------------------------------
- *
  *                                  Random
- *
  * ---------------------------------------------------------------------------
  */
 static uintptr_t
@@ -179,9 +174,7 @@ sys__rnd_gen128(uintptr_t hdl, void *dst) {
 }
 
 /* ---------------------------------------------------------------------------
- *
  *                                File
- *
  * ---------------------------------------------------------------------------
  */
 static void
@@ -198,14 +191,15 @@ sys__file_perm(char *mod, mode_t perm) {
   mod[9] = 0;
 }
 static int
-sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
+sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
+              struct arena *tmp) {
   assert(info);
   assert(tmp);
 
   int res = 0;
   struct stat stats;
-  scp_mem(tmp, &_sys) {
-    char *fullpath = arena_cstr(tmp, &_sys, path);
+  scp_mem(tmp, s) {
+    char *fullpath = arena_cstr(tmp, s, path);
     res = stat(fullpath, &stats);
   }
   if (res < 0) {
@@ -230,14 +224,16 @@ sys_file_info(struct sys_file_info *info, struct str path, struct arena *tmp) {
 }
 
 /* ---------------------------------------------------------------------------
- *
  *                                  Directory
- *
  * ---------------------------------------------------------------------------
  */
 static void
-sys__dir_free(struct sys_dir_iter *it, struct arena *a) {
-  mem_scp_end(&it->scp_base, a, &_sys);
+sys__dir_free(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
+  assert(s);
+  assert(a);
+  assert(it);
+
+  mem_scp_end(&it->scp_base, a, s);
   if (!it->valid) return;
   it->valid = 0;
   it->err = 0;
@@ -250,43 +246,54 @@ sys__dir_excl(struct sys_dir_iter *it) {
   return it->valid && (is_base || is_prev);
 }
 static int
-sys_dir_exists(struct str path, struct arena *tmp) {
+sys_dir_exists(struct sys *s, struct str path, struct arena *tmp) {
+  assert(s);
+  assert(tmp);
+
   struct mem_scp scp;
   mem_scp_begin(&scp, tmp);
 
   struct stat stats;
-  char *fullpath = arena_cstr(tmp, &_sys, path);
+  char *fullpath = arena_cstr(tmp, s, path);
   int res = stat(fullpath, &stats);
-  mem_scp_end(&scp, tmp, &_sys);
+  mem_scp_end(&scp, tmp, s);
   if (res < 0 || !S_ISDIR(stats.st_mode)) {
     return 0;
   }
   return 1;
 }
 static void
-sys_dir_nxt(struct sys_dir_iter *it, struct arena *a) {
+sys_dir_nxt(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
+  assert(s);
+  assert(a);
+  assert(it);
   if (!it->valid) {
     return;
   }
-  mem_scp_end(&it->scp, a, &_sys);
+  mem_scp_end(&it->scp, a, s);
   mem_scp_begin(&it->scp, a);
   do {
     struct dirent *ent = readdir(it->handle);
     if (!ent) {
-      mem_scp_end(&it->scp, a, &_sys);
-      sys__dir_free(it, a);
+      mem_scp_end(&it->scp, a, s);
+      sys__dir_free(s, it, a);
       return;
     }
-    it->fullpath = arena_fmt(a, &_sys, "%.*s/%s", strf(it->base), ent->d_name);
+    it->fullpath = arena_fmt(a, s, "%.*s/%s", strf(it->base), ent->d_name);
     it->name = str0(ent->d_name);
     it->isdir = ent->d_type & DT_DIR;
   } while (sys__dir_excl(it));
 }
 static void
-sys_dir_lst(struct sys_dir_iter *it, struct arena *a, struct str path) {
-  memset(it, 0, sizeof(*it));
+sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct arena *a,
+            struct str path) {
+  assert(s);
+  assert(a);
+  assert(it);
+
+  mset(it, 0, szof(*it));
   mem_scp_begin(&it->scp_base, a);
-  it->base = arena_str(a, &_sys, path);
+  it->base = arena_str(a, s, path);
 
   DIR *dir = opendir(it->base.str);
   if (!dir) {
@@ -297,266 +304,253 @@ sys_dir_lst(struct sys_dir_iter *it, struct arena *a, struct str path) {
   it->valid = 1;
 
   mem_scp_begin(&it->scp, a);
-  sys_dir_nxt(it, a);
+  sys_dir_nxt(s, it, a);
 }
 
 /* ---------------------------------------------------------------------------
- *
  *                              Memory
- *
  * ---------------------------------------------------------------------------
  */
 static struct mem_blk*
-sys_mac_mem_alloc(struct mem_blk* opt_old, int siz, unsigned flags,
-                  unsigned long long tags) {
+sys_mac_mem_alloc(struct sys *s, struct mem_blk* opt_old, int siz,
+                  unsigned flags, unsigned long long tags) {
+  assert(s);
+  assert(s->platform);
   compiler_assert(szof(struct sys_mem_blk) == 64);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  int page_size = casti(s->mem.page_siz);
   int total = siz + szof(struct sys_mem_blk);
   int base_off = szof(struct sys_mem_blk);
+  int prot_off = 0;
 
+  if(flags & SYS_MEM_CHK_UFLW) {
+    total = siz + 2 * page_size;
+    base_off =  2 * page_size;
+    prot_off = page_size;
+  } else if(flags & SYS_MEM_CHK_OFLW) {
+    int size_rnd = align_up(siz, page_size);
+    total = size_rnd + 2*page_size;
+    base_off = page_size + size_rnd - siz;
+    prot_off = page_size + size_rnd;
+  }
   struct sys_mem_blk *blk = 0;
-  size_t mapsiz = castsz(total);
   if (flags & SYS_MEM_GROWABLE) {
     if (opt_old){
       assert(opt_old->flags == flags);
-      struct sys_mem_blk *sys_blk;
+      assert(total > opt_old->size);
+
+      struct sys_mem_blk *sys_blk = 0;
       sys_blk = containerof(opt_old, struct sys_mem_blk, blk);
 
-      lck_acq(&_mac.mem_lck);
+      lck_acq(&os->mem_lck);
       lst_del(&sys_blk->hook);
-      lck_rel(&_mac.mem_lck);
+      lck_rel(&os->mem_lck);
     }
-    blk = realloc(opt_old, (size_t)total);
-    if (!opt_old) {
-      memset(blk, 0, castsz(total));
+    if (flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
+      size_t msiz = castsz(total);
+      blk = mmap(0, msiz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      blk->blk.base = (unsigned char*)blk + base_off;
+      if(flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
+        int e = mprotect((unsigned char*)blk + prot_off, castsz(page_size), PROT_NONE);
+        assert(e == 0);
+      }
+      mcpy(blk->blk.base, opt_old->base, opt_old->size - szof(struct sys_mem_blk));
+      munmap(opt_old, castsz(opt_old->size));
+    } else {
+      blk = realloc(opt_old, castsz(total));
+      if (!opt_old) {
+        mset(blk, 0, total);
+      }
+      blk->blk.base = (unsigned char*)blk + base_off;
     }
-    blk->blk.base = (unsigned char*)blk + base_off;
   } else {
+    size_t mapsiz = castsz(total);
     blk = mmap(0, mapsiz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     blk->blk.base = (unsigned char*)blk + base_off;
+    if(flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
+      int e = mprotect((unsigned char*)blk + prot_off, castsz(page_size), PROT_NONE);
+      assert(e == 0);
+    }
   }
   lst_init(&blk->hook);
 
-  blk->blk.size = siz;
+  blk->blk.size = total;
   blk->blk.flags = flags;
   blk->tags = tags;
 
-  lck_acq(&_mac.mem_lck);
-  lst_add(&_mac.mem_blks, &blk->hook);
-  lck_rel(&_mac.mem_lck);
+  lck_acq(&os->mem_lck);
+  lst_add(&os->mem_blks, &blk->hook);
+  lck_rel(&os->mem_lck);
   return &blk->blk;
 }
 static void
-sys_mac_mem_free(struct mem_blk *mem_blk) {
-  struct sys_mem_blk *blk;
-  blk = containerof(mem_blk, struct sys_mem_blk, blk);
-  int total = blk->blk.size + szof(struct sys_mem_blk);
+sys_mac_mem_free(struct sys *s, struct mem_blk *mem_blk) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
 
-  lck_acq(&_mac.mem_lck);
+  struct sys_mem_blk *blk = containerof(mem_blk, struct sys_mem_blk, blk);
+  lck_acq(&os->mem_lck);
   lst_del(&blk->hook);
-  lck_rel(&_mac.mem_lck);
+  lck_rel(&os->mem_lck);
 
-  if (mem_blk->flags & SYS_MEM_GROWABLE) {
+  if (mem_blk->flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
+    munmap(blk, castsz(mem_blk->size));
+  } else if (mem_blk->flags & SYS_MEM_GROWABLE) {
     free(blk);
   } else {
-    size_t unmapsiz = castsz(total);
-    munmap(blk, unmapsiz);
+    munmap(blk, castsz(mem_blk->size));
   }
 }
 static void
-sys_mac_mem_stats(struct sys_mem_stats *stats) {
-  memset(stats, 0, sizeof(*stats));
-  lck_acq(&_mac.mem_lck);
+sys_mac_mem_stats(struct sys *s, struct sys_mem_stats *stats) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  mset(stats, 0, szof(*stats));
+  lck_acq(&os->mem_lck);
   {
     struct lst_elm *elm = 0;
-    for_lst(elm, &_mac.mem_blks) {
-      struct sys_mem_blk *blk;
-      blk = lst_get(elm, struct sys_mem_blk, hook);
+    for_lst(elm, &os->mem_blks) {
+      struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
       stats->total += blk->blk.size;
       stats->used += blk->blk.used;
     }
   }
-  lck_rel(&_mac.mem_lck);
+  lck_rel(&os->mem_lck);
 }
 static void
-sys_mac_mem_free_tag(unsigned long long tag) {
-  lck_acq(&_mac.mem_lck);
+sys_mac_mem_free_tag(struct sys *s, unsigned long long tag) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  lck_acq(&os->mem_lck);
   struct lst_elm *elm = 0;
-  for_lst(elm, &_mac.mem_blks) {
-    struct sys_mem_blk *blk = 0;
-    blk = lst_get(elm, struct sys_mem_blk, hook);
+  for_lst(elm, &os->mem_blks) {
+    struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
     if (blk->tags == tag) {
-      sys_mac_mem_free(&blk->blk);
+      sys_mac_mem_free(s, &blk->blk);
     }
   }
-  lck_rel(&_mac.mem_lck);
+  lck_rel(&os->mem_lck);
 }
 
 /* ---------------------------------------------------------------------------
- *
- *                                Clipboard
- *
+ *                                  Log
  * ---------------------------------------------------------------------------
  */
 static void
-sys_mac_clipboard_set(struct str s, struct arena *a) {
-  scp_mem(a, &_sys) {
-    struct str tmp = arena_str(a, &_sys, s);
-    @autoreleasepool {
-      NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-      [pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
-      [pasteboard setString:@(tmp.str) forType:NSPasteboardTypeString];
-    }
-  }
+sys__mac_log(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
+  fprintf(stdout, "%s", buf);
 }
-static struct str
-sys_mac_clipboard_get(struct arena *a) {
-  struct str data = str_nil;
-  @autoreleasepool {
-    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-    if (![[pasteboard types] containsObject:NSPasteboardTypeString]) {
-      return str_nil;
-    }
-    NSString* str = [pasteboard stringForType:NSPasteboardTypeString];
-    if (!str) {
-      return str_nil;
-    }
-    struct str cs = str0([str UTF8String]);
-    data = arena_str(a, &_sys, cs);
-  }
-  return data;
+static void
+sys__mac_warn(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
+
+  fprintf(stdout, "\033[33m");
+  fprintf(stdout, "%s", buf);
+  fprintf(stdout, "\033[0m");
 }
+static void
+sys__mac_err(const char *fmt, ...) {
+  char buf[2*1024];
+  va_list args;
+  va_start(args, fmt);
+  fmtvsn(buf, szof(buf), fmt, args);
+  va_end(args);
+
+  fprintf(stdout, "\033[31m");
+  fprintf(stdout, "%s", buf);
+  fprintf(stdout, "\033[0m");
+}
+
 /* ---------------------------------------------------------------------------
- *
- *                                Metal
- *
+ *                            Delegates
  * ---------------------------------------------------------------------------
  */
-#define kShader(inc, src) @inc#src
-static NSString *sys__mac_shdr_src = kShader(
-  "#include <metal_stdlib>\n",
-  using namespace metal;
-  struct VertexOutput {
-    float4 pos [[position]];
-    float2 texcoord;
-  };
-  struct Vertex {
-    float4 position [[position]];
-  };
-  vertex VertexOutput
-  vertFunc(unsigned int vID[[vertex_id]], const device Vertex *pos [[ buffer(0) ]]) {
-    VertexOutput out;
-    out.pos = pos[vID].position;
-    out.texcoord.x = (float) (vID / 2);
-    out.texcoord.y = 1.0 - (float) (vID % 2);
-    return out;
-  }
-  fragment float4
-  fragFunc(VertexOutput in [[stage_in]], texture2d<half> col_tex [[texture(0)]]) {
-    constexpr sampler tex_sampler(mag_filter::nearest, min_filter::nearest);
-    const half4 color = col_tex.sample(tex_sampler, in.texcoord);
-    return float4(color);
-  };
-);
-static int
-sys__mac_metal_init(struct sys_mac_metal *mtl, int w, int h) {
-  NSError *err = 0x0;
-  mtl->dev = MTLCreateSystemDefaultDevice();
-  if (!mtl->dev) {
-    NSLog(@"Metal is not supported on this device");
-    return -1;
-  }
-  mtl->sem = dispatch_semaphore_create(SYS_MAX_TEX_BUF);
-  mtl->cmd_que = [mtl->dev newCommandQueue];
-  mtl->lib = [mtl->dev newLibraryWithSource:sys__mac_shdr_src
-                       options:[[MTLCompileOptions alloc] init]
-                       error:&err];
-
-  if (err || !mtl->lib) {
-    NSLog(@"Unable to create shaders %@", err);
-    return -1;
-  }
-  id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"vertFunc"];
-  if (!vshdr_f) {
-    NSLog(@"Unable to get vertFunc!\n");
-    return -1;
-  }
-  id<MTLFunction> fshdr_f = [mtl->lib newFunctionWithName:@"fragFunc"];
-  if (!fshdr_f) {
-    NSLog(@"Unable to get fragFunc!\n");
-    return -1;
-  }
-  MTLRenderPipelineDescriptor *psd = [[MTLRenderPipelineDescriptor alloc] init];
-  psd.label = @"tau_pipeline";
-  psd.vertexFunction = vshdr_f;
-  psd.fragmentFunction = fshdr_f;
-  psd.colorAttachments[0].pixelFormat = 80;
-
-  mtl->pipe_state = [mtl->dev newRenderPipelineStateWithDescriptor:psd error:&err];
-  if (!mtl->pipe_state) {
-    NSLog(@"Failed to created pipeline state, error %@", err);
-    return -1;
-  }
-  static struct sys_mac_vertex s_vertices[4] = {
-    {-1.0, -1.0, 0, 1}, {-1.0,  1.0, 0, 1},
-    { 1.0, -1.0, 0, 1}, { 1.0,  1.0, 0, 1},
-  };
-  memcpy(mtl->verts, s_vertices, sizeof(s_vertices));
-
-  MTLTextureDescriptor *td = [MTLTextureDescriptor
-    texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-    width:(NSUInteger)w height:(NSUInteger)h mipmapped:false];
-  for (size_t i = 0; i < SYS_MAX_TEX_BUF; ++i) {
-    mtl->tex[i] = [mtl->dev newTextureWithDescriptor:td];
-  }
-  return 0;
-}
 static void
-sys__mac_metal_resize(struct sys_mac_metal *mtl, int w, int h) {
-  MTLTextureDescriptor *td = [MTLTextureDescriptor
-    texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-    width:(NSUInteger)w height:(NSUInteger)h mipmapped:false];
-  for (size_t i = 0; i < SYS_MAX_TEX_BUF; ++i) {
-    [mtl->tex[i] release];
-    mtl->tex[i] = [mtl->dev newTextureWithDescriptor:td];
+sys_mac__resize(struct sys *s) {
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  NSRect bounds = [os->view bounds];
+  int w = max(1, casti(bounds.size.width));
+  int h = max(1, casti(bounds.size.height));
+  if (os->win_w == w && os->win_h == h) {
+    return;
   }
+  int fw = math_roundi(castf(w) * s->dpi_scale);
+  int fh = math_roundi(castf(h) * s->dpi_scale);
+
+  os->win_w = fw;
+  os->win_h = fh;
+  s->gfx.resize(s, fw, fh);
 }
-@implementation sys__mac_view_delegate
+@implementation sys__mac_window_delegate {
+  struct sys *sys;
+}
+-(instancetype)initWithSys: (struct sys*)sys_ {
+   sys = sys_;
+   return self;
+}
+- (BOOL)windowShouldClose:(id)sender {
+  return YES;
+}
+- (void)windowDidResize:(NSNotification*)notification {
+  sys_mac__resize(sys);
+}
+- (void)windowDidMiniaturize:(NSNotification*)notification {}
+- (void)windowDidDeminiaturize:(NSNotification*)notification {}
+- (void)windowDidEnterFullScreen:(NSNotification*)notification {}
+- (void)windowDidExitFullScreen:(NSNotification*)notification {}
+- (void)windowWillClose:(NSNotification *)notification {
+  sys->running = 0;
+  sys->quit = 1;
+}
+@end
+
+@implementation sys__mac_view
+{
+  NSTimer *nstimer;
+}
+- (BOOL)acceptsFirstResponder { return YES; }
+- (void)keyDown:(NSEvent *)theEvent {}
+- (void) interruptMainLoop {
+  assert(_sys->platform);
+  struct sys_mac *os = cast(struct sys_mac*, _sys->platform);
+  swapcontext(&os->run_loop_fiber, &os->main_fiber);
+}
+- (void)viewWillStartLiveResize {
+  assert(!nstimer);
+  nstimer = [NSTimer timerWithTimeInterval: 0.001
+            target: self
+            selector: @selector(interruptMainLoop)
+            userInfo: nil
+            repeats: YES];
+  [[NSRunLoop currentRunLoop] addTimer: nstimer forMode: NSRunLoopCommonModes];
+  sys_mac_prep(_sys);
+}
+- (void)viewDidEndLiveResize {
+  [nstimer invalidate];
+  nstimer = nil;
+}
+@end
+
+@implementation sys__mac_view_delegate {}
 - (void)drawInMTKView:(nonnull MTKView *) view {
-  struct sys_mac_metal *mtl = &_mac.metal;
-  dispatch_semaphore_wait(mtl->sem, DISPATCH_TIME_FOREVER);
-  mtl->cur_buf = (mtl->cur_buf + 1) % SYS_MAX_TEX_BUF;
-
-  id<MTLCommandBuffer> cmd_buf = [mtl->cmd_que commandBuffer];
-  cmd_buf.label = @"tau_cmd_buf";
-
-  __block dispatch_semaphore_t blk_sem = mtl->sem;
-  [cmd_buf addCompletedHandler:^(id<MTLCommandBuffer> buf) {
-    unused(buf);
-    dispatch_semaphore_signal(blk_sem);
-  }];
-  /* copy bytes from our data object into texture */
-  MTLRegion region = {{0,0,0}, {(NSUInteger)_mac.win_w, (NSUInteger)_mac.win_h, 1}};
-  [mtl->tex[mtl->cur_buf] replaceRegion:region mipmapLevel:0
-    withBytes:_mac.backbuf bytesPerRow:(NSUInteger)_mac.buf_stride];
-  // delay getting the currentRenderPassDescriptor until absolutely needed.
-  // This avoids holding onto the drawable and blocking the display pipeline any
-  // longer than necessary
-  MTLRenderPassDescriptor* rpd = view.currentRenderPassDescriptor;
-  if (rpd != nil) {
-    rpd.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-    // create a render command encoder so we can render into something
-    id<MTLRenderCommandEncoder> enc = [cmd_buf renderCommandEncoderWithDescriptor:rpd];
-    enc.label = @"tau_command_encoder";
-    // set render command encoder state
-    [enc setRenderPipelineState:mtl->pipe_state];
-    [enc setVertexBytes:mtl->verts length:sizeof(mtl->verts) atIndex:0];
-    [enc setFragmentTexture:mtl->tex[mtl->cur_buf] atIndex:0];
-    [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
-    [enc endEncoding];
-
-    [cmd_buf presentDrawable:view.currentDrawable];
-  }
-  [cmd_buf commit]; // finalize rendering here & push the command buffer to the GPU
+  _sys->drw = 1;
 }
 - (void) mtkView:(nonnull MTKView *)view drawableSizeWillChange:(CGSize)size {
   unused(view);
@@ -564,373 +558,38 @@ sys__mac_metal_resize(struct sys_mac_metal *mtl, int w, int h) {
 }
 @end
 
+
 /* ---------------------------------------------------------------------------
- *
- *                                APP
- *
+ *                            Input
  * ---------------------------------------------------------------------------
  */
-static void
-sys__mac_free(void) {
-  SYS__OBJ_REL(_mac.track_area);
-  SYS__OBJ_REL(_mac.app_dlg);
-  SYS__OBJ_REL(_mac.win_dlg);
-  SYS__OBJ_REL(_mac.win);
-  SYS__OBJ_REL(_mac.view);
-}
-static void
-sys__mac_on_frame(void) {
-  _sys.txt_mod = !!_sys.txt_len;
-  _sys.win.w = _mac.win_w;
-  _sys.win.h = _mac.win_h;
-  if (_mac.ren.dlBegin) {
-    _mac.ren.dlBegin(&_sys);
-  }
-  if (_mac.app.dlEntry)  {
-    _mac.app.dlEntry(&_sys);
-  }
-  if (_mac.ren.dlEnd) {
-    dyn_clr(_sys.ren_target.dirty_rects);
-    _sys.ren_target.w = _mac.win_w;
-    _sys.ren_target.h = _mac.win_h;
-    _sys.ren_target.pixels = _mac.backbuf;
-    _mac.ren.dlEnd(&_sys);
-
-    _sys.ren_target.resized = 0;
-    if (dyn_any(_sys.ren_target.dirty_rects)) {
-      [_mac.view setNeedsDisplay:YES];
-    }
-  }
-  _sys.seq++;
-  _sys.style_mod = 0;
-  _sys.keymod = 0;
-  _sys.txt_len = 0;
-  _sys.focus = 0;
-  _sys.btn_mod = 0;
-  _sys.txt_mod = 0;
-  _sys.key_mod = 0;
-  _sys.scrl_mod = 0;
-  _sys.mouse_mod = 0;
-  _sys.mouse.pos_last[0] = _sys.mouse.pos[0];
-  _sys.mouse.pos_last[1] = _sys.mouse.pos[1];
-  for (int i = 0; i < cntof(_sys.keys); ++i){
-    _sys.keys[i] = 0;
-  }
-  for (int i = 0; i < SYS_MOUSE_BTN_CNT; ++i) {
-    _sys.mouse.btns[i].pressed = 0;
-    _sys.mouse.btns[i].released = 0;
-    _sys.mouse.btns[i].doubled = 0;
-  }
-  if (_sys.cursor != _mac.cursor) {
-    switch (_sys.cursor) {
-    default: break;
-    case SYS_CUR_ARROW: [[NSCursor arrowCursor] set]; break;
-    case SYS_CUR_NO: [[NSCursor operationNotAllowedCursor] set]; break;
-    case SYS_CUR_CROSS: [[NSCursor crosshairCursor] set]; break;
-    case SYS_CUR_HAND: [[NSCursor pointingHandCursor] set]; break;
-    case SYS_CUR_IBEAM: [[NSCursor IBeamCursor] set]; break;
-    case SYS_CUR_MOVE: [[NSCursor closedHandCursor] set]; break;
-    case SYS_CUR_SIZE_NS: [[NSCursor resizeUpDownCursor] set]; break;
-    case SYS_CUR_SIZE_WE: [[NSCursor resizeLeftRightCursor] set]; break;
-    }
-    _mac.cursor = _sys.cursor;
-  }
-  unsigned long long tooltip_id = str_hash(_sys.tooltip.str);
-  if (tooltip_id != _mac.tooltip) {
-    if (_sys.tooltip.str.len) {
-      NSString *str = [[NSString alloc]
-        initWithBytes: (const void*)_sys.tooltip.str.str
-        length:(NSUInteger)_sys.tooltip.str.len encoding:NSUTF8StringEncoding];
-      [_mac.view setToolTip: str];
-    } else {
-      [_mac.view setToolTip: nil];
-    }
-    _mac.tooltip = tooltip_id;
-  }
-  _sys.tooltip.str = str_nil;
-}
-static void
-sys_mac__resize(void) {
-  NSRect bounds = [_mac.view bounds];
-  int w = max(1, casti(bounds.size.width));
-  int h = max(1, casti(bounds.size.height));
-  if (_mac.win_w == w && _mac.win_h == h) {
-    return;
-  }
-  if (_mac.backbuf) {
-    munmap(_mac.backbuf, castsz(_mac.win_w * _mac.win_h * 4));
-    _mac.backbuf = 0;
-  }
-  _mac.win_w = w;
-  _mac.win_h = h;
-  _mac.buf_stride = w * 4;
-
-  _mac.backbuf = mmap(0, castsz(w*h*4), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-  _sys.ren_target.resized = 1;
-  sys__mac_metal_resize(&_mac.metal, w, h);
-  sys__mac_on_frame();
-  [_mac.view setNeedsDisplay:YES];
-}
-static unsigned
-sys__mac_col(NSColor *col) {
-  @autoreleasepool {
-    NSColor *ref = [col colorUsingColorSpace: [NSColorSpace deviceRGBColorSpace]];
-    unsigned char r = castb([ref redComponent] * 255.0);
-    unsigned char g = castb([ref greenComponent] * 255.0);
-    unsigned char b = castb([ref blueComponent] * 255.0);
-    unsigned char a = castb([ref alphaComponent] * 255.0);
-    return col_rgba(r,g,b,a);
-  }
-}
-static void
-sys__mac_load_col(void) {
-  _sys.has_style = 1;
-  _sys.style_mod = 1;
-  _sys.col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
-  _sys.col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
-  _sys.col[SYS_COL_BG] = sys__mac_col([NSColor controlBackgroundColor]);
-  _sys.col[SYS_COL_CTRL] = sys__mac_col([NSColor controlColor]);
-  _sys.col[SYS_COL_SEL] = sys__mac_col([NSColor selectedControlColor]);
-  _sys.col[SYS_COL_TXT] = sys__mac_col([NSColor controlTextColor]);
-  _sys.col[SYS_COL_TXT_SEL] = sys__mac_col([NSColor selectedControlTextColor]);
-  _sys.col[SYS_COL_TXT_DISABLED] = sys__mac_col([NSColor tertiaryLabelColor]);
-  _sys.col[SYS_COL_ICO] = sys__mac_col([NSColor controlTextColor]);
-  _sys.col[SYS_COL_LIGHT] = sys__mac_col([NSColor unemphasizedSelectedContentBackgroundColor]);
-  _sys.col[SYS_COL_SHADOW] = sys__mac_col([NSColor underPageBackgroundColor]);
-  _sys.fnt_pnt_size = castf([NSFont systemFontSize]);
-}
-@implementation sys__mac_app_delegate
-- (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
-  sys__mac_load_col();
-
-  NSScreen *scrn = [NSScreen mainScreen];
-  NSDictionary *desc = [scrn deviceDescription];
-  NSSize dpy_pix_size = [[desc objectForKey:NSDeviceSize] sizeValue];
-  CGSize dpy_phy_size = CGDisplayScreenSize([[desc objectForKey:@"NSScreenNumber"] unsignedIntValue]);
-  _sys.ui_scale = castf((dpy_pix_size.width / dpy_phy_size.width) * 25.4f);
-  _sys.ui_scale /= 96.0f;
-
-  /* create window */
-  NSRect win_rect = NSMakeRect(0, 0, 800, 600);
-  sys__mac_metal_init(&_mac.metal, 800, 600);
-  if (_mac.ren.dlInit) {
-    _mac.ren.dlInit(&_sys);
-  }
-  const NSUInteger style =
-    NSWindowStyleMaskTitled |
-    NSWindowStyleMaskClosable |
-    NSWindowStyleMaskMiniaturizable |
-    NSWindowStyleMaskResizable;
-
-  _mac.win = [[sys__mac_window alloc]
-    initWithContentRect:win_rect
-    styleMask:style
-    backing:NSBackingStoreBuffered
-    defer:NO];
-
-  _mac.win.releasedWhenClosed = NO;
-  _mac.win.title = [NSString stringWithUTF8String:"Tau"];
-  _mac.win.acceptsMouseMovedEvents = YES;
-  _mac.win.restorable = YES;
-  _mac.win_dlg = [[sys__mac_window_delegate alloc] init];
-  _mac.win.delegate = _mac.win_dlg;
-
-  _mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
-  _mac.view_dlg = [[sys__mac_view_delegate alloc] init];
-  _mac.view.device = _mac.metal.dev;
-  _mac.view.delegate = _mac.view_dlg;
-  _mac.view.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
-  _mac.view.enableSetNeedsDisplay = YES;
-  _mac.view.paused = YES;
-
-  [_mac.view updateTrackingAreas];
-  [_mac.win setContentView:_mac.view];
-  [_mac.win center];
-
-  NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
-  [NSApp activateIgnoringOtherApps:YES];
-  [_mac.win makeKeyAndOrderFront:nil];
-  sys_mac__resize();
-  [NSApp finishLaunching];
-}
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
-  return YES;
-}
-- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
-  return NO;
-}
-- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames {
-
-}
-- (void)applicationWillTerminate:(NSNotification*)notification {
-  if (_mac.ren.dlShutdown) {
-    _mac.ren.dlShutdown(&_sys);
-  }
-  sys__mac_free();
-}
-@end
-
-@implementation sys__mac_window_delegate
-- (BOOL)windowShouldClose:(id)sender {
-  return YES;
-}
-- (void)windowDidResize:(NSNotification*)notification {
-  sys_mac__resize();
-}
-- (void)windowDidMiniaturize:(NSNotification*)notification {
-
-}
-- (void)windowDidDeminiaturize:(NSNotification*)notification {
-
-}
-- (void)windowDidEnterFullScreen:(NSNotification*)notification {
-
-}
-- (void)windowDidExitFullScreen:(NSNotification*)notification {
-
-}
-@end
-
-@implementation sys__mac_window
-- (instancetype)initWithContentRect:(NSRect)contentRect
-                          styleMask:(NSWindowStyleMask)style
-                            backing:(NSBackingStoreType)backingStoreType
-                              defer:(BOOL)flag {
-  self = [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:flag];
-  if (self) {
-    #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-      [self registerForDraggedTypes:[NSArray arrayWithObjects:NSPasteboardTypeFileURL,NSPasteboardTypeString,nil]];
-    #endif
-  }
-  return self;
-}
-static BOOL
-sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
-  BOOL ret = NO;
-  int file_cnt = casti([files count]);
-  scp_mem(_sys.mem.tmp, &_sys) {
-    _sys.dnd.state = SYS_DND_DELIVERY;
-    _sys.dnd.files = arena_arr(_sys.mem.tmp, &_sys, struct str, file_cnt);
-    for (int i = 0; i < file_cnt; i++) {
-      NSUInteger idx = cast(NSUInteger, i);
-      NSURL *fileUrl = [NSURL fileURLWithPath:[[files objectAtIndex:idx] stringForType:NSPasteboardTypeFileURL]];
-      struct str path = str0(fileUrl.standardizedURL.path.UTF8String);
-      _sys.dnd.files[i] = arena_str(_sys.mem.tmp, &_sys, path);
-    }
-    _sys.dnd.file_cnt = file_cnt;
-    _sys.dnd_mod = 1;
-    _sys.dnd.state = state;
-
-    sys__mac_on_frame();
-  }
-  ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
-
-  _sys.dnd.state = SYS_DND_NONE;
-  _sys.dnd.response = SYS_DND_REJECT;
-  _sys.dnd.files = 0;
-  _sys.dnd_mod = 0;
-  return ret;
-}
-static BOOL
-sys__mac_dnd_str(NSArray *strs, enum sys_dnd_state state) {
-  BOOL ret = NO;
-  scp_mem(_sys.mem.tmp, &_sys) {
-    _sys.dnd.state = SYS_DND_DELIVERY;
-
-    NSString *str = [strs objectAtIndex:0];
-    NSData *utf8Data = [str dataUsingEncoding:NSUTF8StringEncoding];
-    int len = cast(int, [utf8Data length]);
-    struct str raw_str = str(cast(const char*, [utf8Data bytes]), len);
-
-    _sys.dnd.str = arena_str(_sys.mem.tmp, &_sys, raw_str);
-    _sys.dnd.state = state;
-    _sys.dnd_mod = 1;
-
-    sys__mac_on_frame();
-  }
-  ret = _sys.dnd.response == SYS_DND_ACCEPT ? YES : NO;
-
-  _sys.dnd.state = SYS_DND_NONE;
-  _sys.dnd.response = SYS_DND_REJECT;
-  _sys.dnd.str = str_nil;
-  _sys.dnd_mod = 0;
-  return ret;
-}
-static BOOL
-sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
-  BOOL ret = NO;
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-  if ([pboard.types containsObject:NSPasteboardTypeFileURL]) {
-    NSArray *files = pboard.pasteboardItems;
-    ret = sys__mac_dnd_files(files, state);
-  }
-  if ([pboard.types containsObject:NSPasteboardTypeString]) {
-    NSArray *strs = pboard.pasteboardItems;
-    ret = sys__mac_dnd_str(strs, state);
-  }
-#endif
-  return ret;
-}
-- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-  NSPasteboard *pboard = [sender draggingPasteboard];
-  BOOL ret = sys__mac_dnd(pboard, SYS_DND_ENTER);
-  if (ret) {
-    return NSDragOperationCopy;
-  } else {
-    return NSDragOperationNone;
-  }
+enum sys_mac_constants {
+#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_10_12
+  SYS_EVT_FLAGS_CHANGED = NSEventTypeFlagsChanged,
+  SYS_EVT_KEY_DOWN = NSEventTypeKeyDown,
+  SYS_EVT_KEY_UP = NSEventTypeKeyUp,
+  SYS_EVT_LEFT_MOUSE_DOWN = NSEventTypeLeftMouseDown,
+  SYS_EVT_LEFT_MOUSE_DRAG = NSEventTypeLeftMouseDragged,
+  SYS_EVT_LEFT_MOUSE_UP = NSEventTypeLeftMouseUp,
+  SYS_EVT_MOUSE_MOVED = NSEventTypeMouseMoved,
+  SYS_EVT_RIGHT_MOUSE_DOWN = NSEventTypeRightMouseDown,
+  SYS_EVT_RIGHT_MOUSE_DRAG = NSEventTypeRightMouseDragged,
+  SYS_EVT_RIGHT_MOUSE_UP = NSEventTypeRightMouseUp,
+  SYS_EVT_SCROLL = NSEventTypeScrollWheel,
 #else
-  return NSDragOperationCopy;
+  SYS_EVT_FLAGS_CHANGED = NSFlagsChanged,
+  SYS_EVT_KEY_DOWN = NSKeyDown,
+  SYS_EVT_KEY_UP = NSKeyUp,
+  SYS_EVT_LEFT_MOUSE_DOWN = NSLeftMouseDown,
+  SYS_EVT_LEFT_MOUSE_DRAG = NSLeftMouseDragged,
+  SYS_EVT_LEFT_MOUSE_UP = NSLeftMouseUp,
+  SYS_EVT_MOUSE_MOVED = NSMouseMoved,
+  SYS_EVT_RIGHT_MOUSE_DOWN = NSRightMouseDown,
+  SYS_EVT_RIGHT_MOUSE_DRAG = NSRightMouseDragged,
+  SYS_EVT_RIGHT_MOUSE_UP = NSRightMouseUp,
+  SYS_EVT_SCROLL = NSScrollWheel,
 #endif
-}
-- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
-  NSPoint pos = [_mac.win mouseLocationOutsideOfEventStream];
-  float new_x = castf(pos.x) * _mac.dpi_scale[0];
-  float new_y = castf(pos.y) * _mac.dpi_scale[1];
-
-  _sys.mouse.pos[0] = casti(new_x);
-  _sys.mouse.pos[1] = _sys.win.h - casti(new_y) - 1;
-
-  _sys.mouse.pos_delta[0] = _sys.mouse.pos[0] - _sys.mouse.pos_last[0];
-  _sys.mouse.pos_delta[1] = _sys.mouse.pos[1] - _sys.mouse.pos_last[1];
-
-  _sys.mouse_mod = 1;
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-  NSPasteboard *pboard = [sender draggingPasteboard];
-  BOOL ret = sys__mac_dnd(pboard, SYS_DND_PREVIEW);
-  if (ret) {
-    return NSDragOperationCopy;
-  } else {
-    return NSDragOperationNone;
-  }
-#else
-  return NSDragOperationCopy;
-#endif
-}
-- (NSDragOperation)draggingExited:(id<NSDraggingInfo>)sender {
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-  NSPasteboard *pboard = [sender draggingPasteboard];
-  BOOL ret = sys__mac_dnd(pboard, SYS_DND_LEFT);
-  if (ret) {
-    return NSDragOperationCopy;
-  } else {
-    return NSDragOperationNone;
-  }
-#else
-  return NSDragOperationCopy;
-#endif
-}
-- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-  NSPasteboard *pboard = [sender draggingPasteboard];
-  return sys__mac_dnd(pboard, SYS_DND_DELIVERY);
-#else
-  return NO;
-#endif
-}
-@end
-
+};
 static void
 sys__mac_on_btn(struct sys_btn *b, int down) {
   assert(b);
@@ -941,7 +600,7 @@ sys__mac_on_btn(struct sys_btn *b, int down) {
   b->doubled = 0;
 }
 static unsigned
-sys__mac_mods(NSEvent* ev) {
+sys__mac_mods(const NSEvent *const ev) {
   unsigned res = 0u;
   const NSEventModifierFlags flg = ev.modifierFlags;
   if (flg & NSEventModifierFlagControl) {
@@ -956,7 +615,20 @@ sys__mac_mods(NSEvent* ev) {
   return res;
 }
 static void
-sys__macos_on_key(unsigned long *keys, int scan) {
+sys_mac__mouse_pos(struct sys *s, const NSEvent *const e) {
+  assert(s->platform);
+  NSPoint pos = e.locationInWindow;
+  float new_x = castf(pos.x) * s->dpi_scale;
+  float new_y = castf(pos.y) * s->dpi_scale;
+
+  s->mouse.pos[0] = casti(new_x);
+  s->mouse.pos[1] = s->win.h - casti(new_y) - 1;
+
+  s->mouse.pos_delta[0] = s->mouse.pos[0] - s->mouse.pos_last[0];
+  s->mouse.pos_delta[1] = s->mouse.pos[1] - s->mouse.pos_last[1];
+}
+static void
+sys__mac_on_key(unsigned long *keys, int scan) {
   switch (scan) {
   default: break;
   case 0x1D: bit_set(keys, '0'); break;
@@ -1049,275 +721,384 @@ sys__macos_on_key(unsigned long *keys, int scan) {
   case 0x4C: bit_set(keys, SYS_KEY_RETURN); break;
   case 0x51: bit_set(keys, '='); break;
   case 0x43: bit_set(keys, '*'); break;
-  case 0x4E: bit_set(keys, '-'); break;
-  }
+  case 0x4E: bit_set(keys, '-'); break;}
 }
-@implementation sys__mac_view
-- (void)reshape {
-  sys_mac__resize();
-}
-- (void)windowDidExpose {
-  sys_mac__resize();
-}
-- (void)viewDidChangeEffectiveAppearance {
-  _mac.col_mod = 1;
-  [_mac.view setNeedsDisplay:YES];
-}
-- (BOOL)isOpaque {return YES;}
-- (BOOL)canBecomeKeyView {return YES;}
-- (BOOL)acceptsFirstResponder {return YES;}
-- (void)updateTrackingAreas {
-    if (_mac.track_area != nil) {
-      [self removeTrackingArea:_mac.track_area];
-      SYS__OBJ_REL(_mac.track_area);
-    }
-    const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited |
-      NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag |
-      NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
-    _mac.track_area = [[NSTrackingArea alloc] initWithRect:[self bounds]
-                       options:options owner:self userInfo:nil];
-    [self addTrackingArea:_mac.track_area];
-    [super updateTrackingAreas];
-}
-- (void)mouseEntered:(NSEvent*)e {
+static int
+sys_mac_evt(struct sys *s, NSEvent const *const e) {
+  int hdl = 1;
+  switch ([e type]) {
+  default: hdl = 0; break;
+  case SYS_EVT_KEY_DOWN: {
+    s->keymod |= sys__mac_mods(e);
+    sys__mac_on_key(s->keys, e.keyCode);
+    s->key_mod = 1;
 
-}
-- (void)mouseExited:(NSEvent*)e {
-
-}
-static void
-sys_mac__mouse_pos(NSEvent *e) {
-  NSPoint pos = e.locationInWindow;
-  float new_x = castf(pos.x) * _mac.dpi_scale[0];
-  float new_y = castf(pos.y) * _mac.dpi_scale[1];
-
-  _sys.mouse.pos[0] = casti(new_x);
-  _sys.mouse.pos[1] = _sys.win.h - casti(new_y) - 1;
-
-  _sys.mouse.pos_delta[0] = _sys.mouse.pos[0] - _sys.mouse.pos_last[0];
-  _sys.mouse.pos_delta[1] = _sys.mouse.pos[1] - _sys.mouse.pos_last[1];
-}
-- (void)mouseDown:(NSEvent*)e {
-  sys__mac_on_btn(&_sys.mouse.btn.left, 1);
-  if (e.clickCount == 2) {
-    _sys.mouse.btn.left.doubled = 1;
-  }
-  _sys.btn_mod = 1;
-  _sys.mouse_mod = 1;
-  _sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_frame();
-}
-- (void)mouseUp:(NSEvent*)e {
-  sys__mac_on_btn(&_sys.mouse.btn.left, 0);
-
-  _sys.btn_mod = 1;
-  _sys.mouse_mod = 1;
-  _sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_frame();
-}
-- (void)rightMouseDown:(NSEvent*)e {
-  sys__mac_on_btn(&_sys.mouse.btn.right, 1);
-
-  _sys.btn_mod = 1;
-  _sys.mouse_mod = 1;
-  _sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_frame();
-}
-- (void)rightMouseUp:(NSEvent*)e {
-  sys__mac_on_btn(&_sys.mouse.btn.right, 0);
-
-  _sys.btn_mod = 1;
-  _sys.mouse_mod = 1;
-  _sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_frame();
-}
-- (void)otherMouseDown:(NSEvent*)e {
-  if (2 == e.buttonNumber) {
-    sys__mac_on_btn(&_sys.mouse.btn.middle, 1);
-    sys__mac_on_frame();
-  }
-}
-- (void)otherMouseUp:(NSEvent*)e {
-  if (2 == e.buttonNumber) {
-    sys__mac_on_btn(&_sys.mouse.btn.middle, 0);
-    sys__mac_on_frame();
-  }
-}
-- (void)mouseMoved:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
-  _sys.mouse_mod = 1;
-  _sys.keymod |= sys__mac_mods(e);
-  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
-      abs(_sys.mouse.pos_delta[1]) > 0) {
-    sys__mac_on_frame();
-  }
-}
-- (void)mouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
-  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
-      abs(_sys.mouse.pos_delta[1]) > 0) {
-    _sys.btn_mod = 1;
-    sys__mac_on_frame();
-  }
-}
-- (void)rightMouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
-  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
-      abs(_sys.mouse.pos_delta[1]) > 0) {
-    _sys.btn_mod = 1;
-    sys__mac_on_frame();
-  }
-}
-- (void)otherMouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
-  if (abs(_sys.mouse.pos_delta[0]) > 0 ||
-      abs(_sys.mouse.pos_delta[1]) > 0) {
-    _sys.btn_mod = 1;
-    sys__mac_on_frame();
-  }
-}
-- (void)scrollWheel:(NSEvent*)e {
-  float dx = castf(e.scrollingDeltaX);
-  float dy = castf(e.scrollingDeltaY);
-  if (e.hasPreciseScrollingDeltas) {
-    dx *= 0.1f, dy *= 0.1f;
-  }
-  if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
-    _sys.keymod |= sys__mac_mods(e);
-    _sys.mouse.scrl[0] = casti(dx);
-    _sys.mouse.scrl[1] = casti(dy);
-    _sys.scrl_mod = 1;
-  }
-  sys__mac_on_frame();
-}
-- (void)keyDown:(NSEvent*)e {
-  _sys.keymod |= sys__mac_mods(e);
-  sys__macos_on_key(_sys.keys, e.keyCode);
-  _sys.key_mod = 1;
-
-  const NSString* chars = e.characters;
-  const NSUInteger len = chars.length;
-  if (len > 0) {
-    for (NSUInteger i = 0; i < len; i++) {
-      const unichar codepoint = [chars characterAtIndex:i];
-      if ((codepoint & 0xFF00) == 0xF700) {
-        continue;
+    const NSString* chars = e.characters;
+    const NSUInteger len = chars.length;
+    if (len > 0) {
+      for (NSUInteger i = 0; i < len; i++) {
+        const unichar cp = [chars characterAtIndex:i];
+        if ((cp & 0xFF00) == 0xF700) {
+          continue;
+        }
+        char buf[UTF_SIZ+1];
+        int n = utf_enc(buf, cntof(buf), cp);
+        if (s->txt_len + n < cntof(s->txt)) {
+          mcpy(s->txt + s->txt_len, buf, n);
+          s->txt_len += n;
+        }
       }
-      char buf[UTF_SIZ+1];
-      int n = utf_enc(buf, cntof(buf), codepoint);
-      if (_sys.txt_len + n < cntof(_sys.txt)) {
-        memcpy(_sys.txt + _sys.txt_len, buf, castsz(n));
-        _sys.txt_len += n;
-      }
+      s->txt_mod = 1;
     }
-    _sys.txt_mod = 1;
+  } break;
+  case SYS_EVT_LEFT_MOUSE_DOWN: {
+    sys__mac_on_btn(&s->mouse.btn.left, 1);
+    if (e.clickCount == 2) {
+      s->mouse.btn.left.doubled = 1;
+    }
+    s->btn_mod = 1;
+    s->mouse_mod = 1;
+    s->keymod |= sys__mac_mods(e);
+  } break;
+  case SYS_EVT_LEFT_MOUSE_DRAG: {
+    sys_mac__mouse_pos(s,e);
+    if (abs(s->mouse.pos_delta[0]) > 0 ||
+        abs(s->mouse.pos_delta[1]) > 0) {
+      s->btn_mod = 1;
+    }
+  } break;
+  case SYS_EVT_LEFT_MOUSE_UP: {
+    sys__mac_on_btn(&s->mouse.btn.left, 0);
+    s->keymod |= sys__mac_mods(e);
+    s->mouse_mod = 1;
+    s->btn_mod = 1;
+  } break;
+  case SYS_EVT_MOUSE_MOVED: {
+    sys_mac__mouse_pos(s,e);
+    s->keymod |= sys__mac_mods(e);
+    s->mouse_mod = 1;
+  } break;
+  case SYS_EVT_RIGHT_MOUSE_DOWN: {
+    sys__mac_on_btn(&s->mouse.btn.right, 0);
+    s->keymod |= sys__mac_mods(e);
+    s->mouse_mod = 1;
+    s->btn_mod = 1;
+  } break;
+  case SYS_EVT_RIGHT_MOUSE_DRAG: {
+    sys_mac__mouse_pos(s,e);
+    if (abs(s->mouse.pos_delta[0]) > 0 ||
+        abs(s->mouse.pos_delta[1]) > 0) {
+      s->btn_mod = 1;
+    }
+  } break;
+  case SYS_EVT_RIGHT_MOUSE_UP: {
+    sys__mac_on_btn(&s->mouse.btn.right, 0);
+    s->keymod |= sys__mac_mods(e);
+    s->mouse_mod = 1;
+    s->btn_mod = 1;
+  } break;
+  case SYS_EVT_SCROLL: {
+    float dx = castf(e.scrollingDeltaX);
+    float dy = castf(e.scrollingDeltaY);
+    if (e.hasPreciseScrollingDeltas) {
+      dx *= 0.1f, dy *= 0.1f;
+    }
+    if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
+      s->keymod |= sys__mac_mods(e);
+      s->mouse.scrl[0] = casti(dx);
+      s->mouse.scrl[1] = casti(dy);
+      s->scrl_mod = 1;
+    }
+  } break;}
+  return hdl;
+}
+static void
+sys_mac_evt_loop(struct sys *s) {
+    assert(s->platform);
+    int hdl = 0;
+    int evt_cnt = 0;
+    int evt_cap = 128;
+    struct sys_mac *os = cast(struct sys_mac*, s->platform);
+    @autoreleasepool {
+      NSEvent *e = nil;
+      NSEvent *evt_buf[evt_cap];
+      NSEvent **evts = evt_buf;
+      while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny
+        untilDate:NSDate.now inMode:NSDefaultRunLoopMode dequeue:YES])) {
+        if (evt_cnt == evt_cap) {
+          evt_cap *= 2;
+          int was_on_stack = (evts == evt_buf);
+          evts = realloc(was_on_stack ? 0: evts, castsz(evt_cap) * sizeof(*evts));
+          if (was_on_stack) {
+              mcpy(evts, evt_buf, szof(evt_buf));
+          }
+        }
+        evts[evt_cnt++] = e;
+      }
+      for (int i = 0; i < evt_cnt; ++i) {
+          e = evts[i];
+          hdl |= sys_mac_evt(s, e);
+          [NSApp sendEvent:e];
+          [NSApp updateWindows];
+      }
+      if (evts != evt_buf) {
+          free(evts);
+          evts = 0;
+      }
   }
-  sys__mac_on_frame();
+  if (hdl) {
+    [os->view setNeedsDisplay:YES];
+  }
 }
-- (void)flagsChanged:(NSEvent*)event {
 
-}
-- (void)cursorUpdate:(NSEvent*)event {
-
-}
-@end
-
-static unsigned long long
-sys_mac_timestamp(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-  unsigned long long sec = castull(ts.tv_sec) * 1000000llu;
-  unsigned long long usec = castull(ts.tv_nsec) / 1000;
-  unsigned long long ret = sec + usec;
-  return ret;
-}
+/* ---------------------------------------------------------------------------
+ *                            Entry Points
+ * ---------------------------------------------------------------------------
+ */
 static void
-sys__mac_log(const char *fmt, ...) {
-  char buf[2*1024];
-  va_list args;
-  va_start(args, fmt);
-  fmtvsn(buf, szof(buf), fmt, args);
-  va_end(args);
-  fprintf(stdout, "%s", buf);
+sys_mac_run_loop_fiber(unsigned lo, unsigned hi) {
+  struct sys *s = recast(struct sys*, castull(hi) << 32llu | lo);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+  for (;;) {
+    sys_mac_evt_loop(s);
+    swapcontext(&os->run_loop_fiber, &os->main_fiber);
+  }
 }
-static void
-sys__mac_warn(const char *fmt, ...) {
-  char buf[2*1024];
-  va_list args;
-  va_start(args, fmt);
-  fmtvsn(buf, szof(buf), fmt, args);
-  va_end(args);
-
-  fprintf(stdout, "\033[33m");
-  fprintf(stdout, "%s", buf);
-  fprintf(stdout, "\033[0m");
-}
-static void
-sys__mac_err(const char *fmt, ...) {
-  char buf[2*1024];
-  va_list args;
-  va_start(args, fmt);
-  fmtvsn(buf, szof(buf), fmt, args);
-  va_end(args);
-
-  fprintf(stdout, "\033[31m");
-  fprintf(stdout, "%s", buf);
-  fprintf(stdout, "\033[0m");
-}
-extern int
-main(int argc, char* argv[]) {
-  _sys.app = 0;
-  _sys.platform = &_mac;
-  _sys.argc = argc;
-  _sys.argv = argv;
-  cpu_info(&_sys.cpu);
+static int
+sys_mac_init(struct sys *s) {
+  struct sys_mac *os = calloc(sizeof(struct sys_mac), 1);
+  s->platform = os;
+  s->running = 1;
+  cpu_info(&s->cpu);
 
   /* memory */
-  _sys.mem.alloc = sys_mac_mem_alloc;
-  _sys.mem.free = sys_mac_mem_free;
-  _sys.mem.info = sys_mac_mem_stats;
-  _sys.mem.free_tag = sys_mac_mem_free_tag;
-  _sys.mem.arena = &_mac.mem;
-  _sys.mem.tmp = &_mac.tmp;
-  _sys.mem.page_siz = sysconf(_SC_PAGE_SIZE);
-  _sys.mem.phy_siz = sysconf(_SC_PHYS_PAGES) * _sys.mem.page_siz;
-  lst_init(&_mac.mem_blks);
+  s->mem.alloc = sys_mac_mem_alloc;
+  s->mem.free = sys_mac_mem_free;
+  s->mem.info = sys_mac_mem_stats;
+  s->mem.free_tag = sys_mac_mem_free_tag;
+  s->mem.arena = &os->mem;
+  s->mem.tmp = &os->tmp;
+  s->mem.page_siz = sysconf(_SC_PAGE_SIZE);
+  s->mem.phy_siz = sysconf(_SC_PHYS_PAGES) * s->mem.page_siz;
+  lst_init(&os->mem_blks);
 
   /* api */
-  _sys.dir.lst = sys_dir_lst;
-  _sys.dir.nxt = sys_dir_nxt;
-  _sys.dir.exists = sys_dir_exists;
-  _sys.clipboard.set = sys_mac_clipboard_set;
-  _sys.clipboard.get = sys_mac_clipboard_get;
-  _sys.time.timestamp = sys_mac_timestamp;
-  _sys.file.info = sys_file_info;
-  _sys.con.log = sys__mac_log;
-  _sys.con.warn = sys__mac_warn;
-  _sys.con.err = sys__mac_err;
-  _sys.rnd.open = sys__rnd_open;
-  _sys.rnd.close = sys__rnd_close;
-  _sys.rnd.gen32 = sys__rnd_gen32;
-  _sys.rnd.gen64 = sys__rnd_gen64;
-  _sys.rnd.gen128 = sys__rnd_gen128;
+  s->dir.lst = sys_dir_lst;
+  s->dir.nxt = sys_dir_nxt;
+  s->dir.exists = sys_dir_exists;
+  s->time.timestamp = sys_mac_timestamp;
+  s->file.info = sys_file_info;
+  s->con.log = sys__mac_log;
+  s->con.warn = sys__mac_warn;
+  s->con.err = sys__mac_err;
+  s->rnd.open = sys__rnd_open;
+  s->rnd.close = sys__rnd_close;
+  s->rnd.gen32 = sys__rnd_gen32;
+  s->rnd.gen64 = sys__rnd_gen64;
+  s->rnd.gen128 = sys__rnd_gen128;
 
   /* constants */
-  _mac.dpi_scale[0] = 1.0f;
-  _mac.dpi_scale[1] = 1.0f;
+  os->dpi_scale[0] = 1.0f;
+  os->dpi_scale[1] = 1.0f;
 
-  _mac.ren.dlInit = ren_init;
-  _mac.ren.dlBegin = ren_begin;
-  _mac.ren.dlEnd = ren_end;
-  _mac.ren.dlShutdown = ren_shutdown;
-
-  _mac.app.dlRegister = app_on_api;
-  _mac.app.dlEntry = app_run;
-  _mac.app.dlRegister(&_sys);
-
-  /* start application */
+  /* application: act as a bundled app, even if not bundled */
   [NSApplication sharedApplication];
-  _mac.app_dlg = [[sys__mac_app_delegate alloc] init];
-  NSApp.delegate = _mac.app_dlg;
-  [NSApp run];
+  [NSApp setActivationPolicy: NSApplicationActivationPolicyRegular];
+
+  /* style */
+  s->has_style = 1;
+  s->style_mod = 1;
+  s->col[SYS_COL_HOV] = sys__mac_col([NSColor controlBackgroundColor]);
+  s->col[SYS_COL_WIN] = sys__mac_col([NSColor windowBackgroundColor]);
+  s->col[SYS_COL_BG] = sys__mac_col([NSColor controlBackgroundColor]);
+  s->col[SYS_COL_CTRL] = sys__mac_col([NSColor controlColor]);
+  s->col[SYS_COL_SEL] = sys__mac_col([NSColor selectedControlColor]);
+  s->col[SYS_COL_TXT] = sys__mac_col([NSColor controlTextColor]);
+  s->col[SYS_COL_TXT_SEL] = sys__mac_col([NSColor selectedControlTextColor]);
+  s->col[SYS_COL_TXT_DISABLED] = sys__mac_col([NSColor tertiaryLabelColor]);
+  s->col[SYS_COL_ICO] = sys__mac_col([NSColor controlTextColor]);
+  s->col[SYS_COL_LIGHT] = sys__mac_col([NSColor unemphasizedSelectedContentBackgroundColor]);
+  s->col[SYS_COL_SHADOW] = sys__mac_col([NSColor underPageBackgroundColor]);
+  s->fnt_pnt_size = castf([NSFont systemFontSize]);
+
+  /* create window */
+  const NSUInteger style =
+    NSWindowStyleMaskTitled |
+    NSWindowStyleMaskClosable |
+    NSWindowStyleMaskMiniaturizable |
+    NSWindowStyleMaskResizable;
+  NSRect win_rect = NSMakeRect(0, 0, s->win.w, s->win.h);
+  os->win = [[NSWindow alloc] initWithContentRect:win_rect styleMask:style
+                              backing:NSBackingStoreBuffered defer:NO];
+  os->win.releasedWhenClosed = NO;
+  os->win.title = [NSString stringWithUTF8String:s->win.title];
+  os->win.restorable = YES;
+  os->win_dlg = [[sys__mac_window_delegate alloc] initWithSys:s];
+  os->win.delegate = os->win_dlg;
+  [os->win setOpaque: YES];
+  os->win_w = s->win.w;
+  os->win_h = s->win.h;
+
+  /* setup metal view */
+  os->view = [[sys__mac_view alloc] initWithFrame:win_rect];
+  os->view_dlg = [[sys__mac_view_delegate alloc] init];
+  os->view.delegate = os->view_dlg;
+  os->view.enableSetNeedsDisplay = YES;
+  os->view.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+  os->view.paused = YES;
+  os->view_dlg.sys = s;
+  os->view.sys = s;
+
+  /* init gfx */
+  gfx_api(&s->gfx, 0);
+  s->ren = &os->mtl;
+  s->gfx.init(s, (__bridge void*)os->view);
+  os->view.device = os->mtl.dev;
+
+  [os->win setContentView:os->view];
+  [os->win center];
+
+  NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+  [os->win makeKeyAndOrderFront:nil];
+  [os->win makeMainWindow];
+  [NSApp activateIgnoringOtherApps:YES];
+  [NSApp finishLaunching];
+
+  s->dpi_scale = castf([os->win screen].backingScaleFactor);
+
+  /* init fibers */
+  getcontext(&os->run_loop_fiber);
+  os->run_loop_fiber.uc_stack.ss_size = 512*1024;
+  os->run_loop_fiber_stack = calloc(1, os->run_loop_fiber.uc_stack.ss_size);
+  os->run_loop_fiber.uc_stack.ss_sp = os->run_loop_fiber_stack;
+  os->run_loop_fiber.uc_link = 0;
+  unsigned s_lo = (cast(uintptr_t,s) & 0xffffffffu);
+  unsigned s_hi = (cast(uintptr_t,s) >> 32u) & 0xffffffffu;
+  makecontext(&os->run_loop_fiber, sys_mac_run_loop_fiber, 2, s_lo, s_hi);
+  if (getcontext(&os->main_fiber) != 0) {
+    xpanic("failed to get fiber context!\n");
+  }
   return 0;
+}
+static void
+sys_mac_prep(struct sys *s) {
+  s->focus = 0;
+  s->keymod = 0;
+  s->txt_len = 0;
+  s->btn_mod = 0;
+  s->txt_mod = 0;
+  s->key_mod = 0;
+  s->scrl_mod = 0;
+  s->mouse_mod = 0;
+  s->style_mod = 0;
+  s->mouse.pos_last[0] = s->mouse.pos[0];
+  s->mouse.pos_last[1] = s->mouse.pos[1];
+  fori_arrv (i, s->keys){
+    s->keys[i] = 0;
+  }
+  for (int i = 0; i < SYS_MOUSE_BTN_CNT; ++i) {
+    s->mouse.btns[i].pressed = 0;
+    s->mouse.btns[i].released = 0;
+    s->mouse.btns[i].doubled = 0;
+  }
+}
+static int
+sys_mac_pull(struct sys *s) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  s->seq++;
+  sys_mac_prep(s);
+  [NSApp nextEventMatchingMask:NSEventMaskAny
+         untilDate:NSDate.distantFuture
+         inMode:NSDefaultRunLoopMode
+         dequeue:NO];
+  swapcontext(&os->main_fiber, &os->run_loop_fiber);
+  s->txt_mod = !!s->txt_len;
+  s->dpi_scale = castf([os->win screen].backingScaleFactor);
+
+  const NSRect bounds = [os->view bounds];
+  s->win.w = math_roundi(castf(bounds.size.width) * s->dpi_scale);
+  s->win.h = math_roundi(castf(bounds.size.height) * s->dpi_scale);
+  s->win.x = casti(bounds.origin.x * s->dpi_scale);
+  s->win.y = casti(bounds.origin.y * s->dpi_scale);
+  if (s->drw) {
+    s->gfx.begin(s, s->win.w, s->win.h);
+  }
+  return 0;
+}
+static void
+sys_mac_push(struct sys *s) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+  if (s->cursor != os->cursor) {
+    switch (s->cursor) {
+    case SYS_CUR_CNT: default: break;
+    case SYS_CUR_ARROW: [[NSCursor arrowCursor] set]; break;
+    case SYS_CUR_NO: [[NSCursor operationNotAllowedCursor] set]; break;
+    case SYS_CUR_CROSS: [[NSCursor crosshairCursor] set]; break;
+    case SYS_CUR_HAND: [[NSCursor pointingHandCursor] set]; break;
+    case SYS_CUR_IBEAM: [[NSCursor IBeamCursor] set]; break;
+    case SYS_CUR_MOVE: [[NSCursor closedHandCursor] set]; break;
+    case SYS_CUR_SIZE_NS: [[NSCursor resizeUpDownCursor] set]; break;
+    case SYS_CUR_SIZE_WE: [[NSCursor resizeLeftRightCursor] set]; break;}
+    os->cursor = s->cursor;
+  }
+  unsigned long long tooltip_id = str_hash(s->tooltip.str);
+  if (tooltip_id != os->tooltip) {
+    if (s->tooltip.str.len) {
+      NSString *str = [[NSString alloc]
+        initWithBytes: (const void*)s->tooltip.str.str
+        length:(NSUInteger)s->tooltip.str.len encoding:NSUTF8StringEncoding];
+      [os->view setToolTip: str];
+    } else {
+      [os->view setToolTip: nil];
+    }
+    os->tooltip = tooltip_id;
+  }
+  s->tooltip.str = str_nil;
+  if (s->drw) {
+    s->gfx.end(s, (__bridge void*) os->view);
+    s->drw = 0;
+  }
+}
+static void
+sys_mac_shutdown(struct sys *s) {
+  assert(s);
+  assert(s->platform);
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+
+  free(os->run_loop_fiber_stack);
+  os->run_loop_fiber_stack = 0;
+
+  SYS__OBJ_REL(os->win_dlg);
+  SYS__OBJ_REL(os->view);
+  SYS__OBJ_REL(os->win);
+
+  s->gfx.shutdown(s);
+  free(s->platform);
+  s->platform = 0;
+  s->ren = 0;
+}
+
+/* ---------------------------------------------------------------------------
+ *                                  API
+ * ---------------------------------------------------------------------------
+ */
+static const struct sys_api sys_mac_api = {
+  .version = SYS_VERSION,
+  .init = sys_mac_init,
+  .shutdown = sys_mac_shutdown,
+  .pull = sys_mac_pull,
+  .push = sys_mac_push,
+};
+extern void
+sys_api(void *export, void *import) {
+  unused(import);
+  struct sys_api *api = (struct sys_api*)export;
+  *api = sys_mac_api;
 }
 
