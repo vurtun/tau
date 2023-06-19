@@ -1727,6 +1727,7 @@ gui__chk_cur(struct gui_ctx *ctx, const struct gui_panel *pan,
   struct gui_box cur = gui_box_mid_ext(&pan->box, ext[0], ext[1]);
   if (ctx->pass == GUI_RENDER) {
     if (chkd == GUI_CHK_SELECTED) {
+      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
       gui_drw_ico(ctx, cur.x.min, cur.y.min, RES_ICO_CHECK);
     } else if (chkd == GUI_CHK_PARTIAL) {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
@@ -1859,11 +1860,13 @@ gui__tog_drw(struct gui_ctx *ctx, struct gui_panel *pan, int act) {
     struct gui_box cur = {0};
     cur.x = gui_mid_ext(tog.x.mid - (tog.x.ext >> 2), ext[0]);
     cur.y = gui_mid_ext(tog.y.mid, ext[1]);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
     gui_drw_ico(ctx, cur.x.min, cur.y.min, RES_ICO_CHECK);
   } else {
     struct gui_box cur = {0};
     cur.x = gui_mid_ext(tog.x.mid + (tog.x.ext >> 2), ext[0]);
     cur.y = gui_mid_ext(tog.y.mid, ext[1]);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
     gui_drw_ico(ctx, cur.x.min, cur.y.min, RES_ICO_NO);
   }
 }
@@ -4833,6 +4836,7 @@ gui_tree_node_icon_drw(struct gui_ctx *ctx, const struct gui_panel *pan,
   struct gui_box cur = {0};
   cur.x = gui_mid_ext(pan->box.x.mid, ext[0]);
   cur.y = gui_mid_ext(pan->box.y.mid, ext[1]);
+  gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
   gui_drw_ico(ctx, cur.x.min, cur.y.min, img);
 }
 static int

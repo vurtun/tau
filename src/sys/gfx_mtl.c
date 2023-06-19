@@ -267,8 +267,6 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
   void *idx_buf = mtl->buf[mtl->cur_buf].contents;
   void *vtx_buf = cast(char*, mtl->buf[mtl->cur_buf].contents) + vtx_off;
 
-  printf("idx: %d vtx: %d\n", ibytes, s->gfx.buf2d.vbytes);
-
   mcpy(idx_buf, s->gfx.buf2d.idx, ibytes);
   mcpy(vtx_buf, s->gfx.buf2d.vtx, s->gfx.buf2d.vbytes);
 
