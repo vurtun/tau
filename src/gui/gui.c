@@ -523,7 +523,7 @@ gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
       gui_drw_glyph(ctx, &g);
       run_x = x + run->adv[i];
     }
-    x += run->adv[run->len-1] + ctx->res->fnt.space_adv;
+    x += run->adv[run->len-1] + ctx->res->fnt.space_adv * (!!it.rest.len);
   }
 }
 

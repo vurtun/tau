@@ -517,8 +517,6 @@ static int
 bit_ffz(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
   assert(nbits >= 0);
-  assert(idx < nbits);
-
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -561,7 +559,6 @@ static int
 bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   assert(addr);
   assert(nbits >= 0);
-  assert(idx < nbits);
 
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1u, bit_mask(idx)) - 1u;
@@ -893,7 +890,7 @@ str_cmp(struct str a, struct str b) {
   }
   if (a.len > b.len) {
     return +1;
-  } else if (b.len > a.len) {
+  } else if (a.len < b.len) {
     return -1;
   }
   return 0;

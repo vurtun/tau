@@ -647,7 +647,6 @@ res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space,
                 int ext) {
   assert(run);
   assert(bnd);
-
   int width = 0, len = 0;
   assert(run->len <= RES_FNT_MAX_RUN);
   for_cnt(i, run->len) {
@@ -808,8 +807,8 @@ res_init(struct res *r, const struct res_args *args) {
       res__bake_fnt(&r->fnt, &cfg, s, s->mem.tmp);
     }
     r->fnt.space_adv = math_roundi(r->fnt.glyphs[' '].xadvance);
-    r->fnt.txt_height = r->fnt_pnt_size;
-    r->fnt.ico_height = r->fnt_pnt_size;
+    r->fnt.txt_height = math_ceili(r->fnt_pnt_size);
+    r->fnt.ico_height = math_ceili(r->fnt_pnt_size);
   }
   res_run_cache_init(&r->run_cache, s, args);
 }

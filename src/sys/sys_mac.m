@@ -800,9 +800,6 @@ sys_mac_evt(struct sys *s, NSEvent const *const e) {
   case SYS_EVT_SCROLL: {
     float dx = castf(e.scrollingDeltaX);
     float dy = castf(e.scrollingDeltaY);
-    if (e.hasPreciseScrollingDeltas) {
-      dx *= 0.1f, dy *= 0.1f;
-    }
     if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
       s->keymod |= sys__mac_mods(e);
       s->mouse.scrl[0] = casti(dx);

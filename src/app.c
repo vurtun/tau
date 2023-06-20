@@ -127,6 +127,7 @@ app_swap_view(struct app *app, int dst_idx, int src_idx) {
 }
 static void
 app_init(struct app *app) {
+  assert(app);
   app->sys.win.title = "Tau";
   app->sys.win.x = -1;
   app->sys.win.y = -1;
@@ -167,6 +168,7 @@ app_init(struct app *app) {
 }
 static void
 app_shutdown(struct app *app) {
+  assert(app);
   fori_dyn(i, app->views) {
     struct app_view *view = app->views[i];
     dyn_free(view->file_path, &app->sys);
@@ -197,6 +199,30 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
 
   }
   gui.pan.end(ctx, pan, parent);
+}
+static void
+ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
+  assert(app);
+  assert(ctx);
+  assert(pan);
+  if (gui.dnd.dst.begin(ctx, pan)) {
+    struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH16("[sys:files]"));
+    if (paq) { /* file drag & drop */
+      const struct str *file_urls = paq->data;
+      switch (paq->state) {
+      case GUI_DND_DELIVERY: {
+        int file_cnt = paq->size;
+        // app_open_files(app, ctx->sys, file_urls, file_cnt);
+        paq->response = GUI_DND_ACCEPT;
+      } break;
+      case GUI_DND_LEFT: break;
+      case GUI_DND_ENTER:
+      case GUI_DND_PREVIEW: {
+        paq->response = GUI_DND_ACCEPT;
+      } break;}
+    }
+    gui.dnd.dst.end(ctx);
+  }
 }
 static int
 ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
@@ -231,6 +257,52 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.end(ctx, pan, parent);
   return ret;
 }
+static int
+ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
+                           struct gui_panel *parent, struct str title,
+                           enum res_ico_id ico) {
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+  assert(ico);
+
+  int ret = 0;
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_box lay = pan->box;
+    struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
+    gui.ico.clk(ctx, &close, pan, RES_ICO_CLOSE);
+    ret = close.clk;
+
+    struct gui_panel lbl = {.box = lay};
+    gui.ico.box(ctx, &lbl, pan, ico, title);
+  }
+  gui.pan.end(ctx, pan, parent);
+  return ret;
+}
+static int
+ui_app_view_tab(struct app *app, struct app_view *view,
+                struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+                struct str title, enum res_ico_id ico) {
+  assert(app);
+  assert(view);
+  assert(ctx);
+  assert(tab);
+  assert(hdr);
+  assert(slot);
+  assert(ico);
+
+  int ret = 0;
+  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, hash_ptr(view));
+  if (dyn_cnt(app->views) > 1 && tab->idx == tab->sel.idx) {
+    ret = ui_app_view_tab_slot_close(ctx, slot, &hdr->pan, title, ico);
+  } else {
+    gui.ico.box(ctx, slot, &hdr->pan, ico, title);
+  }
+  gui.tab.hdr.slot.end(ctx, tab, hdr, slot, 0);
+  return ret;
+}
 static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
@@ -247,14 +319,29 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     gui.tab.begin(ctx, &tab, pan, dyn_cnt(app->views), app->sel_tab);
     {
       /* tab header */
+      int del_tab = 0;
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       for_cnt(i, tab.cnt) {
-        gui.tab.hdr.slot.txt(ctx, &tab, &hdr, strv("Open"));
+        /* tab header slots */
+        struct gui_panel slot = {0};
+        if (ui_app_view_tab(app, app->views[i], ctx, &tab, &hdr, &slot,
+            strv("Open"), RES_ICO_FOLDER_OPEN)) {
+          del_tab = 1;
+        }
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
         app_swap_view(app, tab.sort.dst, tab.sort.src);
+      }
+      if (del_tab) {
+        assert(dyn_any(app->views));
+        assert(app->sel_tab < dyn_cnt(app->views));
+        /* close database view tab */
+        struct app_view *view = app->views[app->sel_tab];
+        dyn_rm(app->views, app->sel_tab);
+        app_view_del(app, view);
+        app->sel_tab = clamp(0, tab.sel.idx, dyn_cnt(app->views)-1);
       }
       struct gui_btn add = {.box = hdr.pan.box};
       add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
@@ -285,6 +372,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     }
   }
   gui.pan.end(ctx, pan, parent);
+  ui_app_dnd_files(app, ctx, pan);
 }
 
 /* -----------------------------------------------------------------------------
