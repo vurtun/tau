@@ -421,9 +421,8 @@ retry:;
  * ---------------------------------------------------------------------------
  */
 static int*
-res__run_cache_slot(struct res_run_cache *c, hkey h) {
-  int hidx = hkey32(h);
-  int slot = (hidx & c->hmsk);
+res__run_cache_slot(struct res_run_cache *c, unsigned long long h) {
+  int slot = (h & c->hmsk);
   assert(slot < c->hcnt);
   return &c->htbl[slot];
 }
@@ -507,13 +506,13 @@ struct res_run_cache_tbl_fnd_res {
   int idx;
 };
 static struct res_run_cache_tbl_fnd_res
-res__run_cache_tbl_fnd(struct res_run_cache *c, hkey hash) {
+res__run_cache_tbl_fnd(struct res_run_cache *c, unsigned long long hash) {
   struct res_run_cache_tbl_fnd_res ret = {0};
   ret.slot = res__run_cache_slot(c, hash);
   ret.idx = *ret.slot;
   while (ret.idx) {
     struct res_fnt_run *it = res__run_cache_get(c, ret.idx);
-    if (hkey_eq(it->hash, hash)) {
+    if (it->hash == hash) {
       ret.run = it;
       break;
     }
@@ -526,7 +525,7 @@ struct res_run_cache_fnd_res {
   struct res_fnt_run *run;
 };
 static struct res_run_cache_fnd_res
-res_run_cache_fnd(struct res_run_cache *c, hkey h) {
+res_run_cache_fnd(struct res_run_cache *c, unsigned long long h) {
   struct res_run_cache_fnd_res ret = {0};
   struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(c, h);
   if (fnd.run) {
@@ -624,12 +623,12 @@ res_fnt_ext(int *ext, struct res *r, struct str txt) {
     return;
   }
   for_str_tok(it, _, txt, strv(" ")) {
-    hkey h = hkey_init;
+    unsigned long long h = FNV1A64_HASH_INITIAL;
     int n = div_round_up(it.len, 16);
     struct str blk = it;
     for_cnt(i,n) {
       struct str seg = str_lhs(blk, 16);
-      h = cpu_hash(seg.str, seg.len, h);
+      h = str__hash(seg, h);
 
       struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
       struct res_fnt_run *run = ret.run;
@@ -673,12 +672,12 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
   }
   int ext = 0;
   for_str_tok(it, _, txt, strv(" ")) {
-    hkey h = hkey_init;
+    unsigned long long h = FNV1A64_HASH_INITIAL;
     int n = div_round_up(it.len, 16);
     struct str blk = it;
     for_cnt(i,n) {
       struct str seg = str_lhs(blk, 16);
-      h = cpu_hash(seg.str, seg.len, h);
+      h = str__hash(seg, h);
 
       struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
       struct res_fnt_run *run = ret.run;
@@ -746,15 +745,15 @@ res_lay_nxt(struct res_fnt_run_it *it, struct res *r) {
   if (it->i == it->n) {
     it->at = str_split_cut(&it->rest, strv(" "));
     it->n = div_round_up(it->at.len, 16);
+    it->h = FNV1A64_HASH_INITIAL;
     it->blk = it->at;
-    it->h = hkey_init;
     it->i = 0;
   }
   if (!it->at.len) {
     return 0;
   }
   it->seg = str_lhs(it->blk, 16);
-  it->h = cpu_hash(it->seg.str, it->seg.len, it->h);
+  it->h = str__hash(it->seg, it->h);
 
   struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, it->h);
   struct res_fnt_run *run = ret.run;

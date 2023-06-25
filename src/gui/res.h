@@ -60,7 +60,7 @@ struct res_txt_bnd {
 };
 #define RES_FNT_MAX_RUN 16
 struct res_fnt_run {
-  hkey hash;
+  unsigned long long hash;
   int nxt, len;
   int lru_nxt, lru_prv;
 #ifdef DEBUG_MODE
@@ -77,7 +77,7 @@ struct res_fnt_run_it {
   struct str rest;
   struct str blk;
   struct str seg;
-  hkey h;
+  unsigned long long h;
   int i, n;
 };
 struct res_fnt_tbl_stats {

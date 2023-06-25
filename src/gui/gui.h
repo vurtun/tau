@@ -166,8 +166,6 @@ struct gui_ctx;
 enum gui_state {
   GUI_HIDDEN,
   GUI_NORMAL,
-  GUI_HOVERED,
-  GUI_PRESSED,
   GUI_FOCUSED,
   GUI_DISABLED,
 };

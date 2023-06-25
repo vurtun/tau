@@ -535,15 +535,14 @@ static void
 gui_panel_hot(struct gui_ctx *ctx, struct gui_panel *p,
               struct gui_panel *parent) {
   assert(ctx && p);
+  const struct sys *s = ctx->sys;
   const struct gui_box *b = &p->box;
+
   p->is_focused = p->id == ctx->focused;
   if (p->focusable && ctx->first_id == ctx->root.id) {
     ctx->first_id = p->id;
   }
-  const struct sys *s = ctx->sys;
-  int mx = s->mouse.pos[0];
-  int my = s->mouse.pos[1];
-  int in_box = gui_inbox(mx, my, b);
+  int in_box = gui_inbox(s->mouse.pos[0], s->mouse.pos[1], b);
   p->is_hov = !parent || (parent->is_hov && in_box);
   if ((parent && !parent->is_hot) || !in_box) {
     return;
@@ -657,18 +656,13 @@ gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *p) {
   assert(p);
   assert(ctx);
   enum gui_state ret;
-  int clk = (ctx->sys->mouse.btn.left.down || ctx->sys->mouse.btn.right.down);
   const struct gui_box *b = &p->box;
   if (!gui_intersect(&ctx->clip.box, b->x.min, b->y.min, b->x.max, b->y.max)) {
     ret = GUI_HIDDEN;
   } else if (ctx->disabled) {
     ret = GUI_DISABLED;
-  } else if (p->is_hot && clk) {
-    ret = GUI_PRESSED;
   } else if ((p->id == ctx->focused) && !ctx->focus_next) {
     ret = GUI_FOCUSED;
-  } else if (p->is_hot) {
-    ret = GUI_HOVERED;
   } else {
     ret = GUI_NORMAL;
   }
@@ -678,6 +672,7 @@ static void
 gui_panel_drw(struct gui_ctx *ctx, const struct gui_box *b) {
   assert(b);
   assert(ctx);
+
   gui_drw_line_style(ctx, 1);
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
   gui_drw_box(ctx, gui_unbox(b));
@@ -972,6 +967,8 @@ gui_cfg_pushu(struct gui_cfg_stk *stk, void *ptr, unsigned val) {
 }
 static int
 gui_cfg_pushu_on(struct gui_cfg_stk *stk, void *ptr, unsigned val, int cond) {
+  assert(stk);
+  assert(ptr);
   if (cond) {
     gui_cfg_pushu(stk, ptr, val);
     return 1;
@@ -986,6 +983,7 @@ gui_cfg_pop(const struct gui_cfg_stk *stk) {
 }
 static int
 gui_cfg_pop_on(const struct gui_cfg_stk *stk, int cond) {
+  assert(stk);
   if (cond) {
     gui_cfg_pop(stk);
     return 1;
@@ -1365,8 +1363,6 @@ gui_txt_drw(struct gui_ctx *ctx, struct gui_panel *pan, struct str txt,
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
       gui_drw_txt(ctx, pan->box.x.min, pan->box.y.min, txt);
     } break;
-    case GUI_HOVERED:
-    case GUI_PRESSED:
     case GUI_FOCUSED:
     case GUI_NORMAL: {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
@@ -1569,28 +1565,24 @@ gui_btn_drw(struct gui_ctx *ctx, const struct gui_panel *btn) {
   assert(ctx);
   assert(btn);
   const struct gui_box *b = &btn->box;
-  switch (btn->state) {
-    case GUI_FOCUSED:
-    case GUI_DISABLED:
-    case GUI_HOVERED:
-    case GUI_NORMAL: {
-      gui_panel_drw(ctx, &btn->box);
-      if (btn->state == GUI_FOCUSED) {
-        gui_focus_drw(ctx, b, 0);
-      }
-    } break;
-    case GUI_PRESSED: {
-      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
-      gui_drw_box(ctx, gui_unbox(b));
 
-      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-      gui_drw_hln(ctx, b->y.min + 1, b->x.min + 1, b->x.max - 2);
-      gui_drw_vln(ctx, b->x.min + 1, b->y.min + 1, b->y.max - 2);
+  int clk = (ctx->sys->mouse.btn.left.down || ctx->sys->mouse.btn.right.down);
+  if (btn->is_hot && clk) {
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
+    gui_drw_box(ctx, gui_unbox(b));
 
-      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-      gui_drw_hln(ctx, b->y.max-1, b->x.min, b->x.max);
-      gui_drw_vln(ctx, b->x.max, b->y.min, b->y.max-1);
-    } break;
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
+    gui_drw_hln(ctx, b->y.min + 1, b->x.min + 1, b->x.max - 2);
+    gui_drw_vln(ctx, b->x.min + 1, b->y.min + 1, b->y.max - 2);
+
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
+    gui_drw_hln(ctx, b->y.max-1, b->x.min, b->x.max);
+    gui_drw_vln(ctx, b->x.max, b->y.min, b->y.max-1);
+  } else {
+    gui_panel_drw(ctx, &btn->box);
+    if (btn->state == GUI_FOCUSED) {
+      gui_focus_drw(ctx, b, 0);
+    }
   }
 }
 static void
@@ -4758,7 +4750,6 @@ gui_lst_reg_elm_txt_ico(struct gui_ctx *ctx, struct gui_lst_reg *reg,
   }
   gui_lst_reg_elm_end(ctx, reg, elm);
 }
-
 static void
 gui_lst_reg_center(struct gui_lst_reg *la, int idx) {
   assert(la);
