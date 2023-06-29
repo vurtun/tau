@@ -780,7 +780,8 @@ res_lay_begin(struct res_fnt_run_it *it, struct res *r, struct str txt) {
 static void
 res_init(struct res *r, const struct res_args *args) {
   struct sys *s = args->sys;
-  static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f};
+  static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f,
+    22.0f, 24.0f, 26.0f, 28.0f};
   float pnt_siz = math_floori(s->fnt_pnt_size * s->dpi_scale);
 
   double best_d = 10000.0;
@@ -795,8 +796,8 @@ res_init(struct res *r, const struct res_args *args) {
   r->sys = s;
   scp_mem(s->mem.tmp, s) {
     int fnt_siz = 0;
-    void *txt_ttf_mem = res_default_fnt(&fnt_siz, s, s->mem.arena, s->mem.tmp);
-    void *ico_ttf_mem = res_ico_fnt(&fnt_siz, s, s->mem.arena, s->mem.tmp);
+    void *txt_ttf_mem = res_default_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);
+    void *ico_ttf_mem = res_ico_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);
     {
       struct res__bake_cfg cfg = {0};
       cfg.txt_ttf_fnt = txt_ttf_mem;

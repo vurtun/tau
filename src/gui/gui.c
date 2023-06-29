@@ -4810,7 +4810,7 @@ gui_lst_reg_end(struct gui_ctx *ctx, struct gui_lst_reg *la,
         break;
     }
   }
-  gui_reg_end(ctx, &la->reg, parent, off);
+
 }
 /* ---------------------------------------------------------------------------
  *                                  Tree-Node
@@ -5439,11 +5439,11 @@ gui_tbl_lst_tm(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
 }
 
 /* ---------------------------------------------------------------------------
- *                              Picker
+ *                              Combo
  * ---------------------------------------------------------------------------
  */
 static void
-gui_pckr_begin(struct gui_ctx *ctx, struct gui_combo *com,
+gui_combo_begin(struct gui_ctx *ctx, struct gui_combo *com,
                struct gui_panel *parent) {
   assert(ctx);
   assert(com);
@@ -5458,17 +5458,16 @@ gui_pckr_begin(struct gui_ctx *ctx, struct gui_combo *com,
       pan->state != GUI_HIDDEN) {
     gui_edit_drw(ctx, pan);
   }
-  struct gui_btn btn = {0};
   btn.box.x = gui_max_ext(pan->box.x.max, ctx->cfg.scrl);
   btn.box.y = gui_min_max(pan->box.y.min + 2, pan->box.y.max - 1);
-  gui__scrl_btn(ctx, &btn, pan, GUI_EAST);
+  gui__scrl_btn(ctx, &com->btn, pan, GUI_EAST);
 
   com->hdr.y = pan->box.y;
   com->hdr.x = gui_shrink(&pan->box.x, ctx->cfg.pad[0]);
   com->hdr.x = gui_min_max(com->hdr.x.min, btn.box.x.min - ctx->cfg.gap[0]);
 }
 static void
-gui_pckr_end(struct gui_ctx *ctx, struct gui_combo *com,
+gui_combo_end(struct gui_ctx *ctx, struct gui_combo *com,
                   struct gui_panel *parent) {
   assert(ctx);
   assert(com);
@@ -5489,18 +5488,18 @@ gui_pckr_end(struct gui_ctx *ctx, struct gui_combo *com,
   }
 }
 static int
-gui_pckr(struct gui_ctx *ctx, struct gui_combo *com,
+gui_combo(struct gui_ctx *ctx, struct gui_combo *com,
           struct gui_panel *parent, struct str txt) {
   assert(ctx);
   assert(com);
   assert(parent);
-  gui_pckr_begin(ctx, com, parent);
+  gui_combo_begin(ctx, com, parent);
   {
     static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
     struct gui_panel lbl = {.box = com->hdr};
     gui_txt(ctx, &lbl, &com->pan, txt, &align);
   }
-  gui_pckr_end(ctx, com, parent);
+  gui_combo_end(ctx, com, parent);
   return com->opened;
 }
 

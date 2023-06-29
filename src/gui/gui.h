@@ -711,6 +711,7 @@ struct gui_combo {
   struct gui_box hdr;
   struct gui_panel pan;
   struct gui_input in;
+  struct gui_btn btn;
   unsigned opened: 1;
 };
 
