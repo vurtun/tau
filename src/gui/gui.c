@@ -4810,7 +4810,7 @@ gui_lst_reg_end(struct gui_ctx *ctx, struct gui_lst_reg *la,
         break;
     }
   }
-
+  gui_reg_end(ctx, &la->reg, parent, off);
 }
 /* ---------------------------------------------------------------------------
  *                                  Tree-Node
@@ -5458,13 +5458,13 @@ gui_combo_begin(struct gui_ctx *ctx, struct gui_combo *com,
       pan->state != GUI_HIDDEN) {
     gui_edit_drw(ctx, pan);
   }
-  btn.box.x = gui_max_ext(pan->box.x.max, ctx->cfg.scrl);
-  btn.box.y = gui_min_max(pan->box.y.min + 2, pan->box.y.max - 1);
+  com->btn.box.x = gui_max_ext(pan->box.x.max, ctx->cfg.scrl);
+  com->btn.box.y = gui_min_max(pan->box.y.min + 2, pan->box.y.max - 1);
   gui__scrl_btn(ctx, &com->btn, pan, GUI_EAST);
 
   com->hdr.y = pan->box.y;
   com->hdr.x = gui_shrink(&pan->box.x, ctx->cfg.pad[0]);
-  com->hdr.x = gui_min_max(com->hdr.x.min, btn.box.x.min - ctx->cfg.gap[0]);
+  com->hdr.x = gui_min_max(com->hdr.x.min, com->btn.box.x.min - ctx->cfg.gap[0]);
 }
 static void
 gui_combo_end(struct gui_ctx *ctx, struct gui_combo *com,
