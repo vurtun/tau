@@ -201,7 +201,9 @@ app_shutdown(struct app *app) {
   assert(app);
   fori_dyn(i, app->views) {
     struct app_view *view = app->views[i];
-    dbs.del(view->db, &app->sys);
+    if (view->db) {
+      dbs.del(view->db, &app->sys);
+    }
     dyn_free(view->file_path, &app->sys);
     app_view_del(app, view);
   }
@@ -400,7 +402,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       struct gui_btn add = {.box = hdr.pan.box};
       add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
-      if (gui.btn.txt(ctx, &add, &hdr.pan, strv("+"), 0)) {
+      if (gui.btn.ico(ctx, &add, &hdr.pan, RES_ICO_FOLDER_ADD)) {
         /* open new file view tab */
         struct app_view *view = app_view_new(app);
         app->sel_tab = dyn_cnt(app->views);

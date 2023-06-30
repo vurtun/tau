@@ -2432,7 +2432,7 @@ ui_db_explr_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
   {
     struct gui_box lay = pan->box;
     struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
-    gui.ico.clk(ctx, &close, pan, RES_ICO_NO);
+    gui.ico.clk(ctx, &close, pan, RES_ICO_CLOSE);
     ret = close.clk;
 
     struct gui_panel lbl = {.box = lay};
