@@ -2000,8 +2000,6 @@ tbl__resv(int val_siz, int cap) {
 static void*
 tbl__setup(void *mem, struct mem_blk *blk, int cap) {
   assert(mem);
-  assert(blk);
-
   struct dyn_hdr *hdr = cast(struct dyn_hdr*, mem);
   hdr->blk = blk;
   hdr->cap = cap;

@@ -18,11 +18,13 @@
 #include "lib/std.h"
 #include "lib/rpq.h"
 #include "lib/fnt.h"
+#include "lib/sql.h"
 #include "sys/gfx.h"
 #include "sys/sys.h"
 #include "gui/res.h"
 #include "gui/gui.h"
 #include "app/pck.h"
+#include "app/dbs.h"
 
 struct gui_app_key {
   int code;
@@ -34,16 +36,20 @@ struct app_ui_shortcut {
 };
 enum app_view_state {
   APP_VIEW_STATE_FILE,
+  APP_VIEW_STATE_DB,
 };
 struct app_view {
   enum app_view_state state;
+  enum app_view_state last_state;
   struct lst_elm hook;
   dyn(char) file_path;
+  struct db_ui_view *db;
 };
 struct app {
   struct sys sys;
   struct res res;
   struct gui_ctx gui;
+  struct mem_blk *db_mem;
 
   /* views */
   struct file_view *fs;
@@ -58,17 +64,19 @@ static struct sys_api sys;
 static struct res_api res;
 static struct gui_api gui;
 static struct pck_api pck;
+static struct db_api dbs;
 
-#include "cfg.h"
+#include "app/cfg.h"
 #include "lib/fmt.c"
 #include "lib/std.c"
 #include "lib/math.c"
 #include "lib/rpq.c"
 #include "lib/fnt.c"
+#include "lib/sql.c"
 #include "gui/res.c"
 #include "gui/gui.c"
 #include "app/pck.c"
-
+#include "app/dbs.c"
 
 /* -----------------------------------------------------------------------------
  *                                  App
@@ -101,6 +109,7 @@ app_view_setup(struct app *app, struct app_view *view) {
   assert(app);
 
   view->state = APP_VIEW_STATE_FILE;
+  view->last_state = view->state;
   if (!view->file_path) {
     view->file_path = arena_dyn(app->sys.mem.arena, &app->sys, char, 256);
   }
@@ -112,6 +121,25 @@ app_view_init(struct app_view *view, struct app *app, struct str path) {
 
   app_view_setup(app, view);
   dyn_asn_str(view->file_path, &app->sys, path);
+  view->state = APP_VIEW_STATE_DB;
+}
+static void
+app_open_files(struct app *app, const struct str *files, int cnt) {
+  assert(app);
+  assert(sys);
+  assert(files);
+  for_cnt(i,cnt) {
+    /* open each database in new tab */
+    struct app_view *view = app_view_new(app);
+    view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, files[i]);
+    if (!view->db) {
+      app_view_del(app, view);
+      continue;
+    }
+    app_view_init(view, app, files[i]);
+    app->sel_tab = dyn_cnt(app->views);
+    dyn_add(app->views, &app->sys, view);
+  }
 }
 static void
 app_swap_view(struct app *app, int dst_idx, int src_idx) {
@@ -159,8 +187,10 @@ app_init(struct app *app) {
     gui.init(&app->gui, app->sys.mem.arena, &args);
   }
   app->fs = pck.init(&app->sys, &app->gui, app->sys.mem.arena, app->sys.mem.tmp);
+  app->db_mem = app->sys.mem.alloc(&app->sys, 0, CFG_DB_MAX_MEMORY, 0, 0);
   app->views = arena_dyn(app->sys.mem.arena, &app->sys, struct app_view*, 16);
   lst_init(&app->del_lst);
+  dbs.init(app->db_mem);
 
   struct app_view *view = app_view_new(app);
   app_view_setup(app, view);
@@ -171,6 +201,7 @@ app_shutdown(struct app *app) {
   assert(app);
   fori_dyn(i, app->views) {
     struct app_view *view = app->views[i];
+    dbs.del(view->db, &app->sys);
     dyn_free(view->file_path, &app->sys);
     app_view_del(app, view);
   }
@@ -195,8 +226,26 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   assert(parent);
   unused(view);
 
-  if (pck.ui(&view->file_path, app->fs, ctx, pan, parent)) {
-
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct gui_panel bdy = {.box = pan->box};
+    switch (view->state) {
+    case APP_VIEW_STATE_FILE: {
+      if (pck.ui(&view->file_path, app->fs, ctx, &bdy, pan)) {
+        struct str file_path = dyn_str(view->file_path);
+        view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, file_path);
+        view->state = APP_VIEW_STATE_DB;
+        if (view->db) {
+          struct app_view *new_view = app_view_new(app);
+          app_view_setup(app, new_view);
+          dyn_add(app->views, &app->sys, new_view);
+        }
+      }
+    } break;
+    case APP_VIEW_STATE_DB: {
+      dbs.ui(view->db, ctx, &bdy, pan);
+    } break;
+    }
   }
   gui.pan.end(ctx, pan, parent);
 }
@@ -212,7 +261,7 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       switch (paq->state) {
       case GUI_DND_DELIVERY: {
         int file_cnt = paq->size;
-        // app_open_files(app, ctx->sys, file_urls, file_cnt);
+        app_open_files(app, file_urls, file_cnt);
         paq->response = GUI_DND_ACCEPT;
       } break;
       case GUI_DND_LEFT: break;
@@ -324,9 +373,15 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       for_cnt(i, tab.cnt) {
         /* tab header slots */
+        struct app_view *view = app->views[i];
+        enum res_ico_id ico = RES_ICO_FOLDER_OPEN;
+        struct str title = strv("Open");
+        if (view->state != APP_VIEW_STATE_FILE) {
+          title = path_file(dyn_str(view->file_path));
+          ico = RES_ICO_DATABASE;
+        }
         struct gui_panel slot = {0};
-        if (ui_app_view_tab(app, app->views[i], ctx, &tab, &hdr, &slot,
-            strv("Open"), RES_ICO_FOLDER_OPEN)) {
+        if (ui_app_view_tab(app, app->views[i], ctx, &tab, &hdr, &slot, title, ico)) {
           del_tab = 1;
         }
       }
@@ -413,6 +468,7 @@ main(int argc, char **argv) {
   res_api(&res, 0);
   gui_api(&gui, 0);
   pck_api(&pck, 0);
+  db_api(&dbs, 0);
 
   /* init */
   struct app app = {0};
@@ -424,7 +480,17 @@ main(int argc, char **argv) {
   /* run */
   while (app.sys.running) {
     sys.pull(&app.sys);
+    fori_dyn(i, app.views) {
+      struct app_view *view = app.views[i];
+      switch (view->state) {
+      case APP_VIEW_STATE_FILE: break;
+      case APP_VIEW_STATE_DB:
+        dbs.update(view->db, &app.sys);
+        break;
+      }
+    }
     pck.update(app.fs, &app.sys);
+
     /* gui */
     fori_arrv(i, app_ui_key_tbl) {
       /* map system keys to ui shortcuts */
@@ -436,6 +502,9 @@ main(int argc, char **argv) {
       } else if (bit_tst(app.sys.keys, s->alt.code) && keymod) {
         bit_set(ctx->keys, i);
       }
+    }
+    if (app.sys.style_mod) {
+      gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
     }
     while (gui.begin(&app.gui)) {
       struct gui_panel pan = {.box = app.gui.box};

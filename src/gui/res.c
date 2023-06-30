@@ -477,9 +477,10 @@ retry:;
     fnt_PackBegin(&pc, img, w, h, 0, 1, 0);
     int ok0 = fnt_PackFontRange(&pc, cfg->txt_ttf_fnt, 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
     int ok1 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
+    int ok2 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
     fnt_PackEnd(&pc);
 
-    if (!ok0 || !ok1) {
+    if (!ok0 || !ok1 || !ok2) {
       w *= 2, h *= 2;
       mem_scp_end(&scp, tmp, s);
       goto retry;
@@ -496,7 +497,7 @@ retry:;
  */
 static int*
 res__run_cache_slot(struct res_run_cache *c, unsigned long long h) {
-  int slot = (h & c->hmsk);
+  int slot = casti(h & castull(c->hmsk));
   assert(slot < c->hcnt);
   return &c->htbl[slot];
 }
