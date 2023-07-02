@@ -188,8 +188,21 @@ struct db_tree_view {
   dyn(char) fnd_buf;
   struct gui_txt_ed fnd_ed;
 };
+struct db_graph_node {
+  struct str name;
+  unsigned long long id;
+  struct gui_box box;
+  dyn(struct db_tbl_col) cols;
+  int pk_idx;
+};
+struct db_graph {
+  double off[2];
+  dyn(struct db_graph_node) nodes;
+  struct gui_box box;
+};
 enum db_view_state {
   DB_VIEW_TREE,
+  DB_VIEW_GRAPH,
   DB_VIEW_CNT
 };
 struct db_ui_view {
@@ -198,7 +211,9 @@ struct db_ui_view {
   sqlite3 *con;
   struct str path;
 
+  enum db_view_state state;
   struct db_tree_view tree;
+  struct db_graph graph;
   unsigned tree_rev;
 
   /* views */
@@ -374,21 +389,6 @@ db_tree_node_icon(const struct db_tree_view *t, const struct db_tree_node *n) {
     } else {
       return RES_ICO_FOLDER;
     }
-#if 0
-    if (str_eq(n->name, strv("Tables"))) {
-      return RES_ICO_TABLE;
-    } else if (str_eq(n->name, strv("Views"))) {
-      return RES_ICO_IMAGE;
-    } else if (str_eq(n->name, strv("Indexes"))) {
-      return RES_ICO_ADDRESS_BOOK;
-    } else if (str_eq(n->name, strv("Sequences"))) {
-      return RES_ICO_NUM_LIST;
-    } else if (str_eq(n->name, strv("Triggers"))) {
-      return RES_ICO_BOLT;
-    } else {
-      return RES_ICO_CUBES;
-    }
-#endif
   } else if (str_eq(n->type, strv("table"))) {
     return RES_ICO_TABLE;
   } else if (str_eq(n->type, strv("view"))) {
@@ -576,6 +576,55 @@ db_tree_end(struct db_ui_view *d, struct db_tree_view *t, struct arena *mem,
     struct db_tree_node *n = 0;
     n = lst_get(elm, struct db_tree_node, hook);
     db_tree_qry_tbl(d, n, ctx->sys, mem);
+  }
+}
+static void
+db_graph_begin(struct db_graph *g, struct sys *_sys, struct arena *mem) {
+  assert(g);
+  assert(mem);
+
+  g->off[0] = g->off[1] = 0;
+  g->nodes = arena_dyn(mem, _sys, struct db_graph_node, 256);
+  g->box = gui.box.box(0,0,0,0);
+}
+static void
+db_graph_end(struct db_ui_view *d, struct db_graph *g, struct gui_ctx *ctx,
+             struct arena *mem, struct arena *tmp) {
+  assert(g);
+  assert(db);
+  assert(ctx);
+  assert(mem);
+  assert(tmp);
+
+  int suf_w = gui.txt.width(ctx, strv("NOT NULL")) + ctx->cfg.gap[0];
+  int base_w = suf_w + ctx->cfg.pan_pad[0] * 2;
+
+  struct db_graph_node *n = 0;
+  for_dyn(n, g->nodes) {
+    /* query node table column layout */
+    n->cols = arena_dyn(mem, ctx->sys, struct db_tbl_col, 64);
+    n->cols = db_tbl_qry_cols(d->con, 0, ctx->sys, n->name, n->cols, mem, tmp);
+
+    /* calculate node size  */
+    int min_h = (dyn_cnt(n->cols) + 1) * ctx->cfg.item + 4;
+    int hdr_w = gui.txt.width(ctx, n->name) + ctx->cfg.item + ctx->cfg.gap[0];
+    int min_w = hdr_w + base_w;
+
+    const struct db_tbl_col *col = 0;
+    for_dyn(col, n->cols) {
+      int w = gui.txt.width(ctx, col->name) + ctx->cfg.item + ctx->cfg.gap[0];
+      min_w = max(min_w, w + base_w);
+      if (col->pk) {
+        n->pk_idx = cast(int, col - n->cols);
+      }
+    }
+    n->box = gui.box.box(0,0,min_w,min_h);
+  }
+  /* graph auto node layouting */
+  int at_x = 0;
+  for_dyn(n, g->nodes) {
+    n->box.x = gui.bnd.min_ext(at_x, n->box.x.ext);
+    at_x += n->box.x.ext + ctx->cfg.grid;
   }
 }
 static struct db_tree_node**
@@ -1148,6 +1197,7 @@ db_setup(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem,
   d->tbls = arena_dyn(&d->mem, ctx->sys, struct db_tbl_view*, 32);
 
   db_tree_begin(&d->tree, ctx->sys, &d->mem);
+  db_graph_begin(&d->graph, ctx->sys, &d->mem);
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const char *tbl_type = (const char*)sqlite3_column_text(stmt, 0);
     const char *tbl_name = (const char*)sqlite3_column_text(stmt, 1);
@@ -1186,8 +1236,16 @@ db_setup(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem,
       arg.id = fnv1a64(name.str, name.len, node->id);
       db_tree_node_new(ctx->sys, &d->mem, node, &arg);
     }
+    /* add graph view node */
+    if (!strcmp(tbl_type, "table")) {
+      struct db_graph_node gn = {0};
+      gn.name = arena_str(&d->mem, ctx->sys, name);
+      gn.id = str_hash(name);
+      dyn_add(d->graph.nodes, ctx->sys, gn);
+    }
   }
   sqlite3_finalize(stmt);
+  db_graph_end(d, &d->graph, ctx, mem, d->tmp_mem);
   db_tree_end(d, &d->tree, mem, ctx);
 
   struct db_tbl_view *view = db_tbl_view_new(d, ctx->sys);
@@ -2221,7 +2279,13 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
 
   gui.pan.begin(ctx, pan, parent);
   {
-    struct gui_tbl tbl = {.box = pan->box};
+    int gap = ctx->cfg.gap[1];
+    struct gui_box lay = pan->box;
+    struct gui_panel fltr = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
+    struct gui_edit_box edt = {.box = fltr.box};
+    ui_edit_fnd(ctx, &edt, &fltr, pan, &d->tree.fnd_ed, &d->tree.fnd_buf);
+
+    struct gui_tbl tbl = {.box = lay};
     gui.tbl.begin(ctx, &tbl, pan, t->tbl.off, &t->tbl.sort);
     {
       /* header */
@@ -2257,6 +2321,94 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
   }
   gui.pan.end(ctx, pan, parent);
 }
+static enum res_ico_id
+ui_db_view_graph_node_attr_ico(const struct db_tbl_col *col) {
+  assert(col);
+  if (col->pk) {
+    return RES_ICO_KEY;
+  } else if (col->fk) {
+    return RES_ICO_LINK;
+  } else if (str_eq(col->type, strv("REAL")) ||
+      str_eq(col->type, strv("DOUBLE")) ||
+      str_eq(col->type, strv("DOUBLE PRECISION")) ||
+      str_eq(col->type, strv("FLOAT"))) {
+    return RES_ICO_MODIFY;
+  } else if (str_eq(col->type, strv("DATE"))) {
+    return RES_ICO_CALENDAR;
+  } else if (str_eq(col->type, strv("DATETIME"))) {
+    return RES_ICO_CALENDAR;
+  } else if (str_eq(col->type, strv("BLOB"))) {
+    return RES_ICO_CUBE;
+  } else if (str_eq(col->type, strv("BOOLEAN"))) {
+    return RES_ICO_CHECK;
+  } else if (str_eq(col->type, strv("INT")) ||
+      str_eq(col->type, strv("INTEGER")) ||
+      str_eq(col->type, strv("TINYINT")) ||
+      str_eq(col->type, strv("SMALLINT")) ||
+      str_eq(col->type, strv("MEDIUMINT")) ||
+      str_eq(col->type, strv("BIGINT")) ||
+      str_eq(col->type, strv("UNSIGNED BIG INT")) ||
+      str_eq(col->type, strv("INT2")) ||
+      str_eq(col->type, strv("INT8")) ||
+      str_eq(col->type, strv("NUMERIC"))) {
+    return RES_ICO_MODIFY;
+  } else {
+    return RES_ICO_FONT;
+  }
+}
+static void
+ui_db_view_graph_node(struct gui_ctx *ctx, struct db_graph_node *n,
+                      struct gui_panel *parent) {
+  assert(n);
+  assert(ctx);
+  assert(parent);
+
+  struct gui_graph_node node = {.box = n->box};
+  gui.graph_node.begin(ctx, &node, parent);
+  {
+    /* header */
+    struct gui_graph_node_hdr hdr = {0};
+    gui.graph_node.item(&hdr.box, ctx, &node, 0);
+    gui.graph_node.hdr.begin(ctx, &node, &hdr);
+    {
+      struct gui_panel lbl = {.box = hdr.content};
+      gui.ico.box(ctx, &lbl, &hdr.pan, RES_ICO_TABLE, n->name);
+    }
+    gui.graph_node.hdr.end(ctx, &node, &hdr);
+    if (hdr.moved) {
+      n->box = gui.box.posv(&n->box, hdr.pos);
+    }
+    /* body */
+    const struct db_tbl_col *col = 0;
+    for_dyn(col,n->cols) {
+      struct gui_panel lbl = {0};
+      enum res_ico_id ico = ui_db_view_graph_node_attr_ico(col);
+      gui.graph_node.item(&lbl.box, ctx, &node, 0);
+      gui.ico.box(ctx, &lbl, &node.pan, ico, col->name);
+    }
+  }
+  gui.graph_node.end(ctx, &node, parent);
+}
+static void
+ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
+                 struct gui_panel *pan, struct gui_panel *parent) {
+  assert(g);
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+
+  gui.pan.begin(ctx, pan, parent);
+  {
+    struct db_graph_node *n = 0;
+    struct gui_grid grid = {.box = pan->box};
+    gui.grid.begin(ctx, &grid, pan, g->off);
+    for_dyn(n, g->nodes) {
+      ui_db_view_graph_node(ctx, n, &grid.pan);
+    }
+    gui.grid.end(ctx, &grid, pan, g->off);
+  }
+  gui.pan.end(ctx, pan, parent);
+}
 static void
 ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                    struct gui_tab_ctl_hdr *hdr, struct str title,
@@ -2288,6 +2440,47 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
   }
 }
 static void
+ui_db_view(struct db_ui_view *d, struct gui_ctx *ctx, struct gui_panel *pan,
+           struct gui_panel *parent) {
+  assert(db);
+  assert(ctx);
+  assert(pan);
+  assert(view);
+  assert(parent);
+
+  gui.pan.begin(ctx, pan, parent);
+  {
+    /* tab control */
+    struct gui_tab_ctl tab = {.box = pan->box};
+    gui.tab.begin(ctx, &tab, pan, DB_VIEW_CNT, casti(d->state));
+    {
+      /* tab header */
+      struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
+      gui.tab.hdr.begin(ctx, &tab, &hdr);
+      {
+        ui_db_view_tab(ctx, &tab, &hdr, strv("Tree"), RES_ICO_BOX_LIST);
+        ui_db_view_tab(ctx, &tab, &hdr, strv("Graph"), RES_ICO_GRAPH);
+      }
+      gui.tab.hdr.end(ctx, &tab, &hdr);
+      if (tab.sel.mod) {
+        d->state = cast(enum db_view_state, tab.sel.idx);
+      }
+      /* tab body */
+      struct gui_panel bdy = {.box = tab.bdy};
+      switch (d->state) {
+      case DB_VIEW_TREE:
+        ui_db_view_tree(d, &d->tree, ctx, &bdy, pan);
+        break;
+      case DB_VIEW_GRAPH:
+        ui_db_view_graph(&d->graph, ctx, &bdy, pan);
+        break;
+      }
+    }
+    gui.tab.end(ctx, &tab, pan);
+  }
+  gui.pan.end(ctx, pan, parent);
+}
+static void
 ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
            struct gui_panel *pan, struct gui_panel *parent) {
   assert(ui);
@@ -2303,12 +2496,8 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
     switch (view->state) {
     case TBL_VIEW_SELECT: {
       struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
-      struct gui_panel fltr = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
       struct gui_panel overview = {.box = lay};
-
-      struct gui_edit_box edt = {.box = fltr.box};
-      ui_edit_fnd(ctx, &edt, &fltr, pan, &ui->tree.fnd_ed, &ui->tree.fnd_buf);
-      ui_db_view_tree(ui, &ui->tree, ctx, &overview, pan);
+      ui_db_view(ui, ctx, &overview, pan);
 
       /* open tables */
       int dis = tbl_empty(&ui->tree.sel);
