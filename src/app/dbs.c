@@ -321,13 +321,17 @@ db_tree_node_setup(struct sys *_sys, struct arena *mem, struct db_tree_node *s,
   s->id = arg->id;
   s->parent = n;
   s->depth = n->depth + 1;
-  s->name = arena_str(mem, _sys, arg->name);
-  s->type = arena_str(mem, _sys, arg->type);
-  s->sql = arena_str(mem, _sys, arg->sql);
   s->is_pk = arg->is_pk;
   s->is_fk = arg->is_fk;
   s->kind = arg->kind;
-
+  s->name = arena_str(mem, _sys, arg->name);
+  s->type = arena_str(mem, _sys, arg->type);
+  s->sql = arena_str(mem, _sys, arg->sql);
+  fori_str(i, &s->sql) {
+    if (!is_printable(s->sql.str[i])) {
+      *recast(char*, s->sql.str + i) = ' ';
+    }
+  }
   lst_init(&s->hook);
   lst_init(&s->sub);
   db_tree_node_lnk(n, s);
@@ -358,13 +362,19 @@ db_tree_root_node_new(struct db_tree_view *t, struct sys *_sys, struct arena *me
   return db_tree_node_new(_sys, mem, &t->root, &arg);
 }
 static enum res_ico_id
-db_tree_node_icon(const struct db_tree_node *n) {
+db_tree_node_icon(const struct db_tree_view *t, const struct db_tree_node *n) {
   assert(n);
   if (n->is_pk) {
     return RES_ICO_KEY;
   } else if (n->is_fk) {
     return RES_ICO_LINK;
   } else if (str_eq(n->type, strv("folder"))) {
+    if (set_fnd(t->exp, n->id)) {
+      return RES_ICO_FOLDER_OPEN;
+    } else {
+      return RES_ICO_FOLDER;
+    }
+#if 0
     if (str_eq(n->name, strv("Tables"))) {
       return RES_ICO_TABLE;
     } else if (str_eq(n->name, strv("Views"))) {
@@ -378,6 +388,7 @@ db_tree_node_icon(const struct db_tree_node *n) {
     } else {
       return RES_ICO_CUBES;
     }
+#endif
   } else if (str_eq(n->type, strv("table"))) {
     return RES_ICO_TABLE;
   } else if (str_eq(n->type, strv("view"))) {
@@ -2107,8 +2118,9 @@ ui_db_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
 }
 static void
 ui_db_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
-                      struct gui_panel *parent,
-                      const struct db_tree_node *n){
+                     struct gui_panel *parent,
+                     const struct db_tree_view *t,
+                     const struct db_tree_node *n){
   assert(ctx);
   assert(node);
   assert(parent);
@@ -2116,7 +2128,7 @@ ui_db_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
   gui.tree.begin(ctx, node, parent, n->depth - 1);
   {
     struct gui_panel lbl = {.box = node->box};
-    enum res_ico_id ico = db_tree_node_icon(n);
+    enum res_ico_id ico = db_tree_node_icon(t,n);
     gui.ico.box(ctx, &lbl, &node->pan, ico, n->name);
   }
   gui.tree.end(ctx, node, parent);
@@ -2139,7 +2151,7 @@ ui_db_view_tree_elm_node_col(struct gui_ctx *ctx, struct db_tree_view *t,
     node.open = set_fnd(t->exp, n->id);
     node.box = pan->box;
 
-    ui_db_view_tree_node(ctx, &node, pan, n);
+    ui_db_view_tree_node(ctx, &node, pan, t, n);
     if (node.changed) {
       if (node.open) {
         set_put(t->exp, ctx->sys, n->id);

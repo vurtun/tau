@@ -1274,7 +1274,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       dis = elm->isdir || !elm->isvalid;
     }
     scp_gui_disable_on(&gui, ctx, dis) {
-      if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_FILE, -1)) {
+      if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
         const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
         dyn_asn_str(*filepath, ctx->sys, elm->fullpath);
         ret = 1;

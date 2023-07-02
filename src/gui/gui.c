@@ -363,7 +363,6 @@ static int
 gui_clip_end(struct gui_ctx *ctx, struct gui_clip *clip) {
   assert(ctx);
   assert(clip);
-
   ctx->clip = *clip;
   return casti(ctx->clip.hdl);
 }
@@ -437,6 +436,27 @@ gui_drw_vln(struct gui_ctx *ctx, int x, int y0, int y1) {
   assert(ctx->vtx_mem);
   assert(ctx->idx_mem);
   gui_drw_ln(ctx, x, y0, x, y1);
+}
+static void
+gui_drw_bspline(struct gui_ctx *ctx, const float *cvs, int cnt, int seg_cnt,
+                int is_closed) {
+  assert(ctx);
+  assert(cvs);
+  assert(cnt > 3);
+  assert(seg_cnt > 1);
+
+  float step = 1.0f / castf(seg_cnt), at = step;
+  float p0[2]; bspline_pos_const(p0, 0.0f, cvs, cnt, is_closed, 2);
+  for_cnt(i, seg_cnt-1) {
+    float p1[2]; bspline_pos_const(p1, at, cvs, cnt, is_closed, 2);
+    int x0 = math_roundi(p0[0]);
+    int y0 = math_roundi(p0[1]);
+    int x1 = math_roundi(p1[0]);
+    int y1 = math_roundi(p1[1]);
+    gui_drw_ln(ctx, x0, y0, x1, y1);
+    cpy2(p0, p1);
+    at += step;
+  }
 }
 static void
 gui_drw_sbox(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
@@ -1329,7 +1349,7 @@ gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
   gui_txt_ext(off, ctx, strp(txt.str, uln_min.str));
   gui_txt_ext(len, ctx, strp(uln_min.str, uln_max.str));
   gui_drw_hln(ctx, pan->box.y.max - 1, pan->box.x.min + off[0],
-               pan->box.x.min + off[0] + len[0]);
+              pan->box.x.min + off[0] + len[0]);
 }
 static void
 gui_align_txt(struct gui_box *b, const struct gui_align *align, int *ext) {

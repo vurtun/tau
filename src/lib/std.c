@@ -83,6 +83,7 @@ rng_mk(int lo, int hi, int s) {
 #define forever while(1)
 #define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
 #define for_cnt(i,n) for_nstep(i,n,1)
+#define for_cnt_rev(i,n) for (int i = (n)-1; i >= 0; i -= 1)
 #define fori_cnt(i,n) for (i = 0; i < (n); i += 1)
 #define for_rng(i,l,r)\
   for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
@@ -619,6 +620,7 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 #define is_digit(c) (((c) >= '0') && ((c) <= '9'))
 #define is_hex(c) (is_digit(c) || (((c) >= 'a') && ((c) <= 'f')) || (((c) >= 'A') && ((c) <= 'F')))
 #define is_alpha(c) (is_lower(c) || is_upper(c))
+#define is_printable(c) ((c) >= 32 && (c) <= 126)
 // clang-format on
 
 static int
@@ -859,8 +861,9 @@ str__match_hash(struct str s) {
 
 #define for_str(it,c,s)\
   for (const char *it = (c)->str; it < (c)->end; it += (s))
-#define fori_str(i,c,s)\
+#define fori_str_step(i,c,s)\
   for (int i = 0; i < (c)->len; i += (s))
+#define fori_str(i,c) fori_str_step(i,c,1)
 #define for_str_rng(it,a, b,e,s)                                \
   for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;      \
       (it) != (a)->str + rng(b,e,s,(a)->len).hi;                \

@@ -1508,7 +1508,7 @@ bspline_pos(float *pos, float linear_pos, const float *cvs, int cnt,
     if (is_closed) {
       idx = idx % (cnt-1);
     } else {
-      memcpy(pos, cvs + (cnt - 1) * dim, szof(float) * dim);
+      mcpy(pos, cvs + (cnt - 1) * dim, szof(float) * dim);
       return;
     }
   }
@@ -1552,13 +1552,13 @@ bspline_tangent(float *tangent, float linear_pos, const float *cvs, int cnt,
   assert(idx + 3 <= cnt);
   float pos_frac = linear_pos - val;
 
-  /* now calculate tangent: -3 (a (x-1) + b (-1 + 4x - 3x) + c(-2+3x)x - dx) */
+  /* calculate tangent: -3 (a (x-1) + b (-1 + 4x - 3x) + c(-2+3x)x - dx) */
   float a = (pos_frac - 1.0f) * (pos_frac - 1.0f);
   float b = -1.0f + (4.0f * pos_frac) - ((3.0f * pos_frac * pos_frac));
   float c = ((-2.0f + (3.0f * pos_frac)) * pos_frac);
   float d = -(pos_frac * pos_frac);
 
-  memset(tangent,0,szof(float) * dim);
+  mset(tangent,0,szof(float) * dim);
   opNs(tangent,+=,cvs+((idx+0)%cnt)*dim,*,a,dim);
   opNs(tangent,+=,cvs+((idx+1)%cnt)*dim,*,b,dim);
   opNs(tangent,+=,cvs+((idx+2)%cnt)*dim,*,c,dim);
@@ -1705,6 +1705,7 @@ bspline_pos_const(float *restrict pos, float norm_time,
   assert(cvs);
   assert(dim > 0);
   assert(cnt > 0);
+
   norm_time = clamp01(norm_time);
   float lin_time = bspline_calc_const_speed_time(cvs, cnt, norm_time, is_closed, dim);
   bspline_pos(pos, lin_time, cvs, cnt, is_closed, dim);
