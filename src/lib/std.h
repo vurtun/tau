@@ -80,7 +80,7 @@
 
 typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
-  int lo, mid, hi, step, cnt;
+  int lo, hi, step, cnt;
 };
 struct rngf {
   float lo, hi;

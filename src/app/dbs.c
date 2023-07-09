@@ -680,7 +680,7 @@ db_tbl_view_del(struct db_ui_view *d, struct db_tbl_view *view, struct sys* _sys
   view->tmp_mem = 0;
   view->name = str_nil;
   view->state = TBL_VIEW_SELECT;
-  memset(&view->scp, 0, sizeof(view->scp));
+  mset(&view->scp, 0, sizeof(view->scp));
 
   view->row_cnt = 0;
   view->row_end = 0;
@@ -1295,6 +1295,19 @@ db_free(struct db_ui_view *d, struct sys *_sys) {
     it = lst_get(elm, struct db_tbl_view, hook);
     db_tbl_view_free(it, _sys);
   }
+  /* cleanup view tree */
+  dyn_free(d->tree.lst, _sys);
+  dyn_free(d->tree.fnd_buf, _sys);
+  set_free(d->tree.exp, _sys);
+  tbl_free(d->tree.sel, _sys);
+
+  /* cleanup view graph */
+  struct db_graph_node *n = 0;
+  for_dyn(n, d->graph.nodes) {
+    dyn_free(n->cols, _sys);
+  }
+  dyn_free(d->graph.nodes, _sys);
+
   dyn_free(d->tbls, _sys);
   arena_free(&d->mem, _sys);
   if (d->con){
@@ -1643,7 +1656,6 @@ ui_db_tbl_fltr_lst_ico_slot(struct gui_ctx *ctx, struct gui_tbl *tbl,
   assert(slot);
   assert(state);
   assert(tbl_lay);
-
   gui.tbl.hdr.slot.begin(ctx, tbl, slot);
   {
     struct gui_panel tog = {.box = slot->box};
@@ -2399,9 +2411,9 @@ ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
 
   gui.pan.begin(ctx, pan, parent);
   {
-    struct db_graph_node *n = 0;
     struct gui_grid grid = {.box = pan->box};
     gui.grid.begin(ctx, &grid, pan, g->off);
+    struct db_graph_node *n = 0;
     for_dyn(n, g->nodes) {
       ui_db_view_graph_node(ctx, n, &grid.pan);
     }
@@ -2504,6 +2516,7 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       scp_gui_disable_on(&gui, ctx, dis) {
         if (ui_btn_ico(ctx, &open, pan, strv("Open"), RES_ICO_TH_LIST, 0)) {
           ui_db_open_sel(ui, view, ctx);
+          tbl_clr(ui->tree.sel);
         }
       }
     } break;

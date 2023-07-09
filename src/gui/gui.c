@@ -6271,6 +6271,7 @@ gui_tml_pos(const struct gui_tml *t, int scrn_pos) {
 static void
 gui_tml_zoom(struct gui_tml *t, int min, int max) {
   assert(t);
+  assert(min < max);
   assert(t->has_hdr);
 
   int lo = min(min, max);
@@ -6291,6 +6292,7 @@ gui_tml_zoom(struct gui_tml *t, int min, int max) {
 static void
 gui_tml_zoom_tm(struct gui_tml *t, long long min, long long max) {
   assert(t);
+  assert(min < max);
   assert(t->has_hdr);
 
   int lo = gui__pix_tm(min, t->frame_time, t->frame_scaled_siz);

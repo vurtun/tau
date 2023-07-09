@@ -47,19 +47,31 @@ mset(void *addr, int c, int n) {
  *                                Range
  * ---------------------------------------------------------------------------
  */
-#define rng(b,e,s,n) rng_mk(rng__bnd(b,n), rng__bnd(e,n), s)
+#define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
 #define rngn(n) rng(0,n,1,n)
+#define slc(b,e) rng(b,e,1,(e)-(b))
+
+#define slcb(p,s) ((p) + (s).lo)
+#define slce(p,s) ((p) + (s).hi)
+#define slci(p,s,i) ((p) + (s).lo + i*(s).step)
+
 #define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
 #define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
 #define rng_has_excl(a,b) ((a)->lo < (b)->lo && (a)->hi > (b)->hi)
 #define rng_has_exclv(a, v) ((v) > (a)->lo && (v) < (a)->hi)
-#define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
 #define rng_overlaps(a,b) (max((a)->lo, (b)->lo) <= min((a)->hi, (b)->hi))
+
+#define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
 #define rng_len(r) (((r)->hi - (r)->lo)
-#define rng_cnt(r) ((abs((r)->hi) - abs((r)->lo)) / abs((r)->step))
-#define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d), (r)->mid += (d)
-#define rng_percent(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
+#define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d)
+#define rng_norm(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
+
+#define rng_sub(r,b,e) rng((s).str + (b), (e) - (b))
+#define rng_rhs(r, n) rng_sub(s, min((s).len, n), (s).len)
+#define rng_lhs(r, n) rng_sub(s, 0, min((s).len, n))
+#define rng_cut_lhs(r, n) *(s) = rng_rhs(*(s), n)
+#define rng_cut_rhs(r, n) *(s) = rng_lhs(*(s), n)
 
 static force_inline int
 rng__bnd(int i, int n) {
@@ -68,11 +80,10 @@ rng__bnd(int i, int n) {
   return clamp(v, 0, l);
 }
 static force_inline struct rng
-rng_mk(int lo, int hi, int s) {
+rng__mk(int lo, int hi, int s) {
   struct rng r = {.lo = lo, .hi = hi, .step = s};
   assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
   r.cnt = abs(r.hi - r.lo);
-  r.mid = r.lo + r.hi - r.lo;
   return r;
 }
 
@@ -1328,7 +1339,7 @@ lck_rel(struct lck *lck) {
 #define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
 #define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(szof(T) * (n))), (n)))
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
-#define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, n))
+#define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, -(n)))
 
 #define scp__mem(a,s,sys)\
   for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
@@ -1928,14 +1939,14 @@ ut_set(struct sys *s) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define tbl__fits(t,n) ((n) < (int)(((float)tbl_cap(t)) * SET_FULL_PERCENT))
+#define tbl__fits(t,n) ((n) < casti(castf(tbl_cap(t)) * SET_FULL_PERCENT))
 #define tbl__fit(t,s,n) (tbl__fits(t, n) ? 0 : ((t) = tbl__grow((t),s,szof(*(t)),n)))
 #define tbl__add(t,s,k,v) (tbl__fit(t,s,tbl_cnt(t) + 1), tbl__put((t),k,v,szof(*(t))))
 #define tbl__key(k) set__key(k)
 #define tbl__val(vals,i,s) (cast(unsigned char*, vals) + s * i)
 #define tbl__is_uniq(t,k) (!tbl_cap(t)|| !tbl__fnd(t,k,szof(*(t))))
 #define tbl__chk_val(t,v) if (0){(t)[tbl_cap(t)]=*(v);}
-#define tbl__keys(t,s) ((unsigned long long*)align_down_ptr(((unsigned char*)(void*)(t)) + ((dyn__hdr(t))->cap)*(s) + 16,16))
+#define tbl__keys(t,s) ((unsigned long long*)align_down_ptr(((unsigned char*)(void*)(t)) + tbl_cap(t)*(s) + 16,16))
 
 #define tbl_cnt(t) dyn_cnt(t)
 #define tbl_cap(t) dyn_cap(t)
@@ -1946,8 +1957,8 @@ ut_set(struct sys *s) {
 #define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_del(t,k) tbl__del(t, k, szof(*(t)))
 #define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; mset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
-#define tbl_free(t,s) do {if(tbl_cap(t)){(s)->mem.free(s,dyn__hdr(t)->blk); (t) = 0;}} while(0)
 #define for_tbl(n,i,t) for (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
+#define tbl_free(t,s) do {if((t) && dyn__hdr(t)->cap >= 0){(s)->mem.free(s,dyn__hdr(t)->blk); (t) = 0;}} while(0)
 // clang-format on
 
 static int

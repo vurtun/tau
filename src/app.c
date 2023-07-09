@@ -226,8 +226,6 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   assert(ctx);
   assert(pan);
   assert(parent);
-  unused(view);
-
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel bdy = {.box = pan->box};
