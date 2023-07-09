@@ -1425,6 +1425,12 @@ transform_compose(float *m44, struct transform *tfm) {
   bspline_pos(pos, linear_pos, cvs, cnt, is_closed,2)
 #define bspline_tangent2(tangetn, linear_pos, cvs, cnt, is_closed)\
   bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed,2)
+#define bspline_pos_const2(pos, norm_time, cvs, cnt, is_closed)\
+  bspline_pos_const(pos, norm_time, cvs, cnt, is_closed, 2)
+#define bspline_calc_new_pnts_insert2(new_pnts, linear_pos, cvs, cnt, is_closed)\
+  bspline_calc_new_pnts_insert(new_pnts, linear_pos, cvs, cnt, is_closed, 3)
+#define bspline_calc_new_pnts_del2(new_pnts, idx, cvs, cnt)\
+  bspline_calc_new_pnts_del(new_pnts, idx, cvs, cnt, 2)
 
 #define bspline_arc_len3(cvs,cnt)\
   bspline_arc_len(cvs,cnt,3)
@@ -1432,8 +1438,14 @@ transform_compose(float *m44, struct transform *tfm) {
   bspline_pos(pos, linear_pos, cvs, cnt, is_closed,3)
 #define bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed)\
   bspline_tangent3(tangetn, linear_pos, cvs, cnt, is_closed,3)
+#define bspline_pos_const3(pos, norm_time, cvs, cnt, is_closed)\
+  bspline_pos_const(pos, norm_time, cvs, cnt, is_closed, 3)
+#define bspline_calc_new_pnts_insert3(new_pnts, linear_pos, cvs, cnt, is_closed)\
+  bspline_calc_new_pnts_insert(new_pnts, linear_pos, cvs, cnt, is_closed, 3)
+#define bspline_calc_new_pnts_del3(new_pnts, idx, cvs, cnt)\
+  bspline_calc_new_pnts_del(new_pnts, idx, cvs, cnt, 3)
 
-static float
+static inline float
 bspline__arc_len(const float *restrict p0, const float *restrict p1,
                  const float *restrict p2, const float *restrict p3, int dim) {
   assert(p0);
@@ -1481,7 +1493,7 @@ bspline__arc_len(const float *restrict p0, const float *restrict p1,
   float rhs = bspline__arc_len(np3, np4, np5, p3,dim);
   return lhs + rhs;
 }
-static float
+static inline float
 bspline_arc_len(const float *cvs, int cnt, int dim) {
   float sum = 0;
   for (int i = 0; i + 1 < cnt; i += 3) {
@@ -1493,7 +1505,7 @@ bspline_arc_len(const float *cvs, int cnt, int dim) {
   }
   return sum;
 }
-static void
+static inline void
 bspline_pos(float *pos, float linear_pos, const float *cvs, int cnt,
             int is_closed, int dim) {
   assert(pos);
@@ -1529,7 +1541,7 @@ bspline_pos(float *pos, float linear_pos, const float *cvs, int cnt,
   opNs(pos,+=,cvs+(idx+2)*dim,*,u[2],dim);
   opNs(pos,+=,cvs+(idx+3)*dim,*,u[3],dim);
 }
-static void
+static inline void
 bspline_tangent(float *tangent, float linear_pos, const float *cvs, int cnt,
                 int is_closed, int dim) {
   assert(cvs);
@@ -1565,7 +1577,7 @@ bspline_tangent(float *tangent, float linear_pos, const float *cvs, int cnt,
   opNs(tangent,+=,cvs+((idx+3)%cnt)*dim,*,d,dim);
   opNs(tangent, =,tangent,*,-3.0f,dim);
 }
-static float
+static inline float
 bspline_nearest_cv(const float *restrict cvs, int cnt,
                    const float *restrict pos, int dim) {
   assert(cvs);
@@ -1585,7 +1597,7 @@ bspline_nearest_cv(const float *restrict cvs, int cnt,
   }
   return r;
 }
-static float
+static inline float
 bspline__sqr_dist(const float *restrict p0, const float *restrict p1, int dim) {
   assert(p0);
   assert(p1);
@@ -1594,7 +1606,7 @@ bspline__sqr_dist(const float *restrict p0, const float *restrict p1, int dim) {
   float len2; dotN(len2,d,d,dim);
   return len2;
 }
-static float
+static inline float
 bspline_nearest_pnt(const float *restrict cvs, int cnt,
                     const float* restrict pos, int is_closed, int dim) {
   assert(cvs);
@@ -1644,7 +1656,7 @@ bspline_nearest_pnt(const float *restrict cvs, int cnt,
   } while(math_abs(off) > 0.001f && ++it_cnt < 4);
   return near_pos;
 }
-static float
+static inline float
 bspline_len_ratio(int idx, const float *restrict cvs, int cnt, float len, int dim) {
   assert(cvs);
   assert(cnt > 0);
@@ -1658,7 +1670,7 @@ bspline_len_ratio(int idx, const float *restrict cvs, int cnt, float len, int di
   const float *p3 = cvs + (idx + 3) * dim;
   return bspline__arc_len(p0, p1, p2, p3, dim) / len;
 }
-static float
+static inline float
 bspline_calc_const_speed_time(const float *restrict cvs, int cnt,
                               float norm_time, int is_closed, int dim) {
   assert(cvs);
@@ -1699,7 +1711,7 @@ bspline_calc_const_speed_time(const float *restrict cvs, int cnt,
   }
   return linear_len;
 }
-static void
+static inline void
 bspline_pos_const(float *restrict pos, float norm_time,
                   const float *restrict cvs, int cnt, int is_closed, int dim) {
   assert(cvs);
@@ -1710,7 +1722,7 @@ bspline_pos_const(float *restrict pos, float norm_time,
   float lin_time = bspline_calc_const_speed_time(cvs, cnt, norm_time, is_closed, dim);
   bspline_pos(pos, lin_time, cvs, cnt, is_closed, dim);
 }
-static void
+static inline void
 bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
                             const float *restrict cvs, int cnt, int is_closed,
                             int dim) {
@@ -1740,7 +1752,7 @@ bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
   opNs(new_pnts+(1*dim),+=,h,*,(-len1 * 0.5f),dim);
   opNs(new_pnts+(3*dim),+=,h,*,(len2 * 0.5f),dim);
 }
-static void
+static inline void
 bspline_calc_new_pnts_del(float *restrict new_pnts, int idx,
                           const float *restrict cvs, int cnt,
                           int dim) {
@@ -1940,7 +1952,6 @@ obb(float *restrict axis33, float *ext3, const float *restrict pnts, int n) {
   covar(cvar, pnts, n);
   eigensym(ext3, axis33, cvar);
 }
-
 
 /* ----------------------------------------------------------------------------
  *                                  GJK
