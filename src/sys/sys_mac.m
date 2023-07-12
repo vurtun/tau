@@ -558,7 +558,6 @@ sys_mac__resize(struct sys *s) {
 }
 @end
 
-
 /* ---------------------------------------------------------------------------
  *                            Input
  * ---------------------------------------------------------------------------
@@ -728,6 +727,7 @@ sys_mac_evt(struct sys *s, NSEvent const *const e) {
   int hdl = 1;
   switch ([e type]) {
   default: hdl = 0; break;
+  case SYS_EVT_KEY_UP: break;
   case SYS_EVT_KEY_DOWN: {
     s->keymod |= sys__mac_mods(e);
     sys__mac_on_key(s->keys, e.keyCode);
@@ -811,40 +811,36 @@ sys_mac_evt(struct sys *s, NSEvent const *const e) {
 }
 static void
 sys_mac_evt_loop(struct sys *s) {
-    assert(s->platform);
-    int hdl = 0;
-    int evt_cnt = 0;
-    int evt_cap = 128;
-    struct sys_mac *os = cast(struct sys_mac*, s->platform);
-    @autoreleasepool {
-      NSEvent *e = nil;
-      NSEvent *evt_buf[evt_cap];
-      NSEvent **evts = evt_buf;
-      while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny
-        untilDate:NSDate.now inMode:NSDefaultRunLoopMode dequeue:YES])) {
-        if (evt_cnt == evt_cap) {
-          evt_cap *= 2;
-          int was_on_stack = (evts == evt_buf);
-          evts = realloc(was_on_stack ? 0: evts, castsz(evt_cap) * sizeof(*evts));
-          if (was_on_stack) {
-              mcpy(evts, evt_buf, szof(evt_buf));
-          }
+  assert(s->platform);
+  int evt_cnt = 0;
+  int evt_cap = 128;
+  struct sys_mac *os = cast(struct sys_mac*, s->platform);
+  @autoreleasepool {
+    NSEvent *e = nil;
+    NSEvent *evt_buf[evt_cap];
+    NSEvent **evts = evt_buf;
+    while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny
+      untilDate:NSDate.now inMode:NSDefaultRunLoopMode dequeue:YES])) {
+      if (evt_cnt == evt_cap) {
+        evt_cap *= 2;
+        int was_on_stack = (evts == evt_buf);
+        evts = realloc(was_on_stack ? 0: evts, castsz(evt_cap) * sizeof(*evts));
+        if (was_on_stack) {
+            mcpy(evts, evt_buf, szof(evt_buf));
         }
-        evts[evt_cnt++] = e;
       }
-      for (int i = 0; i < evt_cnt; ++i) {
-          e = evts[i];
-          hdl |= sys_mac_evt(s, e);
-          [NSApp sendEvent:e];
-          [NSApp updateWindows];
-      }
-      if (evts != evt_buf) {
-          free(evts);
-          evts = 0;
-      }
-  }
-  if (hdl) {
-    [os->view setNeedsDisplay:YES];
+      evts[evt_cnt++] = e;
+    }
+    for (int i = 0; i < evt_cnt; ++i) {
+      e = evts[i];
+      sys_mac_evt(s, e);
+      [NSApp sendEvent:e];
+      [NSApp updateWindows];
+    }
+    if (evts != evt_buf) {
+        free(evts);
+        evts = 0;
+    }
   }
 }
 
@@ -1057,10 +1053,14 @@ sys_mac_push(struct sys *s) {
     os->tooltip = tooltip_id;
   }
   s->tooltip.str = str_nil;
-  if (s->drw) {
-    s->gfx.end(s, (__bridge void*) os->view);
-    s->drw = 0;
+  if(s->repaint) {
+    [os->view setNeedsDisplay:YES];
   }
+  if (s->drw) {
+    s->gfx.end(s, (__bridge void*)os->view);
+  }
+  s->repaint = 0;
+  s->drw = 0;
 }
 static void
 sys_mac_shutdown(struct sys *s) {

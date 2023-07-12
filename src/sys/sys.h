@@ -226,6 +226,7 @@ struct sys_rnd_api {
 };
 
 /* platform */
+#define SYS_MAX_INPUT 256
 struct sys {
   int quit;
   int running;
@@ -269,15 +270,15 @@ struct sys {
   unsigned scrl_mod:1;
   unsigned resized:1;
   unsigned drw:1;
+  unsigned repaint:1;
 
   /* input */
-  int txt_len;
-  #define SYS_MAX_INPUT 1024
-  char txt[SYS_MAX_INPUT];
   unsigned keymod;
   unsigned focus;
   struct sys_mouse mouse;
   unsigned long keys[bits_to_long(SYS_KEY_CNT)];
+  int txt_len;
+  char txt[SYS_MAX_INPUT];
 };
 struct sys_api {
   int version;

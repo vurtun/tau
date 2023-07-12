@@ -1099,14 +1099,20 @@ gui_begin(struct gui_ctx *ctx) {
   struct gui_panel *pan = &ctx->root;
   pan->id = 14695981039346656037llu;
   if (ctx->pass == GUI_INPUT) {
-    /* skip input pass when no drag mouse movement happend */
+    /* skip input pass when only mouse movement happend and not dragging */
     int no_move = !s->mouse_mod || (s->mouse_mod && !s->mouse_grap);
-    if (!s->key_mod && !s->btn_mod && !s->dnd_mod &&
+    if (s->drw && !s->key_mod && !s->btn_mod && !s->dnd_mod &&
         !s->txt_mod && !s->scrl_mod && no_move) {
       ctx->pass = GUI_RENDER;
     }
-    /* skip render pass when system does not request it */
-    if (!s->drw && ctx->pass == GUI_RENDER) {
+    if (!s->drw && (s->key_mod || s->btn_mod || s->dnd_mod || s->txt_mod ||
+         s->scrl_mod || (s->mouse_mod && s->mouse_grap))) {
+      s->repaint = 1;
+    }
+  }
+  /* skip render pass when system does not request it */
+  if (ctx->pass == GUI_RENDER) {
+    if (!s->drw) {
       ctx->pass = GUI_INPUT;
       return 0;
     }
@@ -1120,6 +1126,7 @@ gui_begin(struct gui_ctx *ctx) {
       ctx->prev_hot = ctx->hot;
       ctx->prev_focused = ctx->focused;
       ctx->first_id = pan->id;
+      s->cursor = SYS_CUR_ARROW;
       gui_input_begin(ctx, &s->mouse);
       ctx->focusable = ctx->root.id;
       /* drag & drop */
@@ -1129,7 +1136,6 @@ gui_begin(struct gui_ctx *ctx) {
     } break;
     case GUI_RENDER: {
       s->tooltip.str = str_nil;
-      s->cursor = SYS_CUR_ARROW;
       s->gfx.buf2d.vtx = ctx->vtx_mem->base;
       s->gfx.buf2d.idx = recast(unsigned*, ctx->idx_mem->base);
 

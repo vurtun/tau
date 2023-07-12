@@ -239,6 +239,7 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
           struct app_view *new_view = app_view_new(app);
           app_view_setup(app, new_view);
           dyn_add(app->views, &app->sys, new_view);
+          app->sys.repaint = 1;
         }
       }
     } break;
