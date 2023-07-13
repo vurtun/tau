@@ -493,6 +493,9 @@ main(int argc, char **argv) {
     pck.update(app.fs, &app.sys);
 
     /* gui */
+    if (app.sys.style_mod) {
+      gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
+    }
     fori_arrv(i, app_ui_key_tbl) {
       /* map system keys to ui shortcuts */
       const struct app_ui_shortcut *s = app_ui_key_tbl + i;
@@ -503,9 +506,6 @@ main(int argc, char **argv) {
       } else if (bit_tst(app.sys.keys, s->alt.code) && keymod) {
         bit_set(ctx->keys, i);
       }
-    }
-    if (app.sys.style_mod) {
-      gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
     }
     while (gui.begin(&app.gui)) {
       struct gui_panel pan = {.box = app.gui.box};

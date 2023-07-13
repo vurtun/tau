@@ -643,7 +643,6 @@ file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
     tree->jmp = 1;
     tree->jmp_to = s->id;
     set_put(tree->exp, _sys, s->id);
-    fs->tree_rev++;
     n = s;
   }
   file_tree_update(fs, _sys);

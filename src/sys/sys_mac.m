@@ -551,6 +551,10 @@ sys_mac__resize(struct sys *s) {
 @implementation sys__mac_view_delegate {}
 - (void)drawInMTKView:(nonnull MTKView *) view {
   _sys->drw = 1;
+  NSEvent* event = [NSEvent otherEventWithType: NSApplicationDefined
+    location: NSMakePoint(0,0) modifierFlags: 0 timestamp: 0.0
+    windowNumber: 0 context: nil subtype: 0 data1: 0 data2: 0];
+  [NSApp postEvent: event atStart: YES];
 }
 - (void) mtkView:(nonnull MTKView *)view drawableSizeWillChange:(CGSize)size {
   unused(view);
@@ -826,7 +830,7 @@ sys_mac_evt_loop(struct sys *s) {
         int was_on_stack = (evts == evt_buf);
         evts = realloc(was_on_stack ? 0: evts, castsz(evt_cap) * sizeof(*evts));
         if (was_on_stack) {
-            mcpy(evts, evt_buf, szof(evt_buf));
+          mcpy(evts, evt_buf, szof(evt_buf));
         }
       }
       evts[evt_cnt++] = e;
@@ -1008,6 +1012,7 @@ sys_mac_pull(struct sys *s) {
          untilDate:NSDate.distantFuture
          inMode:NSDefaultRunLoopMode
          dequeue:NO];
+
   swapcontext(&os->main_fiber, &os->run_loop_fiber);
   s->txt_mod = !!s->txt_len;
   s->dpi_scale = castf([os->win screen].backingScaleFactor);
