@@ -368,7 +368,7 @@ math_sin_cos(float *vsin, float *vcos, float a) {
   // This leaves uw with: x = ((x - quadrant * 1.5703125) - quadrant * 0.0004837512969970703125) - quadrant * (PI / 2 - 1.5703125 - 0.0004837512969970703125)
   // See: https://stackoverflow.com/questions/42455143/sine-cosine-modular-extended-precision-arithmetic
   // After this we have x in the range [-PI / 4, PI / 4].
-  float flt_quad = quad;
+  float flt_quad = castf(quad);
   x.f = ((x.f - flt_quad * 1.5703125f) -
         flt_quad * 0.0004837512969970703125f) -
         flt_quad * 7.549789948768648e-8f;
@@ -574,10 +574,10 @@ math_atan2(float in_y, float in_x) {
 #define dotN(r,a,b,N)\
   do {r = 0; for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
       r += (a)[uniqid(_i_)] * (b)[uniqid(_i_)];\
-  } while(0);
+  } while(0)
 #define lenN(r,a,N)\
   do {float uniqid(_l_); dotN(uniqid(_l_),a,a,N);\
-    (r) = math_sqrt(uniqid(_l_));} while(0);
+    (r) = math_sqrt(uniqid(_l_));} while(0)
 
 #define minN(r,a,b,N) map2N(r,min,a,b,N)
 #define maxN(r,a,b,N) map2N(r,max,a,b,N)
@@ -610,7 +610,7 @@ math_atan2(float in_y, float in_x) {
 #define min2(r,a,b)     minN(r,a,b,2)
 #define max2(r,a,b)     maxN(r,a,b,2)
 #define clamp2(r,i,v,x) clampN(r,i,v,x,2)
-#define map2(r,fn,a)    mapN(r,fn,a,2);
+#define map2(r,fn,a)    mapN(r,fn,a,2)
 
 /* vector 3D */
 #define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
@@ -635,7 +635,7 @@ math_atan2(float in_y, float in_x) {
 #define swzl3(r,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
 #define min3(r,a,b)     minN(r,a,b,3)
 #define max3(r,a,b)     maxN(r,a,b,3)
-#define map3(r,fn,a)    mapN(r,fn,a,3);
+#define map3(r,fn,a)    mapN(r,fn,a,3)
 #define clamp3(r,i,v,x) clampN(r,i,v,x,3)
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
@@ -667,12 +667,12 @@ box3(const float *a, const float *b, const float *c) {
 #define cmp4(a,b,e)     cmpN(a,b,e,4)
 #define min4(r,a,b)     minN(r,a,b,4)
 #define max4(r,a,b)     maxN(r,a,b,4)
-#define map4(r,fn,a)    mapN(r,fn,a,4);
+#define map4(r,fn,a)    mapN(r,fn,a,4)
 #define clamp4(r,i,v,x) clampN(r,i,v,x,4)
 #define swzl4(r,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
 #define qid(q)          set4(q,0,0,0,1)
 #define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
-#define qinv(d,s)       qconj(d,s);
+#define qinv(d,s)       qconj(d,s)
 #define quat(q,n,x)     quatf(q,n,(x)[0],(x)[1],(x)[2])
 #define qmul(q,a,b)\
   (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
@@ -1727,7 +1727,7 @@ bspline_calc_new_pnts_insert(float *restrict new_pnts, float linear_pos,
                             const float *restrict cvs, int cnt, int is_closed,
                             int dim) {
   /* calculate modification of old helper points */
-  float fac = linear_pos - math_floori(linear_pos);
+  float fac = linear_pos - math_floor(linear_pos);
   float val = castf(casti(linear_pos ));
   int idx = casti(val) * 3;
 
@@ -3510,10 +3510,10 @@ cam_build(struct cam *c) {
     c->proj[2][3] = -1.0f;
   } break;
   case CAM_ORTHO: {
-    c->proj[0][0] = 2.0f / (c->ortho.right - c->ortho.left);
-    c->proj[1][1] = 2.0f / (c->ortho.top - c->ortho.bottom);
-    c->proj[3][0] = - (c->ortho.right + c->ortho.left) / (c->ortho.right - c->ortho.left);
-    c->proj[3][1] = - (c->ortho.top + c->ortho.bottom) / (c->ortho.top - c->ortho.bottom);
+    c->proj[0][0] = 2.0f / castf(c->ortho.right - c->ortho.left);
+    c->proj[1][1] = 2.0f / castf(c->ortho.top - c->ortho.bottom);
+    c->proj[3][0] = - castf(c->ortho.right + c->ortho.left) / castf(c->ortho.right - c->ortho.left);
+    c->proj[3][1] = - castf(c->ortho.top + c->ortho.bottom) / castf(c->ortho.top - c->ortho.bottom);
   } break;
   }
   if (c->far >= 0) {

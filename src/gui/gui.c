@@ -506,14 +506,14 @@ gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *g) {
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.img);
-  s->gfx.d2d.img(&s->gfx.buf2d, g->x0, g->y0, g->x1, g->y1, g->sx, g->sy,
+  gui__drw_resv(ctx, &s->gfx.d2d.cost.ico);
+  s->gfx.d2d.ico(&s->gfx.buf2d, g->x0, g->y0, g->x1, g->y1, g->sx, g->sy,
       ctx->drw_col, ctx->clip.hdl);
 }
 static void
 gui_drw_rune(struct gui_ctx *ctx, int x, int y, int rune) {
   struct res_glyph g;
-  res.fnt.glyph(&g, ctx->res, &ctx->res->fnt, x, y, rune);
+  res.fnt.glyph(&g, &ctx->res->fnt, x, y, rune);
   gui_drw_glyph(ctx, &g);
 }
 static void
@@ -545,6 +545,40 @@ gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
     }
     x += run->adv[run->len-1] + ctx->res->fnt.space_adv * (!!it.rest.len);
   }
+}
+static void
+gui_drw_sprite(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh,
+               int sx, int sy, int sw, int sh) {
+  assert(ctx);
+  assert(ctx->vtx_mem);
+  assert(ctx->idx_mem);
+  if (ctx->pass != GUI_RENDER ||
+    !gui_intersect(&ctx->clip.box, dx,dy,dx+dw,dy+dh)) {
+    return;
+  }
+  struct sys *s = ctx->sys;
+  gui__drw_resv(ctx, &s->gfx.d2d.cost.img);
+  s->gfx.d2d.img(&s->gfx.buf2d, tex, dx, dy, dw, dh, sx, sy, sw, sh, ctx->clip.hdl);
+}
+static void
+gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
+  assert(ctx);
+  assert(ctx->vtx_mem);
+  assert(ctx->idx_mem);
+
+  int img_siz[2];
+  ctx->sys->gfx.tex.info(img_siz, ctx->sys, tex);
+  gui_drw_sprite(ctx, tex, dx, dy, dw, dh, 0, 0, img_siz[0], img_siz[1]);
+}
+static void
+gui_drw_blit(struct gui_ctx *ctx, int tex, int x, int y) {
+  assert(ctx);
+  assert(ctx->vtx_mem);
+  assert(ctx->idx_mem);
+
+  int img_siz[2];
+  ctx->sys->gfx.tex.info(img_siz, ctx->sys, tex);
+  gui_drw_sprite(ctx, tex, x, y, img_siz[0], img_siz[1], 0, 0, img_siz[0], img_siz[1]);
 }
 
 /* ---------------------------------------------------------------------------
@@ -5962,7 +5996,7 @@ gui_minmax_solve(struct gui_minmax_solver_solution *s,
 
   float total_siz = p->total_siz;
   while (s->rng_cnt && total_siz > p->pref_rng_siz[0]) {
-    float norm_time_rng = total_siz / max(1.0f, s->rng_cnt);
+    float norm_time_rng = total_siz / max(1.0f, castf(s->rng_cnt));
     float nxt_time_siz = norm_time_rng * p->scaler;
     if (nxt_time_siz < p->pref_rng_siz[0]) {
       if (s->rng_step_idx + 1 >= s->rng_step_cnt) {
@@ -5979,7 +6013,7 @@ gui_minmax_solve(struct gui_minmax_solver_solution *s,
         if (prv_dt > cur_dt) {
           s->rng_val_step = s->rng_steps[s->rng_step_idx] * s->time_basis;
           s->rng_cnt = math_ceili(p->total_val/s->rng_val_step);
-          s->rng_siz = total_siz / max(1.0f, s->rng_cnt) * p->scaler;
+          s->rng_siz = total_siz / max(1.0f, castf(s->rng_cnt)) * p->scaler;
           break;
         }
         break;
@@ -5999,7 +6033,7 @@ gui_minmax_solve(struct gui_minmax_solver_solution *s,
         if (prv_dt > cur_dt) {
           s->rng_val_step = s->rng_steps[s->rng_step_idx ] * s->time_basis;
           s->rng_cnt = math_ceili(p->total_val/s->rng_val_step);
-          s->rng_siz = total_siz / max(1.0f, s->rng_cnt) * p->scaler;
+          s->rng_siz = total_siz / max(1.0f, castf(s->rng_cnt)) * p->scaler;
           break;
         }
         break;
@@ -6162,7 +6196,7 @@ gui__pix_tm(long long time, long long frame, int frame_siz) {
   float t_val = sec_flt_time(time);
   float t_ref = sec_flt_time(frame);
   float frame_scaler = t_val / t_ref;
-  return math_roundi(frame_scaler * frame_siz);
+  return math_roundi(frame_scaler * castf(frame_siz));
 }
 static long long
 gui__tm_pix(int pix, int frame, long long frame_time, long long end_time) {
@@ -6190,7 +6224,8 @@ gui_tml_hdr(struct gui_ctx *ctx, struct gui_tml *t,
     sol.total_siz = castf(hdr->box.x.ext);
     sol.rng_steps = hdr->rng_steps;
     sol.rng_steps_cnt = hdr->rng_steps_cnt;
-    cpy2(sol.pref_rng_siz, hdr->pref_rng_siz);
+    map2(sol.pref_rng_siz, castf, hdr->pref_rng_siz);
+
     if (sol.pref_rng_siz[0] == 0 && sol.pref_rng_siz[1] == 0) {
       sol.pref_rng_siz[0] = GUI_TML_MIN_PREF_RNG;
       sol.pref_rng_siz[1] = GUI_TML_MAX_PREF_RNG;
@@ -6200,11 +6235,11 @@ gui_tml_hdr(struct gui_ctx *ctx, struct gui_tml *t,
   }
   /* calculate frame time pixel size */
   t->frame_cnt = casti(div_round_up(t->total_time, t->frame_time));
-  t->frame_scaled_siz = math_roundi((hdr->box.x.ext / t->frame_cnt) * t->scale);
+  t->frame_scaled_siz = math_roundi(castf(hdr->box.x.ext) / castf(t->frame_cnt) * t->scale);
 
   /* calculate time range pixel size */
   float rng_siz = t->rng_time_step / sec_flt_time(t->frame_time);
-  t->rng_scaled_siz = math_roundi(rng_siz * t->frame_scaled_siz);
+  t->rng_scaled_siz = math_roundi(rng_siz * castf(t->frame_scaled_siz));
   t->rng_cnt = div_round_up(hdr->box.x.ext, t->rng_scaled_siz);
 
   /* calculate end, current and screen end pixel offset */
@@ -6248,7 +6283,7 @@ gui_tml_hdr(struct gui_ctx *ctx, struct gui_tml *t,
     gui_clip_begin(&clipped, ctx, gui_unbox(&hdr->box));
     {
       /* draw range time label */
-      int idx = math_floori(t->off / t->rng_scaled_siz);
+      int idx = math_floori(t->off / castd(t->rng_scaled_siz));
       int off = idx * t->rng_scaled_siz - math_roundi(t->off);
       for (int i = idx; i < idx + t->rng_cnt && off < hdr->box.x.ext; ++i) {
         struct gui_panel lbl = {0};
@@ -6272,7 +6307,7 @@ gui_tml_hdr(struct gui_ctx *ctx, struct gui_tml *t,
 static int
 gui_tml_pos(const struct gui_tml *t, int scrn_pos) {
   assert(t);
-  return math_roundi(((castf(scrn_pos) - t->abs_rng_begin_off) / t->scale) + (t->off / t->scale));
+  return math_roundi(((castf(scrn_pos) - castf(t->abs_rng_begin_off)) / t->scale) + (t->off / t->scale));
 }
 static void
 gui_tml_zoom(struct gui_tml *t, int min, int max) {
@@ -6292,7 +6327,7 @@ gui_tml_zoom(struct gui_tml *t, int min, int max) {
 
   t->scale = clamp(t->scale_rng[0], new_scale, t->scale_rng[1]);
   t->zoom = math_log(t->scale);
-  t->off = math_roundi(castf(mid) * t->scale) - (tot >> 1);
+  t->off = math_roundi(castf(mid) * t->scale) - castf(tot >> 1);
   t->off_mod = 1;
 }
 static void
@@ -6495,6 +6530,13 @@ static const struct gui_api gui__api = {
     .line = gui_drw_ln,
     .circle = gui_drw_circle,
     .tri = gui_drw_tri,
+    .glyph = gui_drw_glyph,
+    .rune = gui_drw_rune,
+    .txt = gui_drw_txt,
+    .ico = gui_drw_ico,
+    .sprite = gui_drw_sprite,
+    .img = gui_drw_img,
+    .blit = gui_drw_blit,
   },
   .clip = {
     .begin = gui_clip_begin,

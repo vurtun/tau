@@ -141,7 +141,7 @@ struct res {
 struct res_fnt_api {
   void (*ext)(int *ext, struct res *res, struct str txt);
   void (*fit)(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt);
-  void (*glyph)(struct res_glyph *ret, const struct res *r, const struct res_fnt *fnt, int x, int y, int in_rune);
+  void (*glyph)(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y, int in_rune);
 };
 struct res_run_api {
   const struct res_fnt_run* (*begin)(struct res_fnt_run_it *it, struct res *r, struct str txt);

@@ -49,12 +49,12 @@ mset(void *addr, int c, int n) {
  */
 #define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
 #define intvl(b,s,n) rng(b,n,s,n)
-#define rngn(n) rng(0,n,1,n)
-#define slc(b,e) rng(b,e,1,(e)-(b))
+#define rngn(n) rng(0,(n),1,(n))
+#define slc(b,e) rng((b),(e),1,(e)-(b))
 
-#define slcb(p,s) ((p) + (s).lo)
-#define slce(p,s) ((p) + (s).hi)
-#define slci(p,s,i) ((p) + (s).lo + i*(s).step)
+#define slc_beg(p,r) ((p)+(r).lo)
+#define slc_end(p,r) ((p)+(r).hi)
+#define slc_at(p,r,i) ((p)+(w).lo+i*(r).step)
 
 #define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
 #define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
@@ -65,13 +65,12 @@ mset(void *addr, int c, int n) {
 #define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
 #define rng_len(r) (((r)->hi - (r)->lo)
 #define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d)
-#define rng_norm(r,v) ((rng_clamp(r,v) - (r)->lo) / rng_len(r))
+#define rng_norm(r,v) (castf(castd(rng_clamp(r,v) - (r)->lo) / castd(rng_len(r))))
 
-#define rng_sub(r,b,e) rng((s).str + (b), (e) - (b))
-#define rng_rhs(r, n) rng_sub(s, min((s).len, n), (s).len)
-#define rng_lhs(r, n) rng_sub(s, 0, min((s).len, n))
-#define rng_cut_lhs(r, n) *(s) = rng_rhs(*(s), n)
-#define rng_cut_rhs(r, n) *(s) = rng_lhs(*(s), n)
+#define rng_rhs(r,n) rng_sub(r,n,(r)->cnt)
+#define rng_lhs(r,n) rng_sub(r,0,n)
+#define rng_cut_lhs(r,n) *(r) = rng_rhs(s,n)
+#define rng_cut_rhs(r,n) *(r) = rng_lhs(s,n)
 
 static force_inline int
 rng__bnd(int i, int n) {
@@ -83,8 +82,14 @@ static force_inline struct rng
 rng__mk(int lo, int hi, int s) {
   struct rng r = {.lo = lo, .hi = hi, .step = s};
   assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
-  r.cnt = abs(r.hi - r.lo);
+  r.cnt = abs(r.hi - r.lo) / abs(s);
   return r;
+}
+static force_inline struct rng
+rng_sub(const struct rng *r, int b, int e) {
+  struct rng ret = rng(b, e, r->step, r->cnt);
+  rng_shft(&ret, r->lo);
+  return ret;
 }
 
 /* ---------------------------------------------------------------------------
@@ -364,7 +369,7 @@ guid_hash64(const struct guid *g) {
       int uniqid(j) = uniqid(i);                          \
       while ((p)[uniqid(j)] != uniqid(i)) {               \
         int uniqid(d) = (p)[uniqid(j)];                   \
-        swap((a)[uniqid(j)],(a)[uniqid(d)]);             \
+        swap((a)[uniqid(j)],(a)[uniqid(d)]);              \
         (p)[uniqid(j)] = -1 - uniqid(d);                  \
         uniqid(j) = uniqid(d);                            \
       } (p)[uniqid(j)] = -1 - (p)[uniqid(j)];             \
@@ -377,9 +382,9 @@ guid_hash64(const struct guid *g) {
 #define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
 #define for_arr_rng(it,a,r)\
   for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
-#define for_arrv_rng(it,a, b,e,s)       \
-  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;\
-       (it) != (a) + rng(b,e,s,cntof(a)).hi;\
+#define for_arrv_rng(it,a, b,e,s)             \
+  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;   \
+       (it) != (a) + rng(b,e,s,cntof(a)).hi;  \
        (it) += rng(b,e,s,cntof(a)).step)
 
 /* ---------------------------------------------------------------------------
@@ -870,15 +875,14 @@ str__match_hash(struct str s) {
 #define str_cut_lhs(s, n) *(s) = str_rhs(*(s), n)
 #define str_cut_rhs(s, n) *(s) = str_lhs(*(s), n)
 
-#define for_str(it,c,s)\
+#define for_str(it,c,s)                                         \
   for (const char *it = (c)->str; it < (c)->end; it += (s))
 #define fori_str_step(i,c,s)\
   for (int i = 0; i < (c)->len; i += (s))
 #define fori_str(i,c) fori_str_step(i,c,1)
-#define for_str_rng(it,a, b,e,s)                                \
-  for (const char *it = (a)->str + rng(b,e,s,(a)->len).lo;      \
-      (it) != (a)->str + rng(b,e,s,(a)->len).hi;                \
-      (it) += rng(b,e,s,(a)->len).step)
+#define for_str_rng(it,s,r)                                     \
+   for (const char *it = (s).str + (r).lo;                      \
+      (it) != (s).str + (r).hi; (it) += (r).step)
 #define for_str_tok(it, rest, src, delim)                       \
   for (struct str rest = src, it = str_split_cut(&rest, delim); \
        it.len; it = str_split_cut(&rest, delim))
@@ -895,7 +899,7 @@ str_hash(struct str s) {
 static int
 str_cmp(struct str a, struct str b) {
   int n = min(a.len, b.len);
-  for_cnt(i, n) {
+  for_cnt(i,n) {
     if (a.str[i] < b.str[i]) {
       return -1;
     } else if (a.str[i] > b.str[i]) {
@@ -1422,22 +1426,43 @@ arena_fmt(struct arena *a, struct sys *s, const char *fmt, ...) {
   return str(ret, n);
 }
 static char *
+arena_cstr_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
+  assert(a);
+  assert(s);
+  if (!cs.len || !r.cnt) {
+    return 0;
+  }
+  int i = 0;
+  char *ret = arena_alloc(a, s, r.cnt + 1);
+  if (r.step == 1) {
+    mcpy(ret, cs.str, cs.len);
+  } else {
+    for_str_rng(it,cs,r) {
+      ret[i++] = *it;
+    }
+  }
+  ret[r.cnt] = 0;
+  return ret;
+}
+static inline char *
 arena_cstr(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
   assert(s);
-  if (!cs.len) {
-    return 0;
-  }
-  char *ret = arena_alloc(a, s, cs.len + 1);
-  mcpy(ret, cs.str, cs.len);
-  ret[cs.len] = 0;
-  return ret;
+  return arena_cstr_rng(a, s, cs, rngn(cs.len));
 }
-static struct str
+static inline struct str
 arena_str(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
+  assert(s);
   char *ret = arena_cstr(a, s, cs);
   return str(ret, cs.len);
+}
+static inline struct str
+arena_str_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
+  assert(a);
+  assert(s);
+  char *ret = arena_cstr_rng(a, s, cs, r);
+  return str(ret, r.cnt);
 }
 static void
 arena_free_last_blk(struct arena *a, struct sys *s) {

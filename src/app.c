@@ -17,6 +17,7 @@
 #include "lib/fmt.h"
 #include "lib/std.h"
 #include "lib/rpq.h"
+#include "lib/img.h"
 #include "lib/fnt.h"
 #include "lib/sql.h"
 #include "sys/gfx.h"
@@ -71,6 +72,7 @@ static struct db_api dbs;
 #include "lib/std.c"
 #include "lib/math.c"
 #include "lib/rpq.c"
+#include "lib/img.c"
 #include "lib/fnt.c"
 #include "lib/sql.c"
 #include "gui/res.c"
@@ -475,7 +477,7 @@ main(int argc, char **argv) {
   struct app app = {0};
   cmd_arg_begin(exe, argc, argv){
   case 'h': default: usage(exe); break;
-  } cmd_arg_end;
+  } cmd_arg_end
   app_init(&app);
 
   /* run */

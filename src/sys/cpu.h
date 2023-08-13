@@ -29,11 +29,29 @@
 /* compiler specific intrinisics */
 #ifdef _MSC_VER
 
-define alignto(x) __declspec(align(x))
+#define alignto(x) __declspec(align(x))
 #define cpu_bit_cnt(u) __popcnt(u)
 #define cpu_bit_cnt64(u) __popcnt64(u)
-#define cpu_bit_ffs64(u) _BitScanForward64
 
+static inline int
+cpu_bit_ffs32(unsigned u) {
+  unsigned long idx = 0;
+  unsigned char ret = _BitScanForward(&idx, u);
+  if (ret == 0) {
+    return 32;
+  }
+  return casti(idx);
+}
+static inline int
+cpu_bit_ffs64(unsigned long long u) {
+  unsigned long idx = 0;
+  unsigned char ret = _BitScanForward64(&idx, u);
+  if (ret == 0) {
+    return 64;
+  }
+  return casti(idx);
+
+}
 #define lfence() _ReadBarrier()
 #define sfence() _WriteBarrier()
 
@@ -49,6 +67,7 @@ define alignto(x) __declspec(align(x))
 #define alignto(x) __attribute__((aligned(x)))
 #define cpu_bit_cnt(u) __builtin_popcount(u)
 #define cpu_bit_cnt64(u) __builtin_popcountll(u)
+#define cpu_bit_ffs32(u) __builtin_ctz(u)
 #define cpu_bit_ffs64(u) __builtin_ctzll(u)
 
 #define lfence() asm volatile("" ::: "memory")
@@ -393,7 +412,7 @@ cpu_str_chr(const char *s, int n, int chr) {
     __m256i v = _mm256_and_si128(d, o);
     unsigned msk = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v,m));
     if (msk) {
-      return s + (31 - __builtin_clz(msk));
+      return s + cpu_bit_ffs32(msk);
     }
   }
   return e;
@@ -440,7 +459,7 @@ cpu_str_chr(const char *s, int n, int chr) {
     __m128i v = _mm_and_si128(d, o);
     unsigned msk = _mm_movemask_epi8(_mm_cmpeq_epi8(v,m));
     if (msk) {
-      return s + (31 - __builtin_clz(msk));
+      return s + cpu_bit_ffs32(msk);
     }
   }
   return e;
@@ -524,7 +543,7 @@ cpu_hash(const void *src, int len, hkey seed) {
 #endif
 
 /* misc */
-#define yield() __asm__ __volatile__("isb\n");
+#define yield() __asm__ __volatile__("isb\n")
 
 static void
 cpu_info(struct cpu_info *cpu) {

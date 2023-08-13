@@ -1020,7 +1020,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
 
         /* input handling */
         struct gui_input in = {0};
-        gui.pan.input(&in, ctx, &elm, GUI_BTN_LEFT|GUI_BTN_RIGHT);
+        gui.pan.input(&in, ctx, &elm, GUI_BTN_LEFT);
         if (in.mouse.btn.left.doubled) {
           chdir = 1, dir = i;
         }

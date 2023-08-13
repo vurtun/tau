@@ -777,8 +777,8 @@ done:
   bnd->end = txt.str + bnd->len;
 }
 static void
-res_glyph(struct res_glyph *ret, const struct res *r,
-          const struct res_fnt *fnt, int x, int y, int in_rune) {
+res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
+          int in_rune) {
   assert(r);
   assert(ret);
   assert(fnt);
@@ -857,7 +857,7 @@ res_init(struct res *r, const struct res_args *args) {
   struct sys *s = args->sys;
   static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f,
     22.0f, 24.0f, 26.0f, 28.0f};
-  float pnt_siz = math_floori(s->fnt_pnt_size * s->dpi_scale);
+  float pnt_siz = math_floor(s->fnt_pnt_size * s->dpi_scale);
 
   double best_d = 10000.0;
   r->fnt_pnt_size = 16.0f;

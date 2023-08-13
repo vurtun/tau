@@ -1152,6 +1152,13 @@ struct gui_drw_api {
   void(*line)(struct gui_ctx *ctx, int x0, int y0, int x1, int y1);
   void(*circle)(struct gui_ctx *ctx, int x, int y, int r);
   void(*tri)(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2);
+  void(*glyph)(struct gui_ctx *ctx, const struct res_glyph *g);
+  void(*rune)(struct gui_ctx *ctx, int x, int y, int rune);
+  void(*txt)(struct gui_ctx *ctx, int dx, int dy, struct str txt);
+  void(*ico)(struct gui_ctx *ctx, int x, int y, enum res_ico_id icon);
+  void(*sprite)(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
+  void(*img)(struct gui_ctx *ctx, int tex, int x, int y, int w, int h);
+  void(*blit)(struct gui_ctx *ctx, int tex, int x, int y);
 };
 struct gui_panel_cur_api {
   void (*hov)(struct gui_ctx *ctx, const struct gui_panel *pan, enum sys_cur_style cur);

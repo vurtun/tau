@@ -818,7 +818,6 @@ sys_mac_evt_loop(struct sys *s) {
   assert(s->platform);
   int evt_cnt = 0;
   int evt_cap = 128;
-  struct sys_mac *os = cast(struct sys_mac*, s->platform);
   @autoreleasepool {
     NSEvent *e = nil;
     NSEvent *evt_buf[evt_cap];

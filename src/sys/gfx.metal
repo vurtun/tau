@@ -8,13 +8,14 @@ struct vtx_out {
   float4 col;
   float4 crl;
   float4 clp;
+  unsigned short tex;
   float2 tex_coord;
 };
 vertex vtx_out
-ren_vtx(uint vid                    [[vertex_id]],
-        const device uint *idxs     [[buffer(0)]],
-        const device char *prims    [[buffer(1)]],
-        constant gfx_uniform *uni   [[buffer(2)]]) {
+ren_vtx(uint vid [[vertex_id]],
+        const device uint *idxs [[buffer(0)]],
+        const device char *prims [[buffer(1)]],
+        constant gfx_uniform *uni [[buffer(2)]]) {
 
   const uint idx = idxs[vid];
   const uint off = idx & 0x00ffffff;
@@ -85,8 +86,8 @@ ren_vtx(uint vid                    [[vertex_id]],
     vo.clp.xy = float2(float(p->l), float(p->t));
     vo.clp.zw = float2(float(p->r), float(p->b));
 
-  } else if (prim == GFX_PRIM_IMG) {
-    device const gfx_img *r = (device const gfx_img*)(prims + off);
+  } else if (prim == GFX_PRIM_ICO) {
+    device const gfx_ico *r = (device const gfx_ico*)(prims + off);
     device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
 
     const float2 a = float2(float(r->l), float(r->t));
@@ -107,6 +108,23 @@ ren_vtx(uint vid                    [[vertex_id]],
 
     vo.clp.xy = float2(float(c->l), float(c->t));
     vo.clp.zw = float2(float(c->r), float(c->b));
+
+  } else if (prim == GFX_PRIM_IMG) {
+    device const gfx_img *r = (device const gfx_img*)(prims + off);
+    device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
+
+    const float2 a = float2(float(r->l), float(r->t));
+    const float2 b = float2(float(r->r), float(r->b));
+
+    vo.pos.x = mix(a.x, b.x, float(corner & 0x01));
+    vo.pos.y = mix(a.y, b.y, float(corner >> 1));
+
+    vo.tex_coord.x = mix(r->texcoord[0], r->texcoord[2], float(corner & 0x01));
+    vo.tex_coord.y = mix(r->texcoord[1], r->texcoord[3], float(corner >> 1));
+    vo.tex = r->tex;
+
+    vo.clp.xy = float2(float(c->l), float(c->t));
+    vo.clp.zw = float2(float(c->r), float(c->b));
   }
   vector_float2 view = vector_float2(uni->viewport);
   vo.pos.x = vo.pos.x / view.x * 2.0f - 1.0f;
@@ -115,9 +133,11 @@ ren_vtx(uint vid                    [[vertex_id]],
   vo.crl.w = float(prim);
   return vo;
 }
+struct frag_arg {
+  array<texture2d<float>, GFX_MAX_TEX_CNT> tex;
+};
 fragment float4
-ren_frag(vtx_out vi             [[stage_in]],
-         texture2d<float> tex   [[texture(0)]]) {
+ren_frag(vtx_out vi [[stage_in]], device frag_arg &in [[buffer(0)]]) {
   constexpr sampler smp(coord::normalized, min_filter::linear, mag_filter::linear, mip_filter::linear);
   const uint prim = uint(vi.crl.w);
   if (prim == GFX_PRIM_CIR) {
@@ -134,13 +154,20 @@ ren_frag(vtx_out vi             [[stage_in]],
     if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
       discard_fragment();
 
+  } else if (prim ==  GFX_PRIM_ICO) {
+    if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
+      discard_fragment();
+    if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
+      discard_fragment();
+    float r = in.tex[0].sample(smp, vi.tex_coord).r;
+    vi.col.a = r;
+
   } else if (prim ==  GFX_PRIM_IMG) {
     if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
       discard_fragment();
     if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
       discard_fragment();
-    float r = tex.sample(smp, vi.tex_coord).r;
-    vi.col.a = r;
+    vi.col = in.tex[vi.tex].sample(smp, vi.tex_coord);
   }
   return vi.col;
 }

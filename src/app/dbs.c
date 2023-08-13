@@ -105,8 +105,9 @@ struct db_tbl_fltr_view {
   double off[2];
 };
 struct db_tbl_blob_img_view {
-  unsigned *mem;
-  int w, h, id;
+  int act;
+  int id;
+  int w, h;
   double off[2];
 };
 struct db_tbl_blob_view {
@@ -903,21 +904,16 @@ db_tbl_view_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
 
   memset(&blob->img, 0, sizeof(blob->img));
   if (blob->mem) {
-#if 0
     /* try loading blob memory as image */
     int chan_cnt = 0;
     unsigned char* img = 0;
     img = img_load_from_memory(blob->mem, blob->siz, &blob->img.w, &blob->img.h, &chan_cnt, 4);
     if (img) {
-      int siz = (blob->img.w * blob->img.h * 4);
-      blob->img.mem = img_new(&view->mem, blob->img.w, blob->img.h);
-      memcpy(blob->img.mem, img, cast(size_t, siz));
-
-      blob->img.id = res_reg_img(app->res, blob->img.mem, blob->img.w, blob->img.h);
+      blob->img.id = _sys->gfx.tex.load(_sys, GFX_PIX_FMT_R8G8B8A8, img, blob->img.w, blob->img.h);
       blob->sel_tab = 1;
+      blob->img.act = 1;
       free(img);
     }
-#endif
   }
 }
 struct db_fltr_arg {
@@ -1607,7 +1603,8 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
   assert(parent);
   assert(tmp_mem);
 
-  scp_mem(tmp_mem, ctx->sys) {
+  scp_mem(tmp_mem, ctx->sys)
+  {
     gui.pan.begin(ctx, pan, parent);
     {
       struct gui_tbl tbl = {.box = pan->box};
@@ -1702,7 +1699,9 @@ ui_db_tbl_fltr_tbl_hdr(struct db_tbl_fltr_view *fltr, struct gui_tbl *tbl,
     /* delete all filters icon */
     struct gui_btn slot = {0};
     ui_db_tbl_fltr_lst_ico_slot(ctx, tbl, tbl_cols, &slot, fltr->tbl.state, RES_ICO_TRASH);
-    if (slot.clk) dyn_clr(fltr->lst);
+    if (slot.clk) {
+      dyn_clr(fltr->lst);
+    }
   }
   gui.tbl.hdr.end(ctx, tbl);
 }
@@ -2131,14 +2130,12 @@ ui_db_img_view(struct db_tbl_blob_img_view *img,
     struct gui_reg reg = {.box = pan->box};
     gui.reg.begin(ctx, &reg, pan, img->off);
     {
-#if 0
       struct gui_panel ico = {.box = reg.pan.box};
       ico.box.x = gui.bnd.min_ext(ico.box.x.min, img->w);
       ico.box.y = gui.bnd.min_ext(ico.box.y.min, img->h);
       if (ctx->pass == GUI_RENDER) {
-        ren_blit_img(ctx->ren, ico.box.x.min, ico.box.y.min, img->id);
+        gui.drw.blit(ctx, img->id, ico.box.x.min, ico.box.y.min);
       }
-#endif
     }
     gui.reg.end(ctx, &reg, pan, img->off);
   }
@@ -2157,7 +2154,7 @@ ui_db_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
   gui.pan.begin(ctx, pan, parent);
   {
     /* tab control */
-    int tab_cnt = 1 + blob->img.mem != 0;
+    int tab_cnt = 1 + blob->img.act != 0;
     struct gui_tab_ctl tab = {.box = pan->box};
     gui.tab.begin(ctx, &tab, pan, tab_cnt, blob->sel_tab);
     {
@@ -2166,7 +2163,7 @@ ui_db_blob_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       {
         gui.tab.hdr.slot.txt(ctx, &tab, &hdr, strv("Hex"));
-        if (blob->img.mem) {
+        if (blob->img.act) {
           gui.tab.hdr.slot.txt(ctx, &tab, &hdr, strv("Image"));
         }
       }
@@ -2439,7 +2436,7 @@ static void
 ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
                struct gui_ctx *ctx) {
   scp_mem(ui->tmp_mem, ctx->sys) {
-    struct db_tree_node **lst;
+    struct db_tree_node **lst = 0;
     int cnt = tbl_cnt(ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
     for_tbl(slot, idx, ui->tree.sel) {
@@ -2618,9 +2615,10 @@ ui_db_main(struct db_ui_view *ui, struct db_tbl_view *view, struct gui_ctx *ctx,
       /* back button */
       struct gui_btn back = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
       if (ui_btn_ico(ctx, &back, pan, strv("Back"), RES_ICO_TH_LIST, 0)) {
-        if (view->blob.img.mem) {
-          // res_unreg_img(ctx->res, view->blob.img.id);
-          memset(&view->blob.img, 0, sizeof(view->blob.img));
+        if (view->blob.img.act) {
+          struct sys *s = ctx->sys;
+          s->gfx.tex.del(s, view->blob.img.id);
+          mset(&view->blob.img, 0, szof(view->blob.img));
         }
         mem_scp_end(&view->blob.scp, &view->mem, ctx->sys);
         view->state = TBL_VIEW_DISPLAY;
@@ -2742,9 +2740,9 @@ ui_db_tab_view_lst(struct db_ui_view *dbv, struct gui_ctx *ctx,
 }
 static void
 ui_db_resort_tbls(struct db_ui_view *d, int dst_idx, int src_idx) {
-  assert(db);
   assert(dst_idx < dyn_cnt(d->tbls));
   assert(src_idx < dyn_cnt(d->tbls));
+  assert(db);
 
   struct db_tbl_view *dst = d->tbls[dst_idx];
   struct db_tbl_view *src = d->tbls[src_idx];

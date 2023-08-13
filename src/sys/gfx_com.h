@@ -1,8 +1,11 @@
+#define GFX_MAX_TEX_CNT (16*1024)
+
 enum gfx_prim_type {
   GFX_PRIM_BOX,
   GFX_PRIM_LN,
   GFX_PRIM_CIR,
   GFX_PRIM_TRI,
+  GFX_PRIM_ICO,
   GFX_PRIM_IMG,
   GFX_PRIM_CNT
 };
@@ -32,11 +35,17 @@ struct gfx_tri {
   unsigned col;
   unsigned clip;
 };
-struct gfx_img {
+struct gfx_ico {
   short l,t,r,b;
   unsigned col;
   unsigned clip;
   unsigned short u,v;
+};
+struct gfx_img {
+  short l,t,r,b;
+  float texcoord[4];
+  unsigned tex;
+  unsigned clip;
 };
 struct gfx_uniform {
   vector_uint2 viewport;

@@ -2,21 +2,32 @@
 
 #define GFX_MTL_BUF_DEPTH 2
 
+#include "gfx_com.h"
+
 struct gfx_tex {
   int act;
   id<MTLTexture> hdl;
   int w, h;
 };
 struct gfx_mtl {
+  struct sys *sys;
+  struct arena mem;
+
   id<MTLDevice> dev;
   id<MTLLibrary> lib;
   id<MTLCommandQueue> cmd_que;
   id<MTLRenderPipelineState> pipe_state;
-  id<MTLBuffer> buf[GFX_MTL_BUF_DEPTH];
-  dispatch_semaphore_t sem;
-  int cur_buf;
+  id<MTLFunction> fshdr_f;
   vector_uint2 viewportSize;
+
+  int cur_buf;
+  dispatch_semaphore_t sem;
+  id<MTLBuffer> buf[GFX_MTL_BUF_DEPTH];
+
   int tex_cnt;
+  tbl(int) tex_cache;
+  id<MTLTexture> tex_buf[GFX_MAX_TEX_CNT];
+  id<MTLBuffer> arg_buf[GFX_MTL_BUF_DEPTH];
   struct gfx_tex tex[GFX_TEX_MAX];
 };
 
@@ -24,14 +35,12 @@ struct gfx_mtl {
  *                              Buffer2D
  * ---------------------------------------------------------------------------
  */
-#include "gfx_com.h"
-
 static const int gfx_box_seq[] = {0,1,3,3,2,0};
 #define gfx__mtl_resv(b,v,i) ((b)->vbytes += szof(v), (b)->icnt += (i))
 #define gfx__mtl_idx(o,p,c) ((castu(o)&0x0fffffff)|(castu(c) << 24u)|(castu(p) << 26u))
 #define gfx__mtl_elms(b,o,p)\
   fori_arrv(i, gfx_box_seq)\
-    (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i]);
+    (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i])
 
 static unsigned
 gfx_mtl_d2d_clip(struct gfx_buf2d *buf, int l, int t, int r, int b) {
@@ -55,7 +64,7 @@ gfx_mtl_d2d_ln(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
                int thickness, unsigned col, unsigned clp) {
   struct gfx_ln *c = recast(struct gfx_ln*, buf->vtx + buf->vbytes);
   *c = (struct gfx_ln){.x0 = casts(x0), .y0 = casts(y0), .x1 = casts(x1),
-    .y1 = casts(y1), .clip = clp, .col = col, .thickness = thickness};
+    .y1 = casts(y1), .clip = clp, .col = col, .thickness = castf(thickness)};
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_LN);
   gfx__mtl_resv(buf, *c, cntof(gfx_box_seq));
 }
@@ -81,15 +90,48 @@ gfx_mtl_d2d_tri(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
   gfx__mtl_resv(buf, *t, 3);
 }
 static void
-gfx_mtl_d2d_img(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
+gfx_mtl_d2d_ico(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
                 int u, int v, unsigned col, unsigned clp) {
-  struct gfx_img *d = recast(struct gfx_img*, buf->vtx + buf->vbytes);
-  *d = (struct gfx_img){.l = casts(x0), .t = casts(y0), .r = casts(x1),
+  struct gfx_ico *d = recast(struct gfx_ico*, buf->vtx + buf->vbytes);
+  *d = (struct gfx_ico){.l = casts(x0), .t = casts(y0), .r = casts(x1),
     .b = casts(y1), .u = castus(u), .v = castus(v), .clip = clp, .col = col};
+  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_ICO);
+  gfx__mtl_resv(buf, *d, cntof(gfx_box_seq));
+}
+static void
+gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dx, int dy, int dw, int dh,
+                int sx, int sy, int sw, int sh, unsigned clp) {
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, buf->intern);
+  assert(tex >= 0 && tex < GFX_TEX_MAX);
+  assert(mtl->tex[tex].act);
+  assert(sx <= mtl->tex[tex].w);
+  assert(sy <= mtl->tex[tex].h);
+  assert(sx + sw <= mtl->tex[tex].w);
+  assert(sy + sh <= mtl->tex[tex].h);
+
+  struct gfx_img *d = recast(struct gfx_img*, buf->vtx + buf->vbytes);
+  *d = (struct gfx_img){.l = casts(dx), .t = casts(dy), .r = casts(dx + dw),
+    .b = casts(dy + dh), .clip = clp, .texcoord = {
+      castf(sx)/castf(mtl->tex[tex].w),
+      castf(sy)/castf(mtl->tex[tex].h),
+      castf(sx + sw)/castf(mtl->tex[tex].w),
+      castf(sy + sh)/castf(mtl->tex[tex].h),
+    }
+  };
+  unsigned long long tex_id = castull(tex);
+  unsigned long long hash = fnv1au64(tex_id, FNV1A64_HASH_INITIAL);
+  int *idx = tbl_fnd(mtl->tex_cache, hash);
+  if (!idx) {
+    int tex_idx = mtl->tex_cnt++;
+    mtl->tex_buf[tex_idx] = mtl->tex[tex].hdl;
+    tbl_put(mtl->tex_cache, mtl->sys, hash, &tex_idx);
+    d->tex = castu(tex_idx);
+  } else {
+    d->tex = castu(*idx);
+  }
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_IMG);
   gfx__mtl_resv(buf, *d, cntof(gfx_box_seq));
 }
-
 /* ---------------------------------------------------------------------------
  *                                  Texture
  * ---------------------------------------------------------------------------
@@ -133,8 +175,8 @@ gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, i
 
   struct gfx_tex *img = mtl->tex + i;
   img->w = w, img->h = h;
-  img->act = 1;
   img->hdl = tex;
+  img->act = 1;
   return i;
 }
 static void
@@ -168,6 +210,7 @@ static int
 gfx_mtl_init(struct sys *s, void *view_ptr) {
   MTKView *view = (__bridge MTKView*)view_ptr;
   struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
+  mtl->sys = s;
 #ifndef NDEBUG
   /* enable metal validaton layer */
   setenv("MTL_SHADER_VALIDATION", "1", 1);
@@ -186,6 +229,8 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     NSLog(@"Metal is not supported on this device");
     return -1;
   }
+  s->gfx.buf2d.intern = mtl;
+  mtl->tex_cache = arena_tbl(&mtl->mem, s, int, GFX_TEX_MAX);
   mtl->sem = dispatch_semaphore_create(GFX_MTL_BUF_DEPTH);
   mtl->cmd_que = [mtl->dev newCommandQueue];
   mtl->lib = [mtl->dev newLibraryWithFile: @"gfx.metallib" error:&err];
@@ -199,15 +244,15 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     NSLog(@"Unable to get vertFunc!\n");
     return -1;
   }
-  id<MTLFunction> fshdr_f = [mtl->lib newFunctionWithName:@"ren_frag"];
-  if (!fshdr_f) {
+  mtl->fshdr_f = [mtl->lib newFunctionWithName:@"ren_frag"];
+  if (!mtl->fshdr_f) {
     NSLog(@"Unable to get fragFunc!\n");
     return -1;
   }
   MTLRenderPipelineDescriptor *pld = [[MTLRenderPipelineDescriptor alloc] init];
   pld.label = @"tau_pipeline";
   pld.vertexFunction = vshdr_f;
-  pld.fragmentFunction = fshdr_f;
+  pld.fragmentFunction = mtl->fshdr_f;
   pld.colorAttachments[0].pixelFormat = view.colorPixelFormat;
   pld.colorAttachments[0].blendingEnabled = YES;
   pld.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
@@ -226,6 +271,14 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
   fori_arrv(i, mtl->buf) {
     mtl->buf[i] = [mtl->dev newBufferWithLength:KB(256) options:MTLResourceStorageModeShared];
   }
+  {
+    /* allocate fragment argument buffers */
+    id<MTLArgumentEncoder> enc = [mtl->fshdr_f newArgumentEncoderWithBufferIndex:0];
+    for_cnt(i, GFX_MTL_BUF_DEPTH) {
+      mtl->arg_buf[i] = [mtl->dev newBufferWithLength:enc.encodedLength options:0];
+      mtl->arg_buf[i].label = @"Argument Buffer";
+    }
+  }
   return 0;
 }
 static void
@@ -239,6 +292,8 @@ gfx_mtl_begin(struct sys *s, int w, int h) {
   mtl->viewportSize.x = castu(w);
   mtl->viewportSize.y = castu(h);
 
+  mtl->tex_cnt = 1;
+  tbl_clr(mtl->tex_cache);
   s->gfx.buf2d.vtx = 0;
   s->gfx.buf2d.vbytes = 0;
   s->gfx.buf2d.idx = 0;
@@ -278,13 +333,18 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
     unused(buf);
     dispatch_semaphore_signal(blk_sem);
   }];
-
   id<MTLTexture> tex = mtl->tex[s->gfx.d2d.tex].hdl;
+  mtl->tex_buf[0] = tex;
+
   struct gfx_uniform uni = {0};
   uni.tex_siz.x = castu([tex width]);
   uni.tex_siz.y = castu([tex height]);
   uni.viewport = mtl->viewportSize;
-
+  {
+    id<MTLArgumentEncoder> enc = [mtl->fshdr_f newArgumentEncoderWithBufferIndex:0];
+    [enc setArgumentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0];
+    [enc setTextures:mtl->tex_buf withRange:NSMakeRange(0, (NSUInteger)mtl->tex_cnt)];
+  }
   MTLRenderPassDescriptor* rpd = view.currentRenderPassDescriptor;
   if (rpd != nil) {
     id<MTLRenderCommandEncoder> enc = [cmd_buf renderCommandEncoderWithDescriptor:rpd];
@@ -294,7 +354,10 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:vtx_off atIndex:1];
     [enc setVertexBytes:&uni length:sizeof(uni) atIndex:2];
-    [enc setFragmentTexture:tex atIndex:0];
+    for_cnt(i, mtl->tex_cnt) {
+      [enc useResource:mtl->tex_buf[i] usage:MTLResourceUsageSample];
+    }
+    [enc setFragmentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)s->gfx.buf2d.icnt];
     [enc endEncoding];
     [cmd_buf presentDrawable:view.currentDrawable];
@@ -326,6 +389,7 @@ static const struct gfx_api gfx_mtl_api = {
       .line   = {.vbytes  = szof(struct gfx_ln),    .icnt = 6},
       .tri    = {.vbytes  = szof(struct gfx_tri),   .icnt = 3},
       .circle = {.vbytes  = szof(struct gfx_cir),   .icnt = 6},
+      .ico    = {.vbytes  = szof(struct gfx_ico),   .icnt = 6},
       .img    = {.vbytes  = szof(struct gfx_img),   .icnt = 6},
     },
     .clip = gfx_mtl_d2d_clip,
@@ -333,6 +397,7 @@ static const struct gfx_api gfx_mtl_api = {
     .ln = gfx_mtl_d2d_ln,
     .circle = gfx_mtl_d2d_circle,
     .tri = gfx_mtl_d2d_tri,
+    .ico = gfx_mtl_d2d_ico,
     .img = gfx_mtl_d2d_img,
   },
   .tex = {
