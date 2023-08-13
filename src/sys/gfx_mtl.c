@@ -2,7 +2,7 @@
 
 #define GFX_MTL_BUF_DEPTH 2
 
-#include "gfx_com.h"
+#include "gfx_shdr.h"
 
 struct gfx_tex {
   int act;

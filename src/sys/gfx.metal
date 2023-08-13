@@ -1,5 +1,5 @@
 #include <metal_stdlib>
-#include "gfx_com.h"
+#include "gfx_shdr.h"
 
 using namespace metal;
 
