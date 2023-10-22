@@ -194,7 +194,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   sol = !sol ? &dummy : sol;
   mset(sol, 0, sizeof(*sol));
 
-  for_cnt(i,cnt) {
+  for loop(i,cnt) {
     if (slots[i] < 0) {
       sol->dyn_cnt++;
       continue;
@@ -206,7 +206,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   }
   int total = max(0, ext - (gap * cnt));
   if (sol->fix_siz >= total || !sol->dyn_cnt) {
-    for_cnt(i,cnt) {
+    for loop(i,cnt) {
       if (slots[i] < 0) {
         ret[i] = con ? con[i*2+0] : 0;
       }
@@ -214,14 +214,14 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
   }
   sol->weight = 0.0f;
   sol->dyn_siz = max(0, total - sol->fix_siz);
-  for_cnt(i, cnt) {
+  for loop(i, cnt) {
     if (slots[i] >= 0) {
       continue;
     }
     sol->weight += castf(-slots[i]);
   }
   int def_dyn_siz = 0;
-  for_cnt(i,cnt) {
+  for loop(i,cnt) {
     if (slots[i] >= 0) {
       continue;
     }
@@ -234,7 +234,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
     int grow_cnt = 0;
     float weight = 0.0f;
     int grow_siz = def_dyn_siz - sol->dyn_siz;
-    for_cnt(i,cnt) {
+    for loop(i,cnt) {
       if (slots[i] >= 0) {
         continue;
       }
@@ -247,7 +247,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
       int nxt_siz = 0;
       int nxt_cnt = 0;
       float nxt_weight = 0.0f;
-      for_cnt(i, cnt) {
+      for loop(i, cnt) {
         if (slots[i] >= 0) {
           continue;
         }
@@ -447,7 +447,7 @@ gui_drw_bspline(struct gui_ctx *ctx, const float *cvs, int cnt, int seg_cnt,
 
   float step = 1.0f / castf(seg_cnt), at = step;
   float p0[2]; bspline_pos_const(p0, 0.0f, cvs, cnt, is_closed, 2);
-  for_cnt(i, seg_cnt-1) {
+  for loop(i, seg_cnt-1) {
     float p1[2]; bspline_pos_const(p1, at, cvs, cnt, is_closed, 2);
     int x0 = math_roundi(p0[0]);
     int y0 = math_roundi(p0[1]);
@@ -535,9 +535,9 @@ gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
   }
   int x = dx;
   struct res_fnt_run_it it;
-  for_res_run(run, &it, &res, ctx->res, txt) {
+  for res_run_loop(run, &it, &res, ctx->res, txt) {
     int run_x = x;
-    for_cnt(i, run->len) {
+    for loop(i, run->len) {
       struct res_glyph g = {0};
       res.run.glyph(&g, run, i, run_x, dy);
       gui_drw_glyph(ctx, &g);
@@ -663,7 +663,7 @@ gui_input(struct gui_input *in, struct gui_ctx *ctx,
     ctx->prev_id = p->id;
   }
   /* mouse button */
-  for_cnt(i, GUI_MOUSE_BTN_CNT) {
+  for loop(i, GUI_MOUSE_BTN_CNT) {
     struct gui_mouse_btn *btn = &in->mouse.btns[i];
     if (p->is_hot) {
       btn->down = mouse->btns[i].down;
@@ -1048,7 +1048,7 @@ static void
 gui_input_begin(struct gui_ctx *ctx, struct sys_mouse *mouse) {
   assert(ctx);
   assert(mouse);
-  for_cnt(i, GUI_MOUSE_BTN_CNT) {
+  for loop(i, GUI_MOUSE_BTN_CNT) {
     if (!mouse->btns[i].pressed) {
       continue;
     }
@@ -1063,7 +1063,7 @@ static void
 gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
   assert(ctx);
   assert(mouse);
-  for_cnt(i, GUI_MOUSE_BTN_CNT) {
+  for loop(i, GUI_MOUSE_BTN_CNT) {
     ctx->btn[i].prev_active = ctx->btn[i].active;
     if (mouse->btns[i].released) {
       ctx->btn[i].origin = ctx->root.id;
@@ -1072,7 +1072,7 @@ gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
 }
 static void
 gui_input_eat(struct gui_ctx *ctx) {
-  for_cnt(i, GUI_MOUSE_BTN_CNT) {
+  for loop(i, GUI_MOUSE_BTN_CNT) {
     mset(&ctx->btn, 0, sizeof(ctx->btn));
   }
   mset(ctx->keys, 0, sizeof(ctx->keys));
@@ -1232,7 +1232,9 @@ gui_end(struct gui_ctx *ctx) {
 static int
 gui_disable(struct gui_ctx *ctx, int cond) {
   assert(ctx);
-  if (cond) ctx->disabled++;
+  if (cond) {
+    ctx->disabled++;
+  }
   return casti(ctx->disabled);
 }
 static int
@@ -1567,7 +1569,9 @@ gui_ico(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
     ico = gui_box_mid_ext(&pan->box, ctx->cfg.ico, ctx->cfg.ico);
     if (pan->state == GUI_DISABLED) {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
-    } else gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
+    } else {
+      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
+    }
     gui_drw_ico(ctx, ico.x.min, ico.y.min, id);
   }
   gui_panel_end(ctx, pan, parent);
@@ -2426,7 +2430,7 @@ gui_txt_ed_undo_discard(struct gui_txt_ed_undo *s) {
     int n = s->stk[0].in_len;
     s->undo_char_pnt = (short)(s->undo_char_pnt - n);
     mcpy(s->buf, s->buf + n, s->undo_char_pnt + szof(s->buf[0]));
-    for_cnt(i, s->undo_pnt) {
+    for loop(i, s->undo_pnt) {
       if (s->stk[i].char_at < 0) continue;
       s->stk[i].char_at = casts(s->stk[i].char_at - n);
     }
@@ -2530,7 +2534,7 @@ gui_txt_ed_undo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
       rdo = u->stk + u->redo_pnt - 1;
       rdo->char_at = casts(u->redo_char_pnt - udo.del_len);
       u->redo_char_pnt = casts(u->redo_char_pnt - udo.del_len);
-      for_cnt(i, udo.del_len) {
+      for loop(i, udo.del_len) {
         u->buf[rdo->char_at + i] = (*buf)[udo.where + i];
       }
     } else {
@@ -2568,7 +2572,7 @@ gui_txt_ed_redo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
       udo->char_at = u->undo_char_pnt;
       u->undo_char_pnt = casts(u->undo_char_pnt + udo->in_len);
       /* now save the characters */
-      for_cnt(i, udo->in_len)
+      for loop(i, udo->in_len)
         u->buf[udo->char_at + i] = (*buf)[udo->where + i];
     } else {
       udo->in_len = udo->del_len = 0;
@@ -2632,7 +2636,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
 
   int cnt = 0;
   unsigned rune = 0;
-  for_utf(&rune, it, _, txt) {
+  for utf_loop(&rune, it, _, txt) {
     end = it;
     if (rune == '\n') {
       break;
@@ -2809,7 +2813,7 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
   /* skip all trailing word boundary runes */
   int c = edt->cur - 1;
   struct str at = utf_at(0, dyn_str(buf), c);
-  for_utf_rev(&rune, it, rest, strp(buf, at.str)) {
+  for utf_loop_rev(&rune, it, rest, strp(buf, at.str)) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
@@ -2817,7 +2821,7 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
     c--;
   }
   /* find first word boundary rune */
-  for_utf_rev(&rune, it, rest, at) {
+  for utf_loop_rev(&rune, it, rest, at) {
     if (gui_rune_is_word_boundary(rune)) {
       break;
     }
@@ -2831,14 +2835,14 @@ gui_txt_ed_move_to_next_word(struct gui_txt_ed *edt, char *buf) {
   unsigned rune = 0;
   int c = edt->cur + 1;
   struct str at = utf_at(0, dyn_str(buf), c);
-  for_utf(&rune, it, rest, strp(buf, at.str)) {
+  for utf_loop(&rune, it, rest, strp(buf, at.str)) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
     }
     c++;
   }
-  for_utf(&rune, it, rest, at) {
+  for utf_loop(&rune, it, rest, at) {
     if (gui_rune_is_word_boundary(rune)) {
       break;
     }
@@ -2866,7 +2870,8 @@ gui_txt_ed_cut(struct gui_txt_ed *edt, char **buf) {
   return 0;
 }
 static int
-gui_txt_ed_paste(struct gui_txt_ed *edt, struct sys *s, char **buf, struct str txt) {
+gui_txt_ed_paste(struct gui_txt_ed *edt, struct sys *s, char **buf,
+                 struct str txt) {
   assert(edt);
   assert(buf);
 
@@ -2892,7 +2897,7 @@ gui_txt_ed_txt(struct gui_txt_ed *edt, struct sys *s, char **buf, struct str txt
   assert(buf);
 
   unsigned rune = 0;
-  for_utf(&rune, it, _, txt) {
+  for utf_loop(&rune, it, _, txt) {
     if (rune == 127 || rune == '\n') {
       continue;
     }
@@ -5025,7 +5030,7 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
 
   struct gui_split_lay bld = {0};
   gui_split_lay_begin(&bld, state, cnt, ctx->cfg.sep);
-  for_cnt(i, cnt) {
+  for loop(i, cnt) {
     int idx = cfg->sort ? cfg->sort[i] : i;
     if (cfg->fltr && bit_tst(cfg->fltr, idx) == 0) {
       continue;

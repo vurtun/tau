@@ -130,7 +130,7 @@ app_open_files(struct app *app, const struct str *files, int cnt) {
   assert(app);
   assert(sys);
   assert(files);
-  for_cnt(i,cnt) {
+  for loop(i,cnt) {
     /* open each database in new tab */
     struct app_view *view = app_view_new(app);
     view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, files[i]);
@@ -201,7 +201,7 @@ app_init(struct app *app) {
 static void
 app_shutdown(struct app *app) {
   assert(app);
-  fori_dyn(i, app->views) {
+  for dyn_loopi(i, app->views) {
     struct app_view *view = app->views[i];
     if (view->db) {
       dbs.del(view->db, &app->sys);
@@ -294,7 +294,7 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, app->tab_lst_off);
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       struct gui_panel elm = {0};
       struct app_view *view = app->views[i];
       unsigned long long tab_id = hash_ptr(view);
@@ -374,7 +374,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       int del_tab = 0;
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
-      for_cnt(i, tab.cnt) {
+      for loop(i, tab.cnt) {
         /* tab header slots */
         struct app_view *view = app->views[i];
         enum res_ico_id ico = RES_ICO_FOLDER_OPEN;
@@ -483,7 +483,7 @@ main(int argc, char **argv) {
   /* run */
   while (app.sys.running) {
     sys.pull(&app.sys);
-    fori_dyn(i, app.views) {
+    for dyn_loopi(i, app.views) {
       struct app_view *view = app.views[i];
       switch (view->state) {
       case APP_VIEW_STATE_FILE: break;
@@ -498,7 +498,7 @@ main(int argc, char **argv) {
     if (app.sys.style_mod) {
       gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
     }
-    fori_arrv(i, app_ui_key_tbl) {
+    for arr_loopi(i, app_ui_key_tbl) {
       /* map system keys to ui shortcuts */
       const struct app_ui_shortcut *s = app_ui_key_tbl + i;
       struct gui_ctx *ctx = &app.gui;

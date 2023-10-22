@@ -48,7 +48,7 @@ mset(void *addr, int c, int n) {
  * ---------------------------------------------------------------------------
  */
 #define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
-#define intvl(b,s,n) rng(b,n,s,n)
+#define intvl(b,n,s) rng(b,n,s,n)
 #define rngn(n) rng(0,(n),1,(n))
 #define slc(b,e) rng((b),(e),1,(e)-(b))
 
@@ -97,12 +97,9 @@ rng_sub(const struct rng *r, int b, int e) {
  * ---------------------------------------------------------------------------
  */
 #define forever while(1)
-#define for_nstep(i,n,s) for (int i = 0; i < (n); i += (s))
-#define for_cnt(i,n) for_nstep(i,n,1)
-#define for_cnt_rev(i,n) for (int i = (n)-1; i >= 0; i -= 1)
-#define fori_cnt(i,n) for (i = 0; i < (n); i += 1)
-#define for_rng(i,l,r)\
-  for (int i = (r).lo, l = 0; i != (r).hi; i += (r).step, ++l)
+#define loopr(i,r) (int i = (r).lo; i != (r).hi; i += (r).step)
+#define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += (r).step, ++j)
+#define loop(i,n) (int i = 0; i < (n); ++i)
 
 /* ---------------------------------------------------------------------------
  *                                  Hash
@@ -114,7 +111,7 @@ rng_sub(const struct rng *r, int b, int e) {
 static inline unsigned
 fnv1a32(const void *ptr, int size, unsigned h) {
   const unsigned char *p = ptr;
-  for (int i = 0; i < size; ++i) {
+  for loop(i,size) {
      h = (h ^ p[i]) * 16777619u;
   }
   return h;
@@ -122,7 +119,7 @@ fnv1a32(const void *ptr, int size, unsigned h) {
 static inline unsigned long long
 fnv1a64(const void *ptr, int len, unsigned long long h) {
   const unsigned char *p = ptr;
-  for (int i = 0; i < len; ++i) {
+  for loop(i,len) {
     h ^= (unsigned long long)p[i];
     h *= 1099511628211llu;
   }
@@ -220,7 +217,7 @@ rnduf(unsigned long long *x, float mini, float maxi) {
  *                                  Guid
  * ---------------------------------------------------------------------------
  */
-/* 00000000-0000-0000-0000-000000000000 */
+/* format: 00000000-0000-0000-0000-000000000000 */
 #define GUID_STR_LEN 37
 #define GUID_BUF_LEN (GUID_STR_LEN+1)
 #define guid_hash32(g) ((g)->d1)
@@ -376,16 +373,11 @@ guid_hash64(const struct guid *g) {
     }                                                     \
 }} while (0)
 
-#define for_arrp(it,a,e) for ((it) = (a); (it) < (e); ++(it))
-#define for_arr(it,a,n) for_arrp(it,a,(a)+(n))
-#define for_arrv(it,a) for_arr(it,a,cntof(a))
-#define fori_arrv(i,a) for (int i = 0; i < cntof(a); ++i)
-#define for_arr_rng(it,a,r)\
-  for ((it) = (a) + (r).lo; (it) != (a) + (r).hi; (it) += (r).step)
-#define for_arrv_rng(it,a, b,e,s)             \
-  for ((it) = (a) + rng(b,e,s,cntof(a)).lo;   \
-       (it) != (a) + rng(b,e,s,cntof(a)).hi;  \
-       (it) += rng(b,e,s,cntof(a)).step)
+#define arr_loopp(it,a,e) ((it) = (a); (it) < (e); ++(it))
+#define arr_loopn(it,a,n) arr_loopp(it,a,(a)+(n))
+#define arr_loopv(it,a) arr_loopp(it,a,a+cntof(a))
+#define arr_loopi(i,a) (int i = 0; i < cntof(a); ++i)
+#define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += (r).step)
 
 /* ---------------------------------------------------------------------------
  *                                Sequence
@@ -393,13 +385,13 @@ guid_hash64(const struct guid *g) {
  */
 static inline void
 seq_rng(int *seq, struct rng rng) {
-  for_rng(i,k,rng) {
+  for loopi(i,k,rng) {
     seq[k] = i;
   }
 }
 static inline void
 seq_rngu(unsigned *seq, struct rng rng) {
-  for_rng(i,k,rng) {
+  for loopi(i,k,rng) {
     seq[k] = castu(i);
   }
 }
@@ -451,8 +443,8 @@ bit_eqv(unsigned x, unsigned y) {
  *                                  Bitset
  * ---------------------------------------------------------------------------
  */
-#define for_bitset(i,x,s,n) \
-  for (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
+#define bit_loop(i,x,s,n) \
+  (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
 static int bit_xor(unsigned long *addr, int nr);
 
 static int
@@ -875,16 +867,12 @@ str__match_hash(struct str s) {
 #define str_cut_lhs(s, n) *(s) = str_rhs(*(s), n)
 #define str_cut_rhs(s, n) *(s) = str_lhs(*(s), n)
 
-#define for_str(it,c,s)                                         \
-  for (const char *it = (c)->str; it < (c)->end; it += (s))
-#define fori_str_step(i,c,s)\
-  for (int i = 0; i < (c)->len; i += (s))
-#define fori_str(i,c) fori_str_step(i,c,1)
-#define for_str_rng(it,s,r)                                     \
-   for (const char *it = (s).str + (r).lo;                      \
-      (it) != (s).str + (r).hi; (it) += (r).step)
-#define for_str_tok(it, rest, src, delim)                       \
-  for (struct str rest = src, it = str_split_cut(&rest, delim); \
+#define str_loops(it,c,s) (const char *it = (c)->str; it < (c)->end; it += (s))
+#define str_loopis(i,c,s) (int i = 0; i < (c)->len; i += (s))
+#define str_loopi(i,c) str_loopis(i,c,1)
+#define str_loopr(it,s,r) (const char *it = (s).str + (r).lo; (it) != (s).str + (r).hi; (it) += (r).step)
+#define str_tok(it, rest, src, delim)                       \
+  (struct str rest = src, it = str_split_cut(&rest, delim); \
        it.len; it = str_split_cut(&rest, delim))
 // clang-format on
 
@@ -899,7 +887,7 @@ str_hash(struct str s) {
 static int
 str_cmp(struct str a, struct str b) {
   int n = min(a.len, b.len);
-  for_cnt(i,n) {
+  for loop(i,n) {
     if (a.str[i] < b.str[i]) {
       return -1;
     } else if (a.str[i] > b.str[i]) {
@@ -913,57 +901,13 @@ str_cmp(struct str a, struct str b) {
   }
   return 0;
 }
-static void
-str_fnd_tbl(struct str_fnd_tbl *fnd, struct str s) {
-  if (s.len <= 1) return;
-  for (int i = 0; i < UCHAR_MAX + 1; ++i) {
-    fnd->tbl[i] = s.len;
-  }
-  if (s.len > 0) {
-    int n = s.len - 1;
-    for (int i = 0; i < n; ++i) {
-      unsigned char at = castb(s.str[i]);
-      fnd->tbl[at] = n - i;
-    }
-  }
-}
-static int
-str_fnd_tbl_str(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
-  if (needle.len > hay.len) {
-    return hay.len;
-  }
-  if (needle.len == 1) {
-    const char *ret = cpu_str_chr(hay.str, hay.len, needle.str[0]);
-    return ret ? casti(ret - hay.str) : hay.len;
-  }
-  int hpos = 0;
-  int n = needle.len - 1;
-  char last_char = needle.str[n];
-  while (hpos <= hay.len - needle.len) {
-    int c = hay.str[hpos + n];
-    if (last_char == c &&
-        !memcmp(needle.str, hay.str + hpos, cast(size_t, n))) {
-      return hpos;
-    }
-    hpos += fnd->tbl[c];
-  }
-  return hay.len;
-}
-static int
-str_fnd_tbl_has(struct str hay, struct str needle, struct str_fnd_tbl *fnd) {
-  return str_fnd_tbl_str(hay, needle, fnd) >= hay.len;
-}
 static int
 str_fnd(struct str hay, struct str needle) {
   if (needle.len == 1) {
     const char *ret = cpu_str_chr(hay.str, hay.len, needle.str[0]);
     return ret ? casti(ret - hay.str) : hay.len;
-  } else if (needle.len <= CPU_STR_FND_LIMIT) {
-    return cpu_str_fnd(hay.str, hay.len, needle.str, needle.len);
   } else {
-    struct str_fnd_tbl fnd;
-    str_fnd_tbl(&fnd, needle);
-    return str_fnd_tbl_str(hay, needle, &fnd);
+    return cpu_str_fnd(hay.str, hay.len, needle.str, needle.len);
   }
 }
 static int
@@ -1082,12 +1026,10 @@ static const unsigned utf_max[UTF_SIZ+1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10F
 #define utf_enc_byte(u,i) ((char)((utf_byte[i]) | ((unsigned char)u & ~utf_mask[i])))
 #define utf_tst(c) (((c) & 0xC0) != 0x80)
 #define utf_val(u,i) (between(u, utf_min[i], utf_max[i]) && !between(u, 0xD800, 0xDFFF))
-#define for_utf(rune, it, rest, src)\
-  for (struct str rest = src, it = utf_dec(rune, &rest); it.len;\
-      it = utf_dec(rune, &rest))
-#define for_utf_rev(rune, it, rest, src)\
-  for (struct str rest = src, it = utf_dec_rev(rune, &rest); it.len;\
-      it = utf_dec_rev(rune, &rest))
+#define utf_loop(rune, it, rest, src)\
+  (struct str rest = src, it = utf_dec(rune, &rest); it.len; it = utf_dec(rune, &rest))
+#define utf_loop_rev(rune, it, rest, src)\
+  (struct str rest = src, it = utf_dec_rev(rune, &rest); it.len; it = utf_dec_rev(rune, &rest))
 
 static struct str
 utf_dec(unsigned *rune, struct str *s) {
@@ -1166,7 +1108,7 @@ static struct str
 utf_at(unsigned *rune, struct str s, int idx) {
   int i = 0;
   unsigned glyph = 0;
-  for_utf(&glyph, it, _, s) {
+  for utf_loop(&glyph, it, _, s) {
     if (i >= idx) {
       if (rune) *rune = glyph;
       return it;
@@ -1189,7 +1131,7 @@ static int
 utf_len(struct str s) {
   int i = 0;
   unsigned rune = 0;
-  for_utf(&rune, _, __, s) {
+  for utf_loop(&rune, _, __, s) {
     i++;
   }
   return i;
@@ -1437,7 +1379,7 @@ arena_cstr_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
   if (r.step == 1) {
     mcpy(ret, cs.str, cs.len);
   } else {
-    for_str_rng(it,cs,r) {
+    for str_loopr(it,cs,r) {
       ret[i++] = *it;
     }
   }
@@ -1551,12 +1493,12 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 #define lst_any(lst) (!lst_empty(lst))
 #define lst_first(lst) ((lst)->nxt)
 #define lst_last(lst) ((lst)->prv)
-#define for_lst(e,l)  for((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
-#define for_lst_safe(a,b,l) \
- for((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
-#define for_lst_rev(e,l) for((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
-#define for_lst_rev_safe(a,b,l) \
- for((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
+#define lst_loop(e,l) ((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
+#define lst_loop_safe(a,b,l)\
+  ((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
+#define lst_loop_rev(e,l) ((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
+#define lst_loop_rev_safe(e,l)\
+ ((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
 // clang-format on
 
 /* ---------------------------------------------------------------------------
@@ -1596,13 +1538,10 @@ struct dyn_hdr {
 #define dyn_val(b,i) assert(i < dyn_cnt(b))
 #define dyn_shfl(a,p) arr_shfl(arr(a),p)
 
-#define fori_dyn(i,c)\
-  for (int i = 0; i < dyn_cnt(c); ++i)
-#define for_dyn(it,c) for_arr(it, c, dyn_cnt(c))
-#define for_dyn_rng(it,a, b,e,s)                    \
-  for ((it) = (a) + rng(b,e,s,dyn_cnt(a)).lo;       \
-       (it) != (a) + rng(b,e,s,dyn_cnt(a)).hi;      \
-       (it) += rng(b,e,s,dyn_cnt(a)).step)
+#define dyn_loop(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
+#define dyn_loopi(i,c) (int i = 0; i < dyn_cnt(c); ++i)
+#define dyn_looprp(it,c) (it = dyn_begin((c) + (r).lo; it != (c) + (r).hi; it += (r).step)
+#define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += (r).step)
 
 #define dyn_asn(b, s, x, n) do {                    \
   dyn_clr(b);                                       \
@@ -1982,7 +1921,7 @@ ut_set(struct sys *s) {
 #define tbl_has(t,k) (tbl_fnd(t, k) != 0)
 #define tbl_del(t,k) tbl__del(t, k, szof(*(t)))
 #define tbl_clr(t) do{dyn__hdr(t)->cnt = 0; mset(tbl__keys(t,szof(*(t))), 0, tbl_cap(t) * szof(unsigned long long));} while(0)
-#define for_tbl(n,i,t) for (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
+#define tbl_loop(n,i,t) (int n = tbl__nxt_idx(t,0,szof(*(t))), i = 0; n < tbl_cap(t); n = tbl__nxt_idx(t,n+1,szof(*(t))),++i)
 #define tbl_free(t,s) do {if((t) && dyn__hdr(t)->cap >= 0){(s)->mem.free(s,dyn__hdr(t)->blk); (t) = 0;}} while(0)
 // clang-format on
 
@@ -2150,7 +2089,7 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   int is_sorted = 1;
   mset(buf,0,512*szof(unsigned));
   unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
-  for_cnt(i, n) {
+  for loop(i,n) {
     unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
     h[0][k & 0xff]++;
     h[1][(k >> 8) & 0xff]++;
@@ -2162,14 +2101,14 @@ sort__radix16(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* convert histogram into offset table */
   unsigned sum[2] = {0};
-  for_cnt(i,256) {
+  for loop(i,256) {
     unsigned t0 = h[0][i] + sum[0]; h[0][i] = sum[0], sum[0] = t0;
     unsigned t1 = h[1][i] + sum[1]; h[1][i] = sum[1], sum[1] = t1;
   }
   /* sort 8-bits at a time */
   unsigned *restrict idx[] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 2; ++p, d = !d, s = !s) {
-    for_cnt(i, n) {
+    for loop(i,n) {
       unsigned at = idx[s][i] * castu(siz);
       unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8 * p))&0xff]++] = at;
@@ -2200,7 +2139,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   int is_sorted = 1;
   mset(buf,0,1024*szof(unsigned));
   unsigned lst = sort__access(b + out[0] * (unsigned)siz, usr, access, conv, off);
-  for_cnt(i,n) {
+  for loop(i,n) {
     unsigned k = sort__access(b + out[i] * (unsigned)siz, usr, access, conv, off);
     h[0][(k & 0xff)]++;
     h[1][(k >> 8) & 0xff]++;
@@ -2214,7 +2153,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   }
   /* convert histogram into offset table */
   unsigned sum[4] = {0};
-  for_cnt(i,256) {
+  for loop(i,256) {
     unsigned t0 = h[0][i] + sum[0]; h[0][i] = sum[0], sum[0] = t0;
     unsigned t1 = h[1][i] + sum[1]; h[1][i] = sum[1], sum[1] = t1;
     unsigned t2 = h[2][i] + sum[2]; h[2][i] = sum[2], sum[2] = t2;
@@ -2223,7 +2162,7 @@ sort__radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   /* sort 8-bit at a time */
   unsigned *restrict idx[2] = {out, out + n};
   for (int p = 0, s = 0, d = 1; p < 4; ++p, d = !d, s = !s) {
-    for_cnt(i,n) {
+    for loop(i,n) {
       unsigned at = idx[s][i] * castu(siz);
       unsigned k = sort__access(b + at, usr, access, conv, off);
       idx[d][h[p][(k>>(8*p))&0xff]++] = at;

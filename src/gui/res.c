@@ -644,7 +644,7 @@ res_run_cache_init(struct res_run_cache *c, struct sys *s,
   c->run_cnt = args->run_cnt;
   c->htbl = arena_arr(s->mem.arena, s, int, c->hcnt);
   c->runs = arena_arr(s->mem.arena, s, struct res_fnt_run, c->run_cnt);
-  for_cnt(i, args->run_cnt) {
+  for loop(i, args->run_cnt) {
     struct res_fnt_run *run = res__run_cache_get(c, i);
     run->nxt = ((i + 1) < args->run_cnt) ? run->nxt = i + 1 : 0;
   }
@@ -661,7 +661,7 @@ res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
   run->len = 0;
 
   unsigned rune = 0;
-  for_utf(&rune, it, rest, txt) {
+  for utf_loop(&rune, it, rest, txt) {
     assert(run->len < RES_FNT_MAX_RUN);
     rune = rune >= RES_GLYPH_SLOTS ? '?': rune;
     fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
@@ -697,11 +697,11 @@ res_fnt_ext(int *ext, struct res *r, struct str txt) {
   if (!txt.len) {
     return;
   }
-  for_str_tok(it, _, txt, strv(" ")) {
+  for str_tok(it, _, txt, strv(" ")) {
     unsigned long long h = FNV1A64_HASH_INITIAL;
     int n = div_round_up(it.len, 16);
     struct str blk = it;
-    for_cnt(i,n) {
+    for loop(i,n) {
       struct str seg = str_lhs(blk, 16);
       h = str__hash(seg, h);
 
@@ -723,7 +723,7 @@ res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space,
   assert(bnd);
   int width = 0, len = 0;
   assert(run->len <= RES_FNT_MAX_RUN);
-  for_cnt(i, run->len) {
+  for loop(i, run->len) {
     assert(i < RES_FNT_MAX_RUN);
     if (ext + run->adv[i] > space){
       break;
@@ -746,11 +746,11 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
     return;
   }
   int ext = 0;
-  for_str_tok(it, _, txt, strv(" ")) {
+  for str_tok(it, _, txt, strv(" ")) {
     unsigned long long h = FNV1A64_HASH_INITIAL;
     int n = div_round_up(it.len, 16);
     struct str blk = it;
-    for_cnt(i,n) {
+    for loop(i,n) {
       struct str seg = str_lhs(blk, 16);
       h = str__hash(seg, h);
 
@@ -861,7 +861,7 @@ res_init(struct res *r, const struct res_args *args) {
 
   double best_d = 10000.0;
   r->fnt_pnt_size = 16.0f;
-  fori_arrv(i, fnt_pnt_siz) {
+  for arr_loopi(i, fnt_pnt_siz) {
     double d = math_abs(pnt_siz - fnt_pnt_siz[i]);
     if (d < best_d) {
       r->fnt_pnt_size = fnt_pnt_siz[i];

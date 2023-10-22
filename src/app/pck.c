@@ -313,9 +313,9 @@ static const struct gui_split_lay_slot file_split_def[FILE_SPLIT_MAX] = {
 static const struct file_def *
 file_type(struct str ext) {
   const struct file_group_def *grp = 0;
-  for_arrv(grp, file_groups) {
+  for arr_loopv(grp, file_groups) {
     const struct file_def *def = 0;
-    for_arr(def, grp->files, grp->cnt) {
+    for arr_loopn(def, grp->files, grp->cnt) {
       if (def->suffix && str_cmp(str0(def->suffix), ext) == 0) {
         return def;
       }
@@ -432,7 +432,7 @@ file_tree_node_sort_after_elm(struct file_tree_node *n,
   assert(n);
 
   struct lst_elm *elm = 0;
-  for_lst(elm, &n->sub) {
+  for lst_loop(elm, &n->sub) {
     struct file_tree_node *it = 0;
     it = lst_get(elm, struct file_tree_node, hook);
     if (str_cmp(s->fullpath, it->fullpath) < 0) {
@@ -506,7 +506,7 @@ file_view_tree_node_del(struct file_tree_view *tree, struct file_tree_node *n) {
 
   struct lst_elm *elm = 0;
   struct lst_elm *item = 0;
-  for_lst_safe(elm, item, &n->sub) {
+  for lst_loop_safe(elm, item, &n->sub) {
     struct file_tree_node *s = 0;
     s = lst_get(elm, struct file_tree_node, hook);
     file_view_tree_node_del(tree, s);
@@ -532,14 +532,14 @@ file_view_tree_build(struct file_tree_view *tree,
   scp_mem(tmp, _sys) {
     unsigned long long *set = arena_set(tmp, _sys, 1024);
     struct lst_elm *elm = 0;
-    for_lst(elm, &n->sub) {
+    for lst_loop(elm, &n->sub) {
       struct file_tree_node *s;
       s = lst_get(elm, struct file_tree_node, hook);
       set_put(set, _sys, s->id);
     }
     /* validate child nodes */
     struct sys_dir_iter it = {0};
-    for_dir_lst(_sys, &it, tmp, n->fullpath) {
+    for sys_dir_lst_loop(_sys, &it, tmp, n->fullpath) {
       if (it.name.str[0] == '.' || !_sys->dir.exists(_sys, it.fullpath, tmp)) {
         continue;
       }
@@ -552,7 +552,7 @@ file_view_tree_build(struct file_tree_view *tree,
     }
     /* remove deleted directory nodes */
     struct lst_elm *safe = 0;
-    for_lst_safe(elm, safe, &n->sub) {
+    for lst_loop_safe(elm, safe, &n->sub) {
       struct file_tree_node *s;
       s = lst_get(elm, struct file_tree_node, hook);
       if (!set_fnd(set, s->id)) {
@@ -564,7 +564,7 @@ file_view_tree_build(struct file_tree_view *tree,
   }
   /* recurse child directory nodes */
   struct lst_elm *it = 0;
-  for_lst(it, &n->sub) {
+  for lst_loop(it, &n->sub) {
     struct file_tree_node *s;
     s = lst_get(it, struct file_tree_node, hook);
     upt |= file_view_tree_build(tree, s, _sys, mem, tmp);
@@ -584,7 +584,7 @@ file_view_tree_serial(struct file_tree_view *tree,
   dyn_add(lst, _sys, n);
   if (set_fnd(tree->exp, n->id)) {
     struct lst_elm *it = 0;
-    for_lst(it, &n->sub) {
+    for lst_loop(it, &n->sub) {
       struct file_tree_node *s = 0;
       s = lst_get(it, struct file_tree_node, hook);
       lst = file_view_tree_serial(tree, s, lst, _sys);
@@ -607,7 +607,7 @@ file_tree_node_fnd(struct file_tree_node *n, struct str str) {
   assert(n);
   struct lst_elm *elm = 0;
   struct file_tree_node *s = 0;
-  for_lst(elm, &n->sub) {
+  for lst_loop(elm, &n->sub) {
     s = lst_get(elm, struct file_tree_node, hook);
     struct str file_name = path_file(s->fullpath);
     if (str_eq(str, file_name)) {
@@ -629,7 +629,7 @@ file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
   }
   struct file_tree_node *n = &tree->root;
   struct str path = str_rhs(p, off);
-  for_str_tok(it, _, path, strv("/")) {
+  for str_tok(it, _, path, strv("/")) {
     struct str fullpath = strp(p.str, it.end);
     if (!_sys->dir.exists(_sys, fullpath, fs->tmp_arena)) {
       break;
@@ -691,8 +691,8 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
   assert(_sys);
 
   struct file_elm elm = {0};
-  struct mem_scp scp = {0};
-  mem_scp_begin(&scp, &lst->mem);
+  struct mem_scp s = {0};
+  mem_scp_begin(&s, &lst->mem);
 
   /* parse file/directory name */
   elm.fullpath = arena_str(&lst->mem, _sys, path);
@@ -703,7 +703,7 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
   /* extract file stat, extension and type */
   struct sys_file_info info;
   if (!_sys->file.info(_sys, &info, elm.fullpath, &lst->mem)) {
-    mem_scp_end(&scp, &lst->mem, _sys);
+    mem_scp_end(&s, &lst->mem, _sys);
     return;
   }
   elm.size = info.siz;
@@ -744,6 +744,7 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
 static void
 file_list_view_fltr(struct file_list_view *lst, struct str fltr) {
   assert(lst);
+#if 0
   struct str_fnd_tbl tbl;
   str_fnd_tbl(&tbl, fltr);
   fori_dyn(i, lst->elms) {
@@ -751,6 +752,7 @@ file_list_view_fltr(struct file_list_view *lst, struct str fltr) {
     int has = str_fnd_tbl_has(lst->elms[i].name, fltr, &tbl);
     bit_set_on(lst->fltr, i, has);
   }
+#endif
 }
 static void
 file_view_cd(struct file_view *fs, struct sys *_sys, struct str path) {
@@ -766,7 +768,7 @@ file_view_cd(struct file_view *fs, struct sys *_sys, struct str path) {
 
     /* add all files in directory */
     struct sys_dir_iter it = {0};
-    for_dir_lst(_sys, &it, tmp, sys_path) {
+    for sys_dir_lst_loop(_sys, &it, tmp, sys_path) {
       file_lst_view_add_path(&fs->lst, _sys, it.fullpath);
     }
     /* sort list by name */
@@ -991,7 +993,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       /* header */
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, lst->tbl.state);
-      for_cnt(i, tbl.cnt) {
+      for loop(i, tbl.cnt) {
         assert(i < cntof(file_tbl_def));
         struct str title = file_tbl_def[i].title;
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_lay, lst->tbl.state, title);
@@ -1013,7 +1015,7 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       cfg.fltr.bitset = lst->fltr;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for_gui_tbl_lst(i,gui,&tbl) {
+      for gui_tbl_lst_loop(i,gui,&tbl) {
         struct gui_panel elm = {0};
         int is_sel = lst->sel_idx == i;
         ui_file_view_tbl_elm(ctx, &tbl, tbl_lay, &elm, lst->elms + i, is_sel);
@@ -1140,7 +1142,7 @@ ui_file_view_tree_key(struct file_view *fs, struct file_tree_view *tree,
 static int
 ui_file_view_tree_jmp_elm(struct file_tree_view *tree,
                           unsigned long long jmp_id) {
-  fori_dyn(i, tree->lst) {
+  for dyn_loopi(i, tree->lst) {
     assert(i < dyn_cnt(tree->lst));
     struct file_tree_node *n = tree->lst[i];
     if (n->id == jmp_id) {
@@ -1167,7 +1169,7 @@ ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, tree->off);
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       /* tree nodes */
       struct gui_panel elm = {0};
       struct file_tree_node *n = tree->lst[i];

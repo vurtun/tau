@@ -413,7 +413,7 @@ sys_mac_mem_stats(struct sys *s, struct sys_mem_stats *stats) {
   lck_acq(&os->mem_lck);
   {
     struct lst_elm *elm = 0;
-    for_lst(elm, &os->mem_blks) {
+    for lst_loop(elm, &os->mem_blks) {
       struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
       stats->total += blk->blk.size;
       stats->used += blk->blk.used;
@@ -429,7 +429,7 @@ sys_mac_mem_free_tag(struct sys *s, unsigned long long tag) {
 
   lck_acq(&os->mem_lck);
   struct lst_elm *elm = 0;
-  for_lst(elm, &os->mem_blks) {
+  for lst_loop(elm, &os->mem_blks) {
     struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
     if (blk->tags == tag) {
       sys_mac_mem_free(s, &blk->blk);
@@ -990,7 +990,7 @@ sys_mac_prep(struct sys *s) {
   s->style_mod = 0;
   s->mouse.pos_last[0] = s->mouse.pos[0];
   s->mouse.pos_last[1] = s->mouse.pos[1];
-  fori_arrv (i, s->keys){
+  for arr_loopi(i, s->keys){
     s->keys[i] = 0;
   }
   for (int i = 0; i < SYS_MOUSE_BTN_CNT; ++i) {

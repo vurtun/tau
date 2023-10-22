@@ -986,7 +986,6 @@ struct gui_dnd_paq {
 struct gui_dnd_src {
   unsigned active:1;
   unsigned activated:1;
-
   unsigned drag_begin:1;
   unsigned dragged:1;
   unsigned drag_end:1;
@@ -1075,12 +1074,12 @@ struct gui_ctx {
     uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 
-#define for_gui_tbl_lst(i,gui,t)\
-  for (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
-#define for_gui_lst(i,gui,l)\
-  for (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
-#define for_gui_lst_reg(i,gui,r)\
-  for (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
+#define gui_tbl_lst_loop(i,gui,t)\
+  (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
+#define gui_lst_loop(i,gui,l)\
+  (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
+#define gui_lst_reg_loop(i,gui,r)\
+  (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
 
 #define scp_gui_clip(gui,tmp,ctx,x0,y0,x1,y1)\
   for (int uniqid(_i_) = ((gui)->clip.begin(tmp,ctx,x0,y0,x1,y1), 0); uniqid(_i_) < 1;\

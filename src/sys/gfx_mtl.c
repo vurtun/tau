@@ -6,8 +6,8 @@
 
 struct gfx_tex {
   int act;
-  id<MTLTexture> hdl;
   int w, h;
+  id<MTLTexture> hdl;
 };
 struct gfx_mtl {
   struct sys *sys;
@@ -39,7 +39,7 @@ static const int gfx_box_seq[] = {0,1,3,3,2,0};
 #define gfx__mtl_resv(b,v,i) ((b)->vbytes += szof(v), (b)->icnt += (i))
 #define gfx__mtl_idx(o,p,c) ((castu(o)&0x0fffffff)|(castu(c) << 24u)|(castu(p) << 26u))
 #define gfx__mtl_elms(b,o,p)\
-  fori_arrv(i, gfx_box_seq)\
+  for arr_loopi(i, gfx_box_seq)\
     (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i])
 
 static unsigned
@@ -181,9 +181,9 @@ gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, i
 }
 static void
 gfx_mtl_tex_siz(int *siz, struct sys *s, int id) {
-  assert(s);
-  assert(siz);
   assert(id >= 0 && id < GFX_TEX_MAX);
+  assert(siz);
+  assert(s);
 
   struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
   assert(mtl->tex[id].act);
@@ -268,13 +268,13 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     NSLog(@"Failed to created pipeline state, error %@", err);
     return -1;
   }
-  fori_arrv(i, mtl->buf) {
+  for arr_loopi(i, mtl->buf) {
     mtl->buf[i] = [mtl->dev newBufferWithLength:KB(256) options:MTLResourceStorageModeShared];
   }
   {
     /* allocate fragment argument buffers */
     id<MTLArgumentEncoder> enc = [mtl->fshdr_f newArgumentEncoderWithBufferIndex:0];
-    for_cnt(i, GFX_MTL_BUF_DEPTH) {
+    for loop(i, GFX_MTL_BUF_DEPTH) {
       mtl->arg_buf[i] = [mtl->dev newBufferWithLength:enc.encodedLength options:0];
       mtl->arg_buf[i].label = @"Argument Buffer";
     }
@@ -294,8 +294,8 @@ gfx_mtl_begin(struct sys *s, int w, int h) {
 
   mtl->tex_cnt = 1;
   tbl_clr(mtl->tex_cache);
-  s->gfx.buf2d.vtx = 0;
   s->gfx.buf2d.vbytes = 0;
+  s->gfx.buf2d.vtx = 0;
   s->gfx.buf2d.idx = 0;
   s->gfx.buf2d.icnt = 0;
 }
@@ -354,7 +354,7 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:vtx_off atIndex:1];
     [enc setVertexBytes:&uni length:sizeof(uni) atIndex:2];
-    for_cnt(i, mtl->tex_cnt) {
+    for loop(i, mtl->tex_cnt) {
       [enc useResource:mtl->tex_buf[i] usage:MTLResourceUsageSample];
     }
     [enc setFragmentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0 atIndex:0];

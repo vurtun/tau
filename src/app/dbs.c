@@ -343,7 +343,7 @@ db_tree_node_setup(struct sys *_sys, struct arena *mem, struct db_tree_node *s,
   s->name = arena_str(mem, _sys, arg->name);
   s->type = arena_str(mem, _sys, arg->type);
   s->sql = arena_str(mem, _sys, arg->sql);
-  fori_str(i, &s->sql) {
+  for str_loopi(i, &s->sql) {
     if (!is_printable(s->sql.str[i])) {
       *recast(char*, s->sql.str + i) = ' ';
     }
@@ -504,7 +504,7 @@ db_tbl_qry_cols(sqlite3 *con, struct db_tbl_view *view, struct sys *_sys,
     const char *ccol_from = (const char*)sqlite3_column_text(stmt, 3);
     struct str col_from = str0(ccol_from);
     struct db_tbl_col *col = 0;
-    for_dyn(col, cols) {
+    for dyn_loop(col, cols) {
       if (!str_cmp(col->name, col_from)) {
         col->fk = 1;
         break;
@@ -527,7 +527,7 @@ db_tree_qry_tbl(struct db_ui_view *d, struct db_tree_node *n,
     cols = db_tbl_qry_cols(d->con, 0, _sys, n->name, cols, d->tmp_mem, d->tmp_mem);
     /* create node for each table column */
     struct db_tbl_col *col = 0;
-    for_dyn(col, cols) {
+    for dyn_loop(col, cols) {
       struct str sql = str_nil;
       if (col->not_null) {
         sql = arena_fmt(d->tmp_mem, _sys, "\"%.*s\" %.*s NOT NULL",
@@ -567,13 +567,13 @@ db_tree_end(struct db_ui_view *d, struct db_tree_view *t, struct arena *mem,
 
   /* setup table tree nodes */
   struct lst_elm *elm = 0;
-  for_lst(elm, &t->tbls->sub) {
+  for lst_loop(elm, &t->tbls->sub) {
     struct db_tree_node *n = 0;
     n = lst_get(elm, struct db_tree_node, hook);
     db_tree_qry_tbl(d, n, ctx->sys, mem);
   }
   /* setup views tree nodes */
-  for_lst(elm, &t->views->sub) {
+  for lst_loop(elm, &t->views->sub) {
     struct db_tree_node *n = 0;
     n = lst_get(elm, struct db_tree_node, hook);
     db_tree_qry_tbl(d, n, ctx->sys, mem);
@@ -601,7 +601,7 @@ db_graph_end(struct db_ui_view *d, struct db_graph *g, struct gui_ctx *ctx,
   int base_w = suf_w + ctx->cfg.pan_pad[0] * 2;
 
   struct db_graph_node *n = 0;
-  for_dyn(n, g->nodes) {
+  for dyn_loop(n, g->nodes) {
     /* query node table column layout */
     n->cols = arena_dyn(mem, ctx->sys, struct db_tbl_col, 64);
     n->cols = db_tbl_qry_cols(d->con, 0, ctx->sys, n->name, n->cols, mem, tmp);
@@ -612,7 +612,7 @@ db_graph_end(struct db_ui_view *d, struct db_graph *g, struct gui_ctx *ctx,
     int min_w = hdr_w + base_w;
 
     const struct db_tbl_col *col = 0;
-    for_dyn(col, n->cols) {
+    for dyn_loop(col, n->cols) {
       int w = gui.txt.width(ctx, col->name) + ctx->cfg.item + ctx->cfg.gap[0];
       min_w = max(min_w, w + base_w);
       if (col->pk) {
@@ -623,7 +623,7 @@ db_graph_end(struct db_ui_view *d, struct db_graph *g, struct gui_ctx *ctx,
   }
   /* graph auto node layouting */
   int at_x = 0;
-  for_dyn(n, g->nodes) {
+  for dyn_loop(n, g->nodes) {
     n->box.x = gui.bnd.min_ext(at_x, n->box.x.ext);
     at_x += n->box.x.ext + ctx->cfg.grid;
   }
@@ -639,7 +639,7 @@ db_tree_serial(struct db_tree_view *tree, struct db_tree_node *n,
   }
   if (set_fnd(tree->exp, n->id)) {
     struct lst_elm *it = 0;
-    for_lst(it, &n->sub) {
+    for lst_loop(it, &n->sub) {
       struct db_tree_node *s;
       s = lst_get(it, struct db_tree_node, hook);
       lst = db_tree_serial(tree, s, lst, _sys);
@@ -704,7 +704,7 @@ db_tbl_sql(struct db_tbl_view *view, struct sys *_sys, struct arena *mem,
   dyn_fmt(sql, _sys, "SELECT %.*s FROM %.*s", strf(sel), strf(view->name));
 
   struct db_tbl_fltr *fltr = 0;
-  for_dyn(fltr, view->fltr.lst) {
+  for dyn_loop(fltr, view->fltr.lst) {
     struct db_tbl_col *col = fltr->col;
     if (!fltr->enabled) continue;
     if (fltr->is_date) {
@@ -774,7 +774,7 @@ db_tbl_view_setup(struct db_tbl_view *view, struct sys *_sys, sqlite3 *con,
 
     int i = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-      fori_dyn(col, view->cols) {
+      for dyn_loopi(col, view->cols) {
         assert(col < dyn_cnt(view->cols));
         if (!view->cols[col].blob) {
           const char *dat = (const char*)sqlite3_column_text(stmt, col);
@@ -819,7 +819,7 @@ db_tbl_setup(struct db_tbl_view *view, struct sys *_sys, sqlite3 *con,
   int word_cnt = GUI_TBL_CAP(dyn_cnt(view->cols));
   view->tbl.state = arena_arr(&view->mem, _sys, int, word_cnt);
   gui.splt.lay.begin(&bld, view->tbl.state, dyn_cnt(view->cols), ctx->cfg.sep);
-  fori_dyn(i, view->cols) {
+  for dyn_loopi(i, view->cols) {
     assert(i < dyn_cnt(view->cols));
     static const int cons[2] = {100, 600};
     gui.splt.lay.add(&bld, GUI_LAY_SLOT_DYN, 1, cons);
@@ -865,7 +865,7 @@ static int
 db_tbl_view_fnd_pk(const struct db_tbl_view *view) {
   assert(view);
   struct db_tbl_col *col = 0;
-  for_dyn(col, view->cols) {
+  for dyn_loop(col, view->cols) {
     if (!col->pk) continue;
     return cast(int, col - view->cols);
   }
@@ -1101,7 +1101,7 @@ bitmsk_idx(struct sys *_sys, struct arena *mem, unsigned long *bitset,
   assert(bitset);
 
   int *ret = arena_arr(mem, _sys, int, cnt);
-  for_cnt(i, cnt) {
+  for loop(i, cnt) {
     int idx = bit_ffs(bitset, total, 0);
     ret[i] = idx;
     bit_clr(bitset, idx);
@@ -1148,7 +1148,7 @@ static int
 db_tbl_fltrs_enabled(struct db_tbl_fltr_view *fltr) {
   assert(fltr);
   struct db_tbl_fltr *elm = 0;
-  for_dyn(elm, fltr->lst) {
+  for dyn_loop(elm, fltr->lst) {
     if (!elm->enabled) {
       return 0;
     }
@@ -1281,12 +1281,12 @@ db_free(struct db_ui_view *d, struct sys *_sys) {
 
   /* cleanup view list */
   struct db_tbl_view **tbl = 0;
-  for_dyn(tbl, d->tbls) {
+  for dyn_loop(tbl, d->tbls) {
     db_tbl_view_free(*tbl, _sys);
   }
   /* cleanup view free list */
   struct lst_elm *elm = 0;
-  for_lst(elm, &d->del_lst) {
+  for lst_loop(elm, &d->del_lst) {
     struct db_tbl_view *it = 0;
     it = lst_get(elm, struct db_tbl_view, hook);
     db_tbl_view_free(it, _sys);
@@ -1299,7 +1299,7 @@ db_free(struct db_ui_view *d, struct sys *_sys) {
 
   /* cleanup view graph */
   struct db_graph_node *n = 0;
-  for_dyn(n, d->graph.nodes) {
+  for dyn_loop(n, d->graph.nodes) {
     dyn_free(n->cols, _sys);
   }
   dyn_free(d->graph.nodes, _sys);
@@ -1508,7 +1508,7 @@ ui_db_tbl_view_lst_elm_blob(struct db_ui_view *sql, struct db_tbl_view *view,
 
   if (col->is_hot && !view->blob.disabled) {
     struct gui_box lay = col->box;
-    struct gui_box ico = gui.cut.rhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
+    struct gui_box ico = gui.cut.lhs(&lay, ctx->cfg.item, ctx->cfg.gap[0]);
     /* show icon to open hex view on column hover */
     struct gui_icon btn = {.box = ico};
     gui.ico.clk(ctx, &btn, col, RES_ICO_IMPORT);
@@ -1546,7 +1546,7 @@ ui_db_tbl_view_lst_elm(struct db_ui_view *sql, struct db_tbl_view *view,
   assert(tbl_cols);
 
   gui.tbl.lst.elm.begin(ctx, tbl, elm, id, 0);
-  fori_dyn(i, view->cols) {
+  for dyn_loopi(i, view->cols) {
     assert(i < cntof(view->cols));
     struct db_tbl_col *meta = &view->cols[i];
     if (data[i].len) {
@@ -1579,7 +1579,7 @@ ui_db_tbl_view_lst_hdr(struct db_tbl_view *view, struct gui_ctx *ctx,
 
   struct db_tbl_col *col = 0;
   gui.tbl.hdr.begin(ctx, tbl, tbl_lay, view->tbl.state);
-  for_dyn(col, view->cols) {
+  for dyn_loop(col, view->cols) {
     if (col->pk) {
       ui_db_tbl_view_hdr_key_slot(view, col, ctx, tbl, tbl_lay);
     } else if (col->fk) {
@@ -1627,7 +1627,7 @@ ui_db_tbl_view_lst(struct db_ui_view *sql, struct db_tbl_view *view,
         if (mod) db_tbl_view_setup(view, ctx->sys, sql->con, tbl.lst.begin, tbl.lst.cnt);
 
         int idx = 0;
-        for_gui_tbl_lst(i,gui,&tbl) {
+        for gui_tbl_lst_loop(i,gui,&tbl) {
           unsigned long long n = cast(unsigned long long, i);
           unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
           struct str *row_data = view->data + idx;
@@ -1686,7 +1686,7 @@ ui_db_tbl_fltr_tbl_hdr(struct db_tbl_fltr_view *fltr, struct gui_tbl *tbl,
     /* enable/disable all filters toggle */
     int all_on = db_tbl_fltrs_enabled(fltr);
     if (ui_db_tbl_fltr_lst_tog_slot(ctx, tbl, tbl_cols, fltr->tbl.state, all_on)) {
-      fori_dyn(i, fltr->lst) {
+      for dyn_loopi(i, fltr->lst) {
         assert(i < dyn_cnt(fltr-lst));
         fltr->lst[i].enabled = !all_on;
       }
@@ -1755,7 +1755,7 @@ ui_db_tbl_fltr_lst_view(struct db_tbl_view *view, struct gui_ctx *ctx,
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, dyn_cnt(fltr->lst));
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for_gui_tbl_lst(i,gui,&tbl) {
+      for gui_tbl_lst_loop(i,gui,&tbl) {
         struct gui_panel elm = {0};
         struct db_tbl_fltr *item = fltr->lst + i;
         gui.tbl.lst.elm.begin(ctx, &tbl, &elm, (uintptr_t)item, 0);
@@ -1803,7 +1803,7 @@ ui_db_tbl_fltr_col_view(struct db_tbl_view *view, struct gui_ctx *ctx,
       const struct db_tbl_col_def *col = 0;
       int tbl_cols[GUI_TBL_COL(DB_TBL_FLTR_COL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_cols, fltr->tbl_col.state);
-      for_arrv(col, db_tbl_fltr_col_def) {
+      for arr_loopv(col, db_tbl_fltr_col_def) {
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_cols, fltr->tbl_col.state, col->title);
       }
       gui.tbl.hdr.end(ctx, &tbl);
@@ -1814,7 +1814,7 @@ ui_db_tbl_fltr_col_view(struct db_tbl_view *view, struct gui_ctx *ctx,
       cfg.sel.src = GUI_LST_SEL_SRC_EXT;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for_gui_tbl_lst(i,gui,&tbl) {
+      for gui_tbl_lst_loop(i,gui,&tbl) {
         int sel = fltr->sel_col == i;
 
         struct gui_panel elm = {0};
@@ -1879,7 +1879,7 @@ ui_db_tbl_fltr_str_view(struct db_ui_view *d, struct db_tbl_view *view,
       db_tbl_view_fltr_init(fltr, &fltr->ini, ctx->sys, &view->mem, d->con, &arg);
     }
     int idx = 0;
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       unsigned long long n = cast(unsigned long long, i);
       unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
 
@@ -1960,7 +1960,7 @@ ui_db_tbl_fltr_time_view(struct db_ui_view *d, struct db_tbl_view *view,
       db_tbl_view_fltr_tm_init(fltr, &fltr->ini, ctx->sys, &view->mem, d->con, &arg);
     }
     int idx = 0;
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       struct gui_panel elm = {0};
       unsigned long long n = cast(unsigned long long, i);
       unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
@@ -2059,13 +2059,13 @@ ui_db_hex_view_gen_str(dyn(char) ln, struct sys *_sys, const unsigned char *mem,
   if (addr + col_cnt > siz) {
     /* align up to ascii represenation */
     int cnt = addr + col_cnt - siz;
-    for_cnt(i,cnt) {
+    for loop(i,cnt) {
       dyn_add(ln, _sys, ' ');
       dyn_add(ln, _sys, ' ');
       dyn_add(ln, _sys, ' ');
     }
   }
-  dyn_fmt(ln, _sys, "%s", "   ");
+  dyn_add(ln, _sys, ' ');
   for (int col = 0; col < col_cnt && addr + col < siz; ++col) {
     /* generate ascii representation */
     unsigned char byte = mem[addr + col];
@@ -2100,7 +2100,7 @@ ui_db_hex_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, blob->off);
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       int addr = i * col_cnt;
       scp_mem(view->tmp_mem, ctx->sys) {
         /* generate and display each line of hex/ascii data representation */
@@ -2108,7 +2108,7 @@ ui_db_hex_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
         char *ln = arena_dyn(view->tmp_mem, ctx->sys, char, KB(4));
         ln = ui_db_hex_view_gen_str(ln, ctx->sys, blob->mem, blob->siz, digit_cnt, col_cnt, addr);
         unsigned long long elm_id = hash_ptr(blob->mem + addr);
-        gui.lst.reg.elm.txt(ctx, &reg, &elm, elm_id, 0, str0(ln), 0);
+        gui.lst.reg.elm.txt(ctx, &reg, &elm, elm_id, 0, dyn_str(ln), 0);
         dyn_free(ln, ctx->sys);
       }
     }
@@ -2301,7 +2301,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
       const struct db_tbl_col_def *col = 0;
       int tbl_cols[GUI_TBL_COL(DB_TREE_COL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_cols, t->tbl.state);
-      for_arrv(col, db_tree_col_def) {
+      for arr_loopv(col, db_tree_col_def) {
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_cols, t->tbl.state, col->title);
       }
       gui.tbl.hdr.end(ctx, &tbl);
@@ -2313,7 +2313,7 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
       cfg.sel.mode = GUI_LST_SEL_MULTI;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for_gui_tbl_lst(i,gui,&tbl) {
+      for gui_tbl_lst_loop(i,gui,&tbl) {
         struct gui_panel elm = {0};
         const struct db_tree_node *n = t->lst[i];
         int is_sel = tbl_has(t->sel, n->id);
@@ -2389,7 +2389,7 @@ ui_db_view_graph_node(struct gui_ctx *ctx, struct db_graph_node *n,
     }
     /* body */
     const struct db_tbl_col *col = 0;
-    for_dyn(col,n->cols) {
+    for dyn_loop(col,n->cols) {
       struct gui_panel lbl = {0};
       enum res_ico_id ico = ui_db_view_graph_node_attr_ico(col);
       gui.graph_node.item(&lbl.box, ctx, &node, 0);
@@ -2411,7 +2411,7 @@ ui_db_view_graph(struct db_graph *g, struct gui_ctx *ctx,
     struct gui_grid grid = {.box = pan->box};
     gui.grid.begin(ctx, &grid, pan, g->off);
     struct db_graph_node *n = 0;
-    for_dyn(n, g->nodes) {
+    for dyn_loop(n, g->nodes) {
       ui_db_view_graph_node(ctx, n, &grid.pan);
     }
     gui.grid.end(ctx, &grid, pan, g->off);
@@ -2439,7 +2439,7 @@ ui_db_open_sel(struct db_ui_view *ui, struct db_tbl_view *view,
     struct db_tree_node **lst = 0;
     int cnt = tbl_cnt(ui->tree.sel);
     lst = arena_arr(ui->tmp_mem, ctx->sys, struct db_tree_node*, cnt);
-    for_tbl(slot, idx, ui->tree.sel) {
+    for tbl_loop(slot, idx, ui->tree.sel) {
       lst[idx] = ui->tree.sel[slot];
     }
     db_tab_open(ui, view, ctx->sys, ctx, lst, cnt);
@@ -2716,7 +2716,7 @@ ui_db_tab_view_lst(struct db_ui_view *dbv, struct gui_ctx *ctx,
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, dbv->tbl_lst_off);
-    for_gui_lst_reg(i,gui,&reg) {
+    for gui_lst_reg_loop(i,gui,&reg) {
       struct db_tbl_view *tbl = dbv->tbls[i];
       struct str title = strv("Info");
       enum res_ico_id ico = RES_ICO_CUBE;
@@ -2768,7 +2768,7 @@ ui_db_explr(struct db_ui_view *d, struct gui_ctx *ctx,
       int del_tab = 0;
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
-      for_cnt(i, tab.cnt) {
+      for loop(i, tab.cnt) {
         /* tab header slots */
         struct gui_panel slot = {0};
         struct db_tbl_view *tbl = d->tbls[i];

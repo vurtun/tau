@@ -1904,7 +1904,7 @@ compute_mean(float *restrict mean, const float *restrict pnts, int n) {
   if (!n) {
     return;
   }
-  for_cnt(i, n) {
+  for loop(i, n) {
     add3(mean, mean, pnts + i * 3);
   }
   float div = 1.0f / castf(n);
@@ -1924,7 +1924,7 @@ covar(float *restrict mat33, const float *restrict pnts, int n) {
   float div = 1.0f / castf(n);
   float xx = 0.0f, yy = 0.0f, zz = 0.0f;
   float xy = 0.0f, xz = 0.0f, yz = 0.0f;
-  for_cnt(i,n) {
+  for loop(i,n) {
     float p[3]; sub3(p, pnts+i*3, mean);
     xx += p[0] * p[0], xy += p[0] * p[1];
     xz += p[0] * p[2], yy += p[1] * p[1];
@@ -3661,8 +3661,8 @@ cam_build(struct cam *c) {
     float *m1 = cast(float*, c->view);
     float *m2 = cast(float*, c->proj);
     float *dst = cast(float*, c->view_proj);
-    for_cnt(i,4) {
-      for_cnt(j,4) {
+    for loop(i,4) {
+      for loop(j,4) {
         float a0 = m1[0] * m2[0*4+j];
         float b0 = m1[1] * m2[1*4+j];
         float c0 = m1[2] * m2[2*4+j];

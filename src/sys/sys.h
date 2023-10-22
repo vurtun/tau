@@ -198,8 +198,8 @@ struct sys_file_api {
   int (*info)(struct sys*, struct sys_file_info *info, struct str path, struct arena *tmp);
 };
 struct sys_dir_api {
-  #define for_dir_lst(s, i, a, p)\
-    for ((s)->dir.lst((s), (i), (a), (p)); (i)->valid; (s)->dir.nxt((s), (i), (a)))
+  #define sys_dir_lst_loop(s, i, a, p)\
+    ((s)->dir.lst((s), (i), (a), (p)); (i)->valid; (s)->dir.nxt((s), (i), (a)))
   void (*lst)(struct sys *s, struct sys_dir_iter *it, struct arena *a, struct str path);
   void (*nxt)(struct sys *s, struct sys_dir_iter *it, struct arena *a);
   int (*exists)(struct sys *s, struct str path, struct arena *tmp);
