@@ -134,8 +134,8 @@ struct res {
 };
 
 /* api */
-#define res_run_loop(r, it, api, res, txt)                           \
-  for (const struct res_fnt_run *r = (api)->run.begin(it,res,txt);  \
+#define res_run_loop(r, it, api, res, txt)                      \
+  (const struct res_fnt_run *r = (api)->run.begin(it,res,txt);  \
        r != 0; run = (api)->run.nxt(it, res))
 
 struct res_fnt_api {

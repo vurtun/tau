@@ -198,7 +198,8 @@ sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
 
   int res = 0;
   struct stat stats;
-  scp_mem(tmp, s) {
+  struct arena_scope scp;
+  confine arena_scope(tmp, &scp, s) {
     char *fullpath = arena_cstr(tmp, s, path);
     res = stat(fullpath, &stats);
   }
@@ -233,7 +234,7 @@ sys__dir_free(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
   assert(a);
   assert(it);
 
-  mem_scp_end(&it->scp_base, a, s);
+  arena_scope_pop(&it->scp_base, a, s);
   if (!it->valid) return;
   it->valid = 0;
   it->err = 0;
@@ -250,13 +251,13 @@ sys_dir_exists(struct sys *s, struct str path, struct arena *tmp) {
   assert(s);
   assert(tmp);
 
-  struct mem_scp scp;
-  mem_scp_begin(&scp, tmp);
+  struct arena_scope scp;
+  arena_scope_push(&scp, tmp);
 
   struct stat stats;
   char *fullpath = arena_cstr(tmp, s, path);
   int res = stat(fullpath, &stats);
-  mem_scp_end(&scp, tmp, s);
+  arena_scope_pop(&scp, tmp, s);
   if (res < 0 || !S_ISDIR(stats.st_mode)) {
     return 0;
   }
@@ -270,12 +271,12 @@ sys_dir_nxt(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
   if (!it->valid) {
     return;
   }
-  mem_scp_end(&it->scp, a, s);
-  mem_scp_begin(&it->scp, a);
+  arena_scope_pop(&it->scp, a, s);
+  arena_scope_push(&it->scp, a);
   do {
     struct dirent *ent = readdir(it->handle);
     if (!ent) {
-      mem_scp_end(&it->scp, a, s);
+      arena_scope_pop(&it->scp, a, s);
       sys__dir_free(s, it, a);
       return;
     }
@@ -292,7 +293,7 @@ sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct arena *a,
   assert(it);
 
   mset(it, 0, szof(*it));
-  mem_scp_begin(&it->scp_base, a);
+  arena_scope_push(&it->scp_base, a);
   it->base = arena_str(a, s, path);
 
   DIR *dir = opendir(it->base.str);
@@ -303,7 +304,7 @@ sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct arena *a,
   it->handle = dir;
   it->valid = 1;
 
-  mem_scp_begin(&it->scp, a);
+  arena_scope_push(&it->scp, a);
   sys_dir_nxt(s, it, a);
 }
 
@@ -413,7 +414,7 @@ sys_mac_mem_stats(struct sys *s, struct sys_mem_stats *stats) {
   lck_acq(&os->mem_lck);
   {
     struct lst_elm *elm = 0;
-    for lst_loop(elm, &os->mem_blks) {
+    for lst_each(elm, &os->mem_blks) {
       struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
       stats->total += blk->blk.size;
       stats->used += blk->blk.used;
@@ -429,7 +430,7 @@ sys_mac_mem_free_tag(struct sys *s, unsigned long long tag) {
 
   lck_acq(&os->mem_lck);
   struct lst_elm *elm = 0;
-  for lst_loop(elm, &os->mem_blks) {
+  for lst_each(elm, &os->mem_blks) {
     struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
     if (blk->tags == tag) {
       sys_mac_mem_free(s, &blk->blk);
@@ -990,7 +991,7 @@ sys_mac_prep(struct sys *s) {
   s->style_mod = 0;
   s->mouse.pos_last[0] = s->mouse.pos[0];
   s->mouse.pos_last[1] = s->mouse.pos[1];
-  for arr_loopi(i, s->keys){
+  for arr_loopv(i, s->keys){
     s->keys[i] = 0;
   }
   for (int i = 0; i < SYS_MOUSE_BTN_CNT; ++i) {

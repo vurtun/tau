@@ -96,8 +96,8 @@ struct sys_dir_iter {
 
   char isdir;
   void *handle;
-  struct mem_scp scp;
-  struct mem_scp scp_base;
+  struct arena_scope scp;
+  struct arena_scope scp_base;
 };
 
 /* cursor */
@@ -198,7 +198,7 @@ struct sys_file_api {
   int (*info)(struct sys*, struct sys_file_info *info, struct str path, struct arena *tmp);
 };
 struct sys_dir_api {
-  #define sys_dir_lst_loop(s, i, a, p)\
+  #define sys_dir_lst_each(s, i, a, p)\
     ((s)->dir.lst((s), (i), (a), (p)); (i)->valid; (s)->dir.nxt((s), (i), (a)))
   void (*lst)(struct sys *s, struct sys_dir_iter *it, struct arena *a, struct str path);
   void (*nxt)(struct sys *s, struct sys_dir_iter *it, struct arena *a);

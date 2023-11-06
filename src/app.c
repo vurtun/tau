@@ -197,11 +197,17 @@ app_init(struct app *app) {
   struct app_view *view = app_view_new(app);
   app_view_setup(app, view);
   dyn_add(app->views, &app->sys, view);
+
+#ifdef DEBUG_MODE
+  ut_str(&app->sys);
+  ut_set(&app->sys);
+  ut_tbl(&app->sys);
+#endif
 }
 static void
 app_shutdown(struct app *app) {
   assert(app);
-  for dyn_loopi(i, app->views) {
+  for dyn_loop(i, app->views) {
     struct app_view *view = app->views[i];
     if (view->db) {
       dbs.del(view->db, &app->sys);
@@ -483,7 +489,7 @@ main(int argc, char **argv) {
   /* run */
   while (app.sys.running) {
     sys.pull(&app.sys);
-    for dyn_loopi(i, app.views) {
+    for dyn_loop(i, app.views) {
       struct app_view *view = app.views[i];
       switch (view->state) {
       case APP_VIEW_STATE_FILE: break;
@@ -498,7 +504,7 @@ main(int argc, char **argv) {
     if (app.sys.style_mod) {
       gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
     }
-    for arr_loopi(i, app_ui_key_tbl) {
+    for arr_loopv(i, app_ui_key_tbl) {
       /* map system keys to ui shortcuts */
       const struct app_ui_shortcut *s = app_ui_key_tbl + i;
       struct gui_ctx *ctx = &app.gui;

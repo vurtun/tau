@@ -12,6 +12,15 @@ npow2(int x) {
 }
 
 /* ---------------------------------------------------------------------------
+ *                                Foreach
+ * ---------------------------------------------------------------------------
+ */
+#define forever while(1)
+#define loopr(i,r) (int i = (r).lo; i != (r).hi; i += (r).step)
+#define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += (r).step, ++j)
+#define loop(i,n) (int i = 0; i < (n); ++i)
+
+/* ---------------------------------------------------------------------------
  *                                Memory
  * ---------------------------------------------------------------------------
  */
@@ -23,7 +32,7 @@ mcpy(void* restrict dst, void const *restrict src, int n) {
 
   unsigned char *restrict d = dst;
   const unsigned char *restrict s = src;
-  for (int i = 0; i < n; ++i) {
+  for loop(i, n) {
     d[i] = s[i];
   }
 }
@@ -32,7 +41,7 @@ mset(void *addr, int c, int n) {
   assert(addr);
   assert(n >= 0);
   unsigned char *dst = addr;
-  for (int i = 0; i < n; ++i) {
+  for loop(i, n) {
     dst[i] = castb(c);
   }
 }
@@ -91,15 +100,6 @@ rng_sub(const struct rng *r, int b, int e) {
   rng_shft(&ret, r->lo);
   return ret;
 }
-
-/* ---------------------------------------------------------------------------
- *                                Foreach
- * ---------------------------------------------------------------------------
- */
-#define forever while(1)
-#define loopr(i,r) (int i = (r).lo; i != (r).hi; i += (r).step)
-#define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += (r).step, ++j)
-#define loop(i,n) (int i = 0; i < (n); ++i)
 
 /* ---------------------------------------------------------------------------
  *                                  Hash
@@ -373,10 +373,10 @@ guid_hash64(const struct guid *g) {
     }                                                     \
 }} while (0)
 
-#define arr_loopp(it,a,e) ((it) = (a); (it) < (e); ++(it))
-#define arr_loopn(it,a,n) arr_loopp(it,a,(a)+(n))
-#define arr_loopv(it,a) arr_loopp(it,a,a+cntof(a))
-#define arr_loopi(i,a) (int i = 0; i < cntof(a); ++i)
+#define arr_eachp(it,a,e) ((it) = (a); (it) < (e); ++(it))
+#define arr_each(it,a,n) arr_eachp(it,a,(a)+(n))
+#define arr_eachv(it,a) arr_eachp(it,(a),(a)+cntof(a))
+#define arr_loopv(i,a) (int i = 0; i < cntof(a); ++i)
 #define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += (r).step)
 
 /* ---------------------------------------------------------------------------
@@ -867,10 +867,11 @@ str__match_hash(struct str s) {
 #define str_cut_lhs(s, n) *(s) = str_rhs(*(s), n)
 #define str_cut_rhs(s, n) *(s) = str_lhs(*(s), n)
 
-#define str_loops(it,c,s) (const char *it = (c)->str; it < (c)->end; it += (s))
-#define str_loopis(i,c,s) (int i = 0; i < (c)->len; i += (s))
-#define str_loopi(i,c) str_loopis(i,c,1)
-#define str_loopr(it,s,r) (const char *it = (s).str + (r).lo; (it) != (s).str + (r).hi; (it) += (r).step)
+#define str_eachs(it,c,s) (const char *it = (c)->str; it < (c)->end; it += (s))
+#define str_eachr(it,s,r) (const char *it = (s).str + (r).lo; (it) != (s).str + (r).hi; (it) += (r).step)
+#define str_each(it,s) str_eachs(it,c,1)
+#define str_loops(i,c,s) (int i = 0; i < (c)->len; i += (s))
+#define str_loop(i,c) str_loops(i,c,1)
 #define str_tok(it, rest, src, delim)                       \
   (struct str rest = src, it = str_split_cut(&rest, delim); \
        it.len; it = str_split_cut(&rest, delim))
@@ -1287,13 +1288,9 @@ lck_rel(struct lck *lck) {
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
 #define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, -(n)))
 
-#define scp__mem(a,s,sys)\
-  for (int uniqid(_i_) = (mem_scp_begin(s,a), 0); uniqid(_i_) < 1;\
-    uniqid(_i_) = (mem_scp_end(s,a,sys), 1))
-#define scp_mem(a,sys)\
-  struct mem_scp uniqid(_arena_mem_scp_);\
-  for (int uniqid(_i_) = (mem_scp_begin(&uniqid(_arena_mem_scp_),a), 0); uniqid(_i_) < 1;\
-    uniqid(_i_) = (mem_scp_end(&uniqid(_arena_mem_scp_),a,sys), 1))
+#define arena_scope(a,s,sys)\
+  (int uniqid(_i_) = (arena_scope_push(s,a), 0); uniqid(_i_) < 1;\
+    uniqid(_i_) = (arena_scope_pop(s,a,sys), 1))
 // clang-format on
 
 static int
@@ -1379,7 +1376,7 @@ arena_cstr_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
   if (r.step == 1) {
     mcpy(ret, cs.str, cs.len);
   } else {
-    for str_loopr(it,cs,r) {
+    for str_eachr(it,cs,r) {
       ret[i++] = *it;
     }
   }
@@ -1450,7 +1447,7 @@ arena_boot(struct arena *a, struct sys *s, int obj_siz, int arena_off) {
   return obj;
 }
 static int
-mem_scp_begin(struct mem_scp *s, struct arena *a) {
+arena_scope_push(struct arena_scope *s, struct arena *a) {
   assert(a);
   assert(s);
 
@@ -1460,7 +1457,7 @@ mem_scp_begin(struct mem_scp *s, struct arena *a) {
   return 1;
 }
 static int
-mem_scp_end(struct mem_scp *s, struct arena *a, struct sys *_sys) {
+arena_scope_pop(struct arena_scope *s, struct arena *a, struct sys *_sys) {
   assert(s);
   assert(a);
   assert(_sys);
@@ -1493,11 +1490,11 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 #define lst_any(lst) (!lst_empty(lst))
 #define lst_first(lst) ((lst)->nxt)
 #define lst_last(lst) ((lst)->prv)
-#define lst_loop(e,l) ((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
-#define lst_loop_safe(a,b,l)\
+#define lst_each(e,l) ((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
+#define lst_each_safe(a,b,l)\
   ((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
-#define lst_loop_rev(e,l) ((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
-#define lst_loop_rev_safe(e,l)\
+#define lst_each_rev(e,l) ((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
+#define lst_each_rev_safe(e,l)\
  ((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
 // clang-format on
 
@@ -1538,9 +1535,9 @@ struct dyn_hdr {
 #define dyn_val(b,i) assert(i < dyn_cnt(b))
 #define dyn_shfl(a,p) arr_shfl(arr(a),p)
 
-#define dyn_loop(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
-#define dyn_loopi(i,c) (int i = 0; i < dyn_cnt(c); ++i)
-#define dyn_looprp(it,c) (it = dyn_begin((c) + (r).lo; it != (c) + (r).hi; it += (r).step)
+#define dyn_each(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
+#define dyn_loop(i,c) (int i = 0; i < dyn_cnt(c); ++i)
+#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it != (c) + (r).hi; it += (r).step)
 #define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += (r).step)
 
 #define dyn_asn(b, s, x, n) do {                    \

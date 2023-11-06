@@ -70,6 +70,8 @@ gui_shrink(const struct gui_bnd *x, int p) {
 }
 static struct gui_bnd
 gui_div(const struct gui_bnd *b, int gap, int cnt, int idx) {
+  /* Divide box axis into 'cnt' space and return space at 'idx'.
+   * Helper for grid layout like space allocation */
   int space = max(0, b->ext - (gap * cnt));
   int s = math_floori(castf(space) / castf(cnt));
   idx = clamp(0, idx, max(0, cnt - 1));
@@ -3107,7 +3109,8 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_PASTE)) {
     struct sys *s = ctx->sys;
-    scp_mem(s->mem.tmp, s) {
+    struct arena_scope scp;
+    confine arena_scope(s->mem.tmp, &scp, s) {
       struct str p = s->clipboard.get(s->mem.tmp);
       gui_txt_ed_paste(edt, s, buf, p);
     }

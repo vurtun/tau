@@ -904,6 +904,32 @@ qrot3(float *restrict out, const float *restrict qrot,
   float r[3]; add3(r, e, d);
   cpy3(out, r);
 }
+static inline void
+qrotX(float *restrict out, const float *restrict qrot) {
+  /* rotate a the vector (1, 0, 0) by quat */
+  float x = qrot[0], y = qrot[1], z = qrot[2], w = qrot[3];
+  float tx = 2.0f * x, tw = 2.0f * w;
+  out[0] = tx * x + tw * w - 1.0f;
+  out[1] = tx * y + z * tw;
+  out[2] = tx * z - y * tw;
+}
+static inline void
+qrotY(float *restrict out, const float *restrict qrot) {
+  /* rotate a the vector (0, 1, 0) by quat */
+  float x = qrot[0], y = qrot[1], z = qrot[2], w = qrot[3];
+  float ty = 2.0f * y, tw = 2.0f * w;
+  out[0] = x * ty - z * tw;
+  out[1] = tw * w + ty * y - 1.0f;
+  out[2] = x * tw + ty * z;
+}
+static inline void
+qrotZ(float *restrict out, const float *restrict qrot) {
+  float x = qrot[0], y = qrot[1], z = qrot[2], w = qrot[3];
+  float tz = 2.0f * z, tw = 2.0f * w;
+  out[0] = x * tz + y * tw;
+  out[1] = y * tz - x * tw;
+  out[2] = tw * w + tz * z - 1.0f;
+}
 static void
 qalign3(float *restrict q, const float *restrict from3,
         const float *restrict to3) {
@@ -1787,7 +1813,7 @@ bspline_calc_new_pnts_del(float *restrict new_pnts, int idx,
  * ---------------------------------------------------------------------------
  */
 static void
-qdiag(float *restrict qres, const float *restrict A) {
+qdiag3(float *restrict qres, const float *restrict A) {
   assert(qres);
   assert(A);
   /* Symmetric Matrix 3x3 Diagonalizer: http://melax.github.io/diag.html
@@ -1836,13 +1862,13 @@ qdiag(float *restrict qres, const float *restrict A) {
   cpy4(qres, q);
 }
 static void
-eigensym(float *e_val, float *e_vec33, const float *a33) {
+eigensym3(float *e_val, float *e_vec33, const float *a33) {
   assert(e_val);
   assert(e_vec33);
   assert(a33);
 
   /* calculate eigensystem from symmetric 3x3 matrix */
-  float q[4]; qdiag(q, a33);
+  float q[4]; qdiag3(q, a33);
   float Q[9]; m3x3q(Q, q);
   float QT[9]; m3x3T(QT, Q);
   float QA[9]; mul3x3(QA, Q, a33);
@@ -1897,7 +1923,7 @@ eigensym(float *e_val, float *e_vec33, const float *a33) {
   }
 }
 static void
-compute_mean(float *restrict mean, const float *restrict pnts, int n) {
+compute_mean3(float *restrict mean, const float *restrict pnts, int n) {
   assert(mean);
   assert(pnts);
   zero3(mean);
@@ -1911,7 +1937,7 @@ compute_mean(float *restrict mean, const float *restrict pnts, int n) {
   mul3(mean, mean, div);
 }
 static void
-covar(float *restrict mat33, const float *restrict pnts, int n) {
+covar3(float *restrict mat33, const float *restrict pnts, int n) {
   assert(mat33);
   assert(pnts);
   m3x3id(mat33);
@@ -1919,7 +1945,7 @@ covar(float *restrict mat33, const float *restrict pnts, int n) {
     return;
   }
   float mean[3] = {0};
-  compute_mean(mean, pnts, n);
+  compute_mean3(mean, pnts, n);
 
   float div = 1.0f / castf(n);
   float xx = 0.0f, yy = 0.0f, zz = 0.0f;
@@ -1949,8 +1975,8 @@ covar(float *restrict mat33, const float *restrict pnts, int n) {
 static void
 obb(float *restrict axis33, float *ext3, const float *restrict pnts, int n) {
   float cvar[9];
-  covar(cvar, pnts, n);
-  eigensym(ext3, axis33, cvar);
+  covar3(cvar, pnts, n);
+  eigensym3(ext3, axis33, cvar);
 }
 
 /* ----------------------------------------------------------------------------

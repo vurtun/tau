@@ -97,7 +97,7 @@ struct mem_blk {
   int used;
   struct mem_blk *prv;
 };
-struct mem_scp {
+struct arena_scope {
   struct mem_blk *blk;
   int used;
 };
@@ -120,6 +120,7 @@ struct guid {
   unsigned char d4[8];
 };
 
+#define confine for
 #define dyn(T) T*
 #define tbl(T) T*
 

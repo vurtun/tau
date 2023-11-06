@@ -1081,24 +1081,24 @@ struct gui_ctx {
 #define gui_lst_reg_loop(i,gui,r)\
   (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
 
-#define scp_gui_clip(gui,tmp,ctx,x0,y0,x1,y1)\
-  for (int uniqid(_i_) = ((gui)->clip.begin(tmp,ctx,x0,y0,x1,y1), 0); uniqid(_i_) < 1;\
+#define gui_clip_scope(gui,tmp,ctx,x0,y0,x1,y1)\
+  (int uniqid(_i_) = ((gui)->clip.begin(tmp,ctx,x0,y0,x1,y1), 0); uniqid(_i_) < 1;\
     uniqid(_i_) = ((gui)->clip.end(ctx,tmp, 1))
-#define scp_gui_disable_on(gui,ctx,cond)\
-  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->disable(ctx,uniqid(_c_)), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->enable(ctx,uniqid(_c_)), 1))
-#define scp_gui_cfg_pushi(gui,stk,ptr,val)\
-  for (int uniqid(_i_) = ((gui)->cfg.pushi(stk,ptr,val), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
-#define scp_gui_cfg_pushu(gui,stk,ptr,val)\
-  for (int uniqid(_i_) = ((gui)->cfg.pushu(stk,ptr,val), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
-#define scp_gui_cfg_pushi_on(gui,stk,ptr,val,cond)\
-  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushi_on(stk,ptr,val,uniqid(_c_)), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
-#define scp_gui_cfg_pushu_on(gui,stk,ptr,val,cond)\
-  for (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushu_on(stk,ptr,val,uniqid(_c_)), 0);\
-      uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
+#define gui_disable_on_scope(gui,ctx,cond)\
+  (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->disable(ctx,uniqid(_c_)), 0);\
+    uniqid(_i_) < 1; uniqid(_i_) = ((gui)->enable(ctx,uniqid(_c_)), 1))
+#define gui_cfg_pushi_scope(gui,stk,ptr,val)\
+  (int uniqid(_i_) = ((gui)->cfg.pushi(stk,ptr,val), 0);\
+    uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
+#define gui_cfg_pushu_scope(gui,stk,ptr,val)\
+  (int uniqid(_i_) = ((gui)->cfg.pushu(stk,ptr,val), 0);\
+    uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop(stk)), 1)
+#define gui_cfg_pushi_on_scope(gui,stk,ptr,val,cond)\
+  (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushi_on(stk,ptr,val,uniqid(_c_)), 0);\
+    uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
+#define gui_cfg_pushu_on_scope(gui,stk,ptr,val,cond)\
+  (int uniqid(_c_) = (cond), uniqid(_i_) = ((gui)->cfg.pushu_on(stk,ptr,val,uniqid(_c_)), 0);\
+    uniqid(_i_) < 1; uniqid(_i_) = ((gui)->cfg.pop_on(stk,uniqid(_c_)), 1))
 
 struct gui_bnd_api {
   struct gui_bnd (*min_max)(int a, int b);

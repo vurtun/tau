@@ -469,8 +469,8 @@ res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg,
   int h = 512;
 
 retry:;
-  struct mem_scp scp;
-  mem_scp_begin(&scp, tmp);
+  struct arena_scope scp;
+  arena_scope_push(&scp, tmp);
   unsigned char *img = arena_alloc(tmp, s, w * h);
   {
     fnt_pack_context pc;
@@ -482,12 +482,12 @@ retry:;
 
     if (!ok0 || !ok1 || !ok2) {
       w *= 2, h *= 2;
-      mem_scp_end(&scp, tmp, s);
+      arena_scope_pop(&scp, tmp, s);
       goto retry;
     }
   }
   fnt->texid = s->gfx.tex.load(s, GFX_PIX_FMT_R8, img, w, h);
-  mem_scp_end(&scp, tmp, s);
+  arena_scope_pop(&scp, tmp, s);
   return 0;
 }
 
@@ -861,7 +861,7 @@ res_init(struct res *r, const struct res_args *args) {
 
   double best_d = 10000.0;
   r->fnt_pnt_size = 16.0f;
-  for arr_loopi(i, fnt_pnt_siz) {
+  for arr_loopv(i, fnt_pnt_siz) {
     double d = math_abs(pnt_siz - fnt_pnt_siz[i]);
     if (d < best_d) {
       r->fnt_pnt_size = fnt_pnt_siz[i];
@@ -869,7 +869,8 @@ res_init(struct res *r, const struct res_args *args) {
     }
   }
   r->sys = s;
-  scp_mem(s->mem.tmp, s) {
+  struct arena_scope scp;
+  confine arena_scope(s->mem.tmp, &scp, s) {
     int fnt_siz = 0;
     void *txt_ttf_mem = res_default_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);
     void *ico_ttf_mem = res_ico_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);

@@ -313,9 +313,9 @@ static const struct gui_split_lay_slot file_split_def[FILE_SPLIT_MAX] = {
 static const struct file_def *
 file_type(struct str ext) {
   const struct file_group_def *grp = 0;
-  for arr_loopv(grp, file_groups) {
+  for arr_eachv(grp, file_groups) {
     const struct file_def *def = 0;
-    for arr_loopn(def, grp->files, grp->cnt) {
+    for arr_each(def, grp->files, grp->cnt) {
       if (def->suffix && str_cmp(str0(def->suffix), ext) == 0) {
         return def;
       }
@@ -432,7 +432,7 @@ file_tree_node_sort_after_elm(struct file_tree_node *n,
   assert(n);
 
   struct lst_elm *elm = 0;
-  for lst_loop(elm, &n->sub) {
+  for lst_each(elm, &n->sub) {
     struct file_tree_node *it = 0;
     it = lst_get(elm, struct file_tree_node, hook);
     if (str_cmp(s->fullpath, it->fullpath) < 0) {
@@ -506,7 +506,7 @@ file_view_tree_node_del(struct file_tree_view *tree, struct file_tree_node *n) {
 
   struct lst_elm *elm = 0;
   struct lst_elm *item = 0;
-  for lst_loop_safe(elm, item, &n->sub) {
+  for lst_each_safe(elm, item, &n->sub) {
     struct file_tree_node *s = 0;
     s = lst_get(elm, struct file_tree_node, hook);
     file_view_tree_node_del(tree, s);
@@ -529,17 +529,18 @@ file_view_tree_build(struct file_tree_view *tree,
   if (n->parent && !set_fnd(tree->exp, n->parent->id)) {
     return upt;
   }
-  scp_mem(tmp, _sys) {
+  struct arena_scope scp;
+  confine arena_scope(tmp, &scp, _sys) {
     unsigned long long *set = arena_set(tmp, _sys, 1024);
     struct lst_elm *elm = 0;
-    for lst_loop(elm, &n->sub) {
+    for lst_each(elm, &n->sub) {
       struct file_tree_node *s;
       s = lst_get(elm, struct file_tree_node, hook);
       set_put(set, _sys, s->id);
     }
     /* validate child nodes */
     struct sys_dir_iter it = {0};
-    for sys_dir_lst_loop(_sys, &it, tmp, n->fullpath) {
+    for sys_dir_lst_each(_sys, &it, tmp, n->fullpath) {
       if (it.name.str[0] == '.' || !_sys->dir.exists(_sys, it.fullpath, tmp)) {
         continue;
       }
@@ -552,7 +553,7 @@ file_view_tree_build(struct file_tree_view *tree,
     }
     /* remove deleted directory nodes */
     struct lst_elm *safe = 0;
-    for lst_loop_safe(elm, safe, &n->sub) {
+    for lst_each_safe(elm, safe, &n->sub) {
       struct file_tree_node *s;
       s = lst_get(elm, struct file_tree_node, hook);
       if (!set_fnd(set, s->id)) {
@@ -564,7 +565,7 @@ file_view_tree_build(struct file_tree_view *tree,
   }
   /* recurse child directory nodes */
   struct lst_elm *it = 0;
-  for lst_loop(it, &n->sub) {
+  for lst_each(it, &n->sub) {
     struct file_tree_node *s;
     s = lst_get(it, struct file_tree_node, hook);
     upt |= file_view_tree_build(tree, s, _sys, mem, tmp);
@@ -584,7 +585,7 @@ file_view_tree_serial(struct file_tree_view *tree,
   dyn_add(lst, _sys, n);
   if (set_fnd(tree->exp, n->id)) {
     struct lst_elm *it = 0;
-    for lst_loop(it, &n->sub) {
+    for lst_each(it, &n->sub) {
       struct file_tree_node *s = 0;
       s = lst_get(it, struct file_tree_node, hook);
       lst = file_view_tree_serial(tree, s, lst, _sys);
@@ -607,7 +608,7 @@ file_tree_node_fnd(struct file_tree_node *n, struct str str) {
   assert(n);
   struct lst_elm *elm = 0;
   struct file_tree_node *s = 0;
-  for lst_loop(elm, &n->sub) {
+  for lst_each(elm, &n->sub) {
     s = lst_get(elm, struct file_tree_node, hook);
     struct str file_name = path_file(s->fullpath);
     if (str_eq(str, file_name)) {
@@ -691,8 +692,8 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
   assert(_sys);
 
   struct file_elm elm = {0};
-  struct mem_scp s = {0};
-  mem_scp_begin(&s, &lst->mem);
+  struct arena_scope s = {0};
+  arena_scope_push(&s, &lst->mem);
 
   /* parse file/directory name */
   elm.fullpath = arena_str(&lst->mem, _sys, path);
@@ -703,7 +704,7 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
   /* extract file stat, extension and type */
   struct sys_file_info info;
   if (!_sys->file.info(_sys, &info, elm.fullpath, &lst->mem)) {
-    mem_scp_end(&s, &lst->mem, _sys);
+    arena_scope_pop(&s, &lst->mem, _sys);
     return;
   }
   elm.size = info.siz;
@@ -759,8 +760,9 @@ file_view_cd(struct file_view *fs, struct sys *_sys, struct str path) {
   assert(fs);
   assert(_sys);
 
+  struct arena_scope scp;
   struct arena *tmp = fs->tmp_arena;
-  scp_mem(tmp, _sys) {
+  confine arena_scope(tmp, &scp, _sys) {
     struct str sys_path = arena_str(tmp, _sys, path);
     file_lst_view_clr(&fs->lst, _sys);
     dyn_asn_str(fs->lst.full_path, _sys, sys_path);
@@ -768,7 +770,7 @@ file_view_cd(struct file_view *fs, struct sys *_sys, struct str path) {
 
     /* add all files in directory */
     struct sys_dir_iter it = {0};
-    for sys_dir_lst_loop(_sys, &it, tmp, sys_path) {
+    for sys_dir_lst_each(_sys, &it, tmp, sys_path) {
       file_lst_view_add_path(&fs->lst, _sys, it.fullpath);
     }
     /* sort list by name */
@@ -962,7 +964,7 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui.tbl.lst.elm.begin(ctx, tbl, elm, elm_id, is_sel);
   {
     struct gui_cfg_stk stk[1] = {0};
-    scp_gui_cfg_pushu_on(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, fi->isdir) {
+    confine gui_cfg_pushu_on_scope(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, fi->isdir) {
       /* columns */
       struct tm *mod_time = localtime(&fi->mtime);
       gui.tbl.lst.elm.col.txt_ico(ctx, tbl, lay, elm, fi->name, fi->ico);
@@ -1059,7 +1061,7 @@ ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
   gui.tree.begin(ctx, node, parent, n->depth);
   {
     struct gui_cfg_stk stk[1] = {0};
-    scp_gui_cfg_pushu(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], col_rgb_hex(0xeecd4a)) {
+    confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], col_rgb_hex(0xeecd4a)) {
       struct gui_panel lbl = {.box = node->box};
       struct str txt = path_file(n->fullpath);
       enum res_ico_id ico = node->open ? RES_ICO_FOLDER_OPEN : RES_ICO_FOLDER;
@@ -1142,7 +1144,7 @@ ui_file_view_tree_key(struct file_view *fs, struct file_tree_view *tree,
 static int
 ui_file_view_tree_jmp_elm(struct file_tree_view *tree,
                           unsigned long long jmp_id) {
-  for dyn_loopi(i, tree->lst) {
+  for dyn_loop(i, tree->lst) {
     assert(i < dyn_cnt(tree->lst));
     struct file_tree_node *n = tree->lst[i];
     if (n->id == jmp_id) {
@@ -1274,7 +1276,7 @@ ui_file_sel(dyn(char) *filepath, struct file_view *fs, struct gui_ctx *ctx,
       elm = fs->lst.elms + fs->lst.sel_idx;
       dis = elm->isdir || !elm->isvalid;
     }
-    scp_gui_disable_on(&gui, ctx, dis) {
+    confine gui_disable_on_scope(&gui, ctx, dis) {
       if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
         const struct file_elm *elm = fs->lst.elms + fs->lst.sel_idx;
         dyn_asn_str(*filepath, ctx->sys, elm->fullpath);

@@ -39,7 +39,7 @@ static const int gfx_box_seq[] = {0,1,3,3,2,0};
 #define gfx__mtl_resv(b,v,i) ((b)->vbytes += szof(v), (b)->icnt += (i))
 #define gfx__mtl_idx(o,p,c) ((castu(o)&0x0fffffff)|(castu(c) << 24u)|(castu(p) << 26u))
 #define gfx__mtl_elms(b,o,p)\
-  for arr_loopi(i, gfx_box_seq)\
+  for arr_loopv(i, gfx_box_seq)\
     (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i])
 
 static unsigned
@@ -268,7 +268,7 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     NSLog(@"Failed to created pipeline state, error %@", err);
     return -1;
   }
-  for arr_loopi(i, mtl->buf) {
+  for arr_loopv(i, mtl->buf) {
     mtl->buf[i] = [mtl->dev newBufferWithLength:KB(256) options:MTLResourceStorageModeShared];
   }
   {
