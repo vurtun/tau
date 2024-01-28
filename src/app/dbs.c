@@ -585,7 +585,8 @@ db_graph_begin(struct db_graph *g, struct sys *_sys, struct arena *mem) {
   assert(g);
   assert(mem);
 
-  g->off[0] = g->off[1] = 0;
+  g->off[0] = 0;
+  g->off[1] = 0;
   g->nodes = arena_dyn(mem, _sys, struct db_graph_node, 256);
   g->box = gui.box.box(0,0,0,0);
 }
@@ -2058,25 +2059,23 @@ ui_db_hex_view_gen_str(dyn(char) ln, struct sys *_sys, const unsigned char *mem,
                        int siz, int digit_cnt, int col_cnt, int addr) {
   dyn_fmt(ln, _sys, "%0*X: ", digit_cnt, addr);
   for (int col = 0; col < col_cnt && addr + col < siz; ++col) {
-    /* generate hex value representation */
-    unsigned char b = mem[addr + col];
-    dyn_fmt(ln, _sys, "%.2X ", b);
-  }
-  if (addr + col_cnt > siz) {
-    /* align up to ascii represenation */
-    int cnt = addr + col_cnt - siz;
-    for loop(i,cnt) {
-      dyn_add(ln, _sys, ' ');
-      dyn_add(ln, _sys, ' ');
-      dyn_add(ln, _sys, ' ');
-    }
-  }
-  dyn_add(ln, _sys, ' ');
-  for (int col = 0; col < col_cnt && addr + col < siz; ++col) {
     /* generate ascii representation */
     unsigned char byte = mem[addr + col];
     char sym = (byte < 32 || byte >= 127) ? '.' : (char)byte;
     dyn_add(ln, _sys, sym);
+  }
+  if (addr + col_cnt > siz) {
+    /* align up ascii represenation */
+    int cnt = addr + col_cnt - siz;
+    for loop(i,cnt) {
+      dyn_add(ln, _sys, '.');
+    }
+  }
+  dyn_add(ln, _sys, ' ');
+  for (int col = 0; col < col_cnt && addr + col < siz; ++col) {
+    /* generate hex value representation */
+    unsigned char b = mem[addr + col];
+    dyn_fmt(ln, _sys, "%.2X ", b);
   }
   return ln;
 }
@@ -2113,7 +2112,7 @@ ui_db_hex_view(struct db_tbl_view *view, struct db_tbl_blob_view *blob,
       confine arena_scope(view->tmp_mem, &scp, ctx->sys) {
         /* generate and display each line of hex/ascii data representation */
         struct gui_panel elm = {0};
-        char *ln = arena_dyn(view->tmp_mem, ctx->sys, char, KB(4));
+        char *ln = arena_dyn(view->tmp_mem, ctx->sys, char, KB(8));
         ln = ui_db_hex_view_gen_str(ln, ctx->sys, blob->mem, blob->siz, digit_cnt, col_cnt, addr);
         unsigned long long elm_id = hash_ptr(blob->mem + addr);
         gui.lst.reg.elm.txt(ctx, &reg, &elm, elm_id, 0, dyn_str(ln), 0);

@@ -418,7 +418,7 @@ cpu_str_chr(const char *s, int n, int chr) {
   return e;
 }
 static inline int
-cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
+cpu_str_fnd(const char *s, int n, const char *needle, int k) {
   const __m256i first = _mm256_set1_epi8(needle[0]);
   const __m256i last  = _mm256_set1_epi8(needle[k-1]);
   for (size_t i = 0; i < n; i += 32) {
@@ -680,6 +680,7 @@ static inline int
 cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
   assert(k > 0);
   assert(n > 0);
+
   const uint8x16_t first = vdupq_n_u8(needle[0]);
   const uint8x16_t last  = vdupq_n_u8(needle[k - 1]);
   const unsigned char *ptr = (unsigned char*)s;

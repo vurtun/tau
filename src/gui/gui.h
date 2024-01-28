@@ -1191,7 +1191,7 @@ struct gui_dnd_api {
 };
 struct gui_cfg_api {
   void (*init)(struct gui_cfg *cfg);
-  void (*scale)(struct gui_cfg *cfg, float dpi_scale);
+  void (*scale)(struct gui_cfg *out, const struct gui_cfg *in, float dpi_scale);
   int (*pushi)(struct gui_cfg_stk *stk, void *ptr, int val);
   int (*pushi_on)(struct gui_cfg_stk *stk, void *ptr, int val, int cond);
   int (*pushu)(struct gui_cfg_stk *stk, void *ptr, unsigned val);

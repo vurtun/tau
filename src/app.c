@@ -130,6 +130,7 @@ app_open_files(struct app *app, const struct str *files, int cnt) {
   assert(app);
   assert(sys);
   assert(files);
+
   for loop(i,cnt) {
     /* open each database in new tab */
     struct app_view *view = app_view_new(app);
@@ -167,8 +168,8 @@ app_init(struct app *app) {
   sys.init(&app->sys);
   {
     struct res_args args = {0};
-    args.run_cnt = KB(2);
-    args.hash_cnt = KB(4);
+    args.run_cnt = KB(16);
+    args.hash_cnt = KB(32);
     args.sys = &app->sys;
     res.init(&app->res, &args);
   }
@@ -263,6 +264,7 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
   assert(app);
   assert(ctx);
   assert(pan);
+
   if (gui.dnd.dst.begin(ctx, pan)) {
     struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, STR_HASH16("[sys:files]"));
     if (paq) { /* file drag & drop */

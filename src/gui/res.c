@@ -779,9 +779,11 @@ done:
 static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
           int in_rune) {
+
   assert(r);
   assert(ret);
   assert(fnt);
+
   int rune = in_rune >= RES_GLYPH_SLOTS ? '?': in_rune;
   const fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
 
@@ -862,7 +864,8 @@ res_init(struct res *r, const struct res_args *args) {
   double best_d = 10000.0;
   r->fnt_pnt_size = 16.0f;
   for arr_loopv(i, fnt_pnt_siz) {
-    double d = math_abs(pnt_siz - fnt_pnt_siz[i]);
+    float n = pnt_siz - fnt_pnt_siz[i];
+    double d = math_abs(n);
     if (d < best_d) {
       r->fnt_pnt_size = fnt_pnt_siz[i];
       best_d = d;

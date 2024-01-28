@@ -42,19 +42,19 @@ release: $(BIN)
 
 .PHONY: clean
 clean:
-	rm bin/tau src/sys/ren.o src/app.o src/res.o src/sys/sys_mac.o
+	rm bin/tau src/sys/ren.o src/app.o src/res.o src/sys/sys.o
 	rm src/gui.o src/pck.o src/dbs.o
 	rm bin/dbg.so bin/ren.so bin/app.so bin/res.so bin/gui.so bin/pck.so bin/dbs.so
 	rm src/sys/gfx_mtl.air bin/gfx.metallib
 
-$(BIN): src/sys/sys_mac.o src/app.o
+$(BIN): src/sys/mac/sys.o src/app.o
 	rm -r -f bin
 	@mkdir -p bin
-	xcrun -sdk macosx metal -c src/sys/gfx.metal -o src/sys/gfx.air
-	xcrun -sdk macosx metallib src/sys/gfx.air -o bin/gfx.metallib
-	$(CC) $(OBJCFLAGS) -c src/sys/sys_mac.m -o src/sys/sys_mac.o
-	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/sys_mac.o -framework Cocoa -framework Metal -framework MetalKit
-	rm src/sys/gfx.air
+	xcrun -sdk macosx metal -c src/sys/mac/gfx.metal -o src/sys/mac/gfx.air
+	xcrun -sdk macosx metallib src/sys/mac/gfx.air -o bin/gfx.metallib
+	$(CC) $(OBJCFLAGS) -c src/sys/mac/sys.m -o src/sys/mac/sys.o
+	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/mac/sys.o -framework Cocoa -framework Metal -framework MetalKit
+	rm src/sys/mac/gfx.air
 
 else # UNIX
 

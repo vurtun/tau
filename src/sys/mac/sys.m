@@ -30,14 +30,14 @@
 #import <Cocoa/Cocoa.h>
 
 /* usr */
-#include "cpu.h"
-#include "../lib/fmt.h"
-#include "../lib/fmt.c"
-#include "../lib/std.h"
-#include "gfx.h"
-#include "sys.h"
-#include "../lib/std.c"
-#include "../lib/math.c"
+#include "../cpu.h"
+#include "../../lib/fmt.h"
+#include "../../lib/fmt.c"
+#include "../../lib/std.h"
+#include "../gfx.h"
+#include "../sys.h"
+#include "../../lib/std.c"
+#include "../../lib/math.c"
 #include "gfx_mtl.c"
 
 @interface sys__mac_window_delegate : NSObject<NSWindowDelegate>

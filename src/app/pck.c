@@ -710,7 +710,7 @@ file_lst_view_add_path(struct file_list_view *lst, struct sys *_sys,
   elm.size = info.siz;
   elm.mtime = info.mtime;
   elm.isvalid = 0;
-  memcpy(elm.perms, info.perm, sizeof(elm.perms));
+  mcpy(elm.perms, info.perm, szof(elm.perms));
 
   switch (info.type) {
   case SYS_FILE_DEF: {

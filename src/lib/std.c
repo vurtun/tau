@@ -447,13 +447,13 @@ bit_eqv(unsigned x, unsigned y) {
   (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
 static int bit_xor(unsigned long *addr, int nr);
 
-static int
+static inline int
 bit_tst(const unsigned long *addr, int nr) {
   assert(addr);
   unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
   return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
 }
-static int
+static inline int
 bit_tst_clr(unsigned long *addr, int nr) {
   assert(addr);
   if (bit_tst(addr, nr)) {
@@ -462,7 +462,7 @@ bit_tst_clr(unsigned long *addr, int nr) {
   }
   return 0;
 }
-static int
+static inline int
 bit_set(unsigned long *addr, int nr) {
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
@@ -470,13 +470,13 @@ bit_set(unsigned long *addr, int nr) {
   *p |= m;
   return ret;
 }
-static void
+static inline void
 bit_set_on(unsigned long *addr, int nr, int cond) {
   if (cond) {
     bit_set(addr, nr);
   }
 }
-static int
+static inline int
 bit_clr(unsigned long *addr, int nr) {
   assert(addr);
   unsigned long m = bit_mask(nr);
@@ -485,13 +485,13 @@ bit_clr(unsigned long *addr, int nr) {
   *p &= ~m;
   return ret;
 }
-static void
+static inline void
 bit_clr_on(unsigned long *addr, int nr, int cond) {
   if (cond) {
     bit_clr(addr, nr);
   }
 }
-static int
+static inline int
 bit_xor(unsigned long *addr, int nr) {
   assert(addr);
   unsigned long m = bit_mask(nr);
@@ -499,7 +499,7 @@ bit_xor(unsigned long *addr, int nr) {
   *p ^= m;
   return (*p & m) ? 1 : 0;
 }
-static void
+static inline void
 bit_fill(unsigned long *addr, int byte, int nbits) {
   assert(addr);
   int n = bits_to_long(nbits);
@@ -950,7 +950,7 @@ str_fzy(struct str s, struct str p) {
   remain = casti(s.end - str);
   int val = score + remain + casti(s.str - str);
   int left = casti(p.end - pat);
-  return casti(val *left - remain);
+  return casti(val * left - remain);
 }
 static int
 str__match_here(struct str reg, struct str txt) {
@@ -2042,8 +2042,6 @@ ut_tbl(struct sys *s) {
 // clang-format off
 typedef void*(sort_access_f)(const void *data, void *usr);
 #define sort__access(a,usr,access,conv,off) ((access) ? (conv)((access)(a + off, usr)) : (conv)(a + off))
-#define sort__char_at(s,d) (((d) < (s)->len) ? (s)->str[d] : -1)
-#define sort__str_get(a,access,usr) (struct str*)((access) ? (access(a, usr)) : (a))
 
 /* conversion functions from type -> sortable unsigned short/integer representation */
 typedef unsigned(*sort_conv_f)(const void *p);
@@ -2060,7 +2058,6 @@ static force_inline unsigned sort__cast_flt(const void *p) {union bit_castu {flo
 #define sort_int(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_int)
 #define sort_uint(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_uint)
 #define sort_flt(out,a,siz,n,off) sort_radix32(out,a,siz,n,off,0,0,sort__cast_flt)
-#define sort_str(out,a,n,siz,off) sort__str(out,a,n,siz,off,0,0)
 
 #define sort_shorts(out,a,n) sort_short(out,a,szof(short),n,0)
 #define sort_ushorts(out,a,n) sort_ushort(out,a,szof(unsigned short),n,0)
@@ -2174,72 +2171,6 @@ sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
   seq_rngu(out, rngn(n));
   sort__radix32(out, a, siz, n, off, usr, access, conv);
 }
-static char
-sort__str_at(unsigned char *p, int d, sort_access_f access, void *usr) {
-  struct str *s = sort__str_get(p, access, usr);
-  return sort__char_at(s,d);
-}
-static void
-sort__str_q3s(int *rnk, void *a, int lo, int hi, int d, int siz, int off,
-              sort_access_f access, void *usr) {
-  if (hi <= lo) return;
-  unsigned char *p = a;
-  int lt = lo, gt = hi, i = lo + 1;
-  int v = sort__str_at(p + rnk[lo] * siz + off, d, access, usr);
-  while (i <= gt) {
-    int t = sort__str_at(p + rnk[i] * siz + off, d, access, usr);
-    if (t < v) {int tmp = rnk[lt]; rnk[lt++] = rnk[i]; rnk[i++] = tmp;}
-    else if(t > v) {int tmp = rnk[i]; rnk[i] = rnk[gt]; rnk[gt--] = tmp;}
-    else i++;
-  }
-  sort__str_q3s(rnk, a, lo, lt-1, d, siz, off, access, usr);
-  if (v >= 0)  sort__str_q3s(rnk, a, lt, gt, d + 1, siz, off, access, usr);
-  sort__str_q3s(rnk, a, gt+1, hi, d, siz, off, access, usr);
-}
-static int*
-sort__radix_str(int *o, void *a, int n, int siz, int off,
-                int lo, int hi, sort_access_f fn, void *u, int d) {
-  /* <!> out needs to be at least size: 3*n <!> */
-  /* <!> returned pointer will either be be beginnning or middle of out <!> */
-  int *r = o + n, *r2 = o + 2 * n;
-  unsigned char * p = a;
-  if (n < 32) {
-    sort__str_q3s(r, a, lo, hi, d, siz, off, fn, u);
-    return r;
-  }
-  int c[257] = {0};
-  for (int i = 0; i < n; ++i)
-    o[i] = sort__str_at(p + r[i] * siz + off, d, fn, u);
-  for (int i = 0; i < n; ++i) {
-    ++c[o[i] + 1];
-  }
-  int idx[257];
-  idx[0] = idx[1] = 0;
-  for (int i = 1; i < 256; ++i)
-    idx[i+1] = idx[i] + c[i];
-  for (int i = 0; i < n; ++i)
-    r2[idx[o[i]+1]++] = r[i];
-  int *tmp = r; r = r2; r2 = tmp;
-
-  int bsum = c[1];
-  for (int i = 1; i < 256; ++i) {
-    if (c[i + 1] == 0) continue;
-    lo = bsum, hi = bsum + c[i+1]-1;
-    int *ret = sort__radix_str(o, a, c[i+1], siz, off, lo, hi, fn, u, d+1);
-    if (ret != r) tmp = r, r = r2, r2 = tmp;
-    bsum += c[i+1];
-  }
-  return r;
-}
-static int*
-sort__str(int *out, void *a, int n, int siz, int off,
-          sort_access_f fn, void *u, int d) {
-  /* <!> out needs to be at least size: 3*n <!> */
-  /* <!> returned pointer will either be be beginnning or middle of out <!> */
-  seq_rng(out, rngn(n));
-  return sort__radix_str(out, a, n, siz, off, 0, n-1, fn, u, d);
-}
-
 /* ---------------------------------------------------------------------------
  *                                  Search
  * ---------------------------------------------------------------------------
@@ -2247,8 +2178,8 @@ sort__str(int *out, void *a, int n, int siz, int off,
 static int
 sorted_search(const void *vals, int cnt, int siz, void *val,
               int(*cmp_less)(const void *a, const void *b)) {
-  assert(vals);
   assert(val);
+  assert(vals);
   assert(cmp_less);
 
   int nleft = cnt;
@@ -2310,4 +2241,136 @@ img_new(struct arena *a, struct sys *s, int w, int h) {
   unsigned *img = arena_alloc(a, s, szof(unsigned) * (w * h + 2));
   return img_mk(img, w, h);
 }
+
+/* -----------------------------------------------------------------------------
+ *                                    Variant
+ * -----------------------------------------------------------------------------
+ */
+enum var_kind {
+  VAR_NONE,
+  VAR_BOOL,
+  VAR_CHAR,
+  VAR_SHORT,
+  VAR_INT,
+  VAR_LONG,
+  VAR_UCHAR,
+  VAR_USHORT,
+  VAR_UINT,
+  VAR_ULONG,
+  VAR_FLT,
+  VAR_DBL,
+  VAR_ENUM,
+  VAR_BITMASK,
+  VAR_STR,
+  VAR_GUID,
+  VAR_OPT,
+  VAR_VARIANT,
+  VAR_STRUCT,
+  VAR_ARRAY,
+  VAR_DYN,
+};
+struct var_attr {
+  struct str name;
+  enum var_kind kind;
+  union {
+    int i;
+    float f;
+    double d;
+    long long l;
+    unsigned long long ul;
+    struct str str_val;
+  } val;
+};
+struct var_type_def {
+  enum var_kind kind;
+  struct str name;
+  int off, siz;
+  unsigned long long id;
+  struct var_attr *attr;
+  struct var_type_def *ref_type;
+};
+struct var {
+  struct var_type_def *type;
+  void *obj;
+};
+
+#if 0
+struct weapon {
+  int ammo;
+  int dmg;
+};
+struct entity <name:"Entity"> {
+  unsigned flags <bit_mask>;
+  struct str name;
+  struct weapon weapon;
+  dyn(struct comp) comps;
+};
+
+static const struct var_type_def var_entity_type_def[] = {
+  {.type = VAR_NONE,   .name = "weapon",        .id = str_hash("weapon"), .siz = szof(struct weapon)}
+  {.type = VAR_INT,    .name = strv("ammo"),    .id = str_hash("ammo"),   .off = offsetof(struct weapon,ammo)},
+  {.type = VAR_INT,    .name = strv("dmg"),     .id = str_hash("dmg"),    .off = offsetof(struct weapon,dmg)},
+}
+static const struct var_attr var_entity_attr[] {
+  {.name = strv("name"), .kind = VAR_STR, .str_val = strv("Entity")},
+};
+static const struct var_attr var_entity_name_attr[] {
+  {.name = strv("name"), .kind = VAR_NONE},
+};
+static const struct var_type_def var_entity_type_def[] = {
+  {.type = VAR_NONE,   .name = "entity",          .id = str_hash("entity"), .siz = szof(struct entity), .attr = var_entity_attr}
+  {.type = VAR_UINT,   .name = strv("flags"),     .id = str_hash("flags"),  .off = offsetof(struct entity,flags)},
+  {.type = VAR_STR,    .name = strv("name"),      .id = str_hash("name"),   .off = offsetof(struct entity,name), .attr = var_entity_name_attr},
+  {.type = VAR_STRUCT, .name = strv("weapon"),    .id = str_hash("weapon"), .off = offsetof(struct entity,weapon), .ref_type = var_weapon_type_def},
+  {.type = VAR_ARRAY,  .name = strv("comps"),     .id = str_hash("comps"),  .off = offsetof(struct entity,comps), .ref_type = var_entity_type_def},
+};
+struct tbf_weapon {
+  int ammo;
+  int dmg;
+}:
+struct tbf_entity {
+  unsigned flags;
+  struct tbf_arr name;
+  struct tbf_weapon weapon;
+  struct tbf_arr comps;
+};
+#endif
+
+/* -----------------------------------------------------------------------------
+ *                                    TBF
+ * -----------------------------------------------------------------------------
+ */
+#define TBF_SIGNATURE fourcc("TBF ")
+
+struct tbf_ref {int off;};
+#define tbf_ptr(T,ref) ((T*)((char *)&(ref)+(ref).off))
+#define tbf_ref(ref, ptr) (ref).off = (int)((char*)(ptr) - (char *)&(ref))
+#define tbf_size(t,a,c) (szof(t)-szof(((t*)0)->arr[0])+szof(((t*)0)->arr[0])*(c))
+
+struct tbf_arr {
+  struct tbf_ref ref;
+  int cnt;
+};
+struct tbf_type_member_def {
+  unsigned long long id;
+  enum var_kind type;
+  int off;
+  unsigned long long ref_type;
+};
+struct tbf_type_def {
+  enum var_kind type;
+  int cnt;
+  unsigned long long id;
+  struct tbf_arr defs;
+};
+struct tbf_desc {
+  unsigned long long type_id;
+  unsigned long long id;
+  struct tbf_ref ref;
+};
+struct tbf_hdr {
+  unsigned sig;
+  struct tbf_arr types;
+  struct tbf_arr toc;
+};
 

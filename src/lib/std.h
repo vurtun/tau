@@ -48,6 +48,7 @@
   (type *)((void *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
 #define div_round_up(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
+#define fourcc(c) ((c[0])|(c[1] << 8)|(c[2] << 16)|(c[3] << 24))
 
 #define between(x, a, b) ((a) <= (x) && (x) < (b))
 #define inbox(px, py, x, y, w, h)(between(px, x, x + w) && between(py, y, y + h))
