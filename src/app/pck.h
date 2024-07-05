@@ -1,18 +1,114 @@
 #define PCK_VERISON 1
 
+#define FILE_LIST_ELM_CNT         256
+#define FILE_LIST_ELM_BUF_CNT     (FILE_LIST_ELM_CNT*2)
+#define FILE_LIST_STR_BUF_SIZ     (FILE_LIST_ELM_BUF_CNT*MAX_FILE_NAME)
+#define FILE_LIST_MAX_FILTER      64
+#define FILE_SPLIT_MAX            2
+
 struct arena;
 struct gui_api;
 struct gui_ctx;
 struct gui_panel;
-struct file_view;
+
+struct file_elm {
+  struct str name;
+  size_t size;
+  time_t mtime;
+  unsigned file_type : 17;
+  unsigned sys_type : 4;
+  unsigned isvalid : 1;
+  unsigned isdir : 1;
+  unsigned perm : 9;
+};
+struct file_tbl_col_def {
+  struct str title;
+  struct gui_split_lay_slot ui;
+};
+enum file_tbl_hdr_col {
+  FILE_TBL_NAME,
+  FILE_TBL_TYPE,
+  FILE_TBL_SIZE,
+  FILE_TBL_PERM,
+  FILE_TBL_DATE,
+  FILE_TBL_MAX,
+};
+struct file_tbl {
+  int cnt;
+  struct gui_tbl_sort sort;
+  int state[GUI_TBL_CAP(FILE_TBL_MAX)];
+};
+struct file_list_txt_buf {
+  int cnt, cur;
+  char buf[2][FILE_LIST_STR_BUF_SIZ];
+};
+struct file_list_page {
+  int cur, idx;
+  int total, cnt;
+  struct file_elm elms[FILE_LIST_ELM_BUF_CNT];
+  struct file_list_txt_buf txt;
+};
+struct file_list_view {
+  unsigned rev;
+  int sel_idx;
+  int page_cnt;
+  struct file_list_page page;
+
+  double off[2];
+  struct file_tbl tbl;
+
+  struct str nav_path;
+  char nav_buf[MAX_FILE_PATH];
+  struct gui_txt_ed nav_ed;
+
+  struct str fltr;
+  char fltr_buf[FILE_LIST_MAX_FILTER];
+  struct gui_txt_ed fltr_ed;
+};
+
+
+struct file_tree_node {
+  struct file_tree_node *parent;
+  struct lst_elm hook;
+  struct lst_elm sub;
+  unsigned long long id;
+  struct str fullpath;
+  int depth;
+};
+struct file_tree_view {
+  unsigned rev;
+  struct arena mem;
+  struct file_tree_node root;
+  dyn(struct file_tree_node*) lst;
+  struct lst_elm del_lst;
+  unsigned long long *exp;
+  int sel;
+  double off[2];
+  unsigned jmp:1;
+  unsigned long jmp_to;
+};
+
+
+struct file_view {
+  int state;
+  struct arena *tmp_arena;
+  char home_path[MAX_FILE_PATH];
+  struct str home;
+  int split[GUI_SPLIT_CAP(FILE_SPLIT_MAX)];
+  unsigned lst_rev;
+  struct file_list_view lst;
+  unsigned tree_rev;
+  struct file_tree_view tree;
+};
+
 
 struct pck_api {
   int version;
-  struct file_view* (*init)(struct sys *sys, struct gui_ctx *ctx, struct arena *mem, struct arena *tmp);
+  int (*init)(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx, struct arena *tmp);
   void (*update)(struct file_view*, struct sys *sys);
   void (*shutdown)(struct file_view*, struct sys *sys);
-  int (*ui)(char **filepath, struct file_view*, struct gui_ctx *ctx,
-            struct gui_panel *pan, struct gui_panel *parent);
+  struct str (*ui)(char *filepath, int n, struct file_view*, struct gui_ctx *ctx,
+                   struct gui_panel *pan, struct gui_panel *parent);
 };
 static void pck_api(void *export, void *import);
 

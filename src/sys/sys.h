@@ -191,7 +191,7 @@ enum sys_file_type {
 struct sys_file_info {
   size_t siz;
   time_t mtime;
-  char perm[10];
+  unsigned perm;
   enum sys_file_type type;
 };
 struct sys_file_api {

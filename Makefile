@@ -33,19 +33,12 @@ debug: CC = clang
 debug: $(BIN)
 
 .PHONY: release
-release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -mfma
+release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -mfma -mskstk
 release: CFLAGS += -DRELEASE_MODE
 release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
-release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic
+release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic -mskstk
 release: CC = clang
 release: $(BIN)
-
-.PHONY: clean
-clean:
-	rm bin/tau src/sys/ren.o src/app.o src/res.o src/sys/sys.o
-	rm src/gui.o src/pck.o src/dbs.o
-	rm bin/dbg.so bin/ren.so bin/app.so bin/res.so bin/gui.so bin/pck.so bin/dbs.so
-	rm src/sys/gfx_mtl.air bin/gfx.metallib
 
 $(BIN): src/sys/mac/sys.o src/app.o
 	rm -r -f bin

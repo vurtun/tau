@@ -186,7 +186,7 @@ struct db_tree_view {
 
   /* ui */
   struct db_tree_tbl_state tbl;
-  dyn(char) fnd_buf;
+  char* fnd_buf;
   struct gui_txt_ed fnd_ed;
 };
 struct db_graph_node {
@@ -437,9 +437,9 @@ db_tree_begin(struct db_tree_view *t, struct sys *_sys, struct arena *mem) {
   t->rev = (unsigned)-1;
   t->lst = arena_dyn(mem, _sys, struct db_tree_node*, 128);
   t->exp = arena_set(mem, _sys, 1024);
-  t->fnd_buf = arena_dyn(mem, _sys, char, MAX_FILTER);
+  t->fnd_buf = arena_arr(mem, _sys, char, MAX_FILTER);
   t->sel = arena_tbl(mem, _sys, struct db_tree_node*, 256);
-  gui.edt.buf.init(&t->fnd_ed);
+  gui.edt.buf.init(&t->fnd_ed, t->fnd_buf, MAX_FILTER, str_nil);
 
   /* setup root node */
   t->root.depth = 0;
@@ -1370,7 +1370,7 @@ ui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *paren
 static void
 ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
                struct gui_panel *pan, struct gui_panel *parent,
-               struct gui_txt_ed *ed, char **buf) {
+               struct gui_txt_ed *ed, char *buf, int cap) {
   assert(ed);
   assert(buf);
   assert(ctx);
@@ -1392,11 +1392,15 @@ ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
     gui.ico.img(ctx, &ico, pan, RES_ICO_SEARCH);
 
     /* edit */
+    ed->buf = buf;
+    ed->cap = cap;
+    ed->str = str_nil;
+
     edt->pan.focusable = 1;
     edt->pan.box.x = gui.bnd.min_max(ico.box.x.max, pan->box.x.max);
     edt->pan.box.x = gui.bnd.shrink(&edt->pan.box.x, pad[0]);
     edt->pan.box.y = gui.bnd.shrink(&pan->box.y, pad[1]);
-    gui.edt.fld(ctx, edt, &edt->pan, pan, ed, buf);
+    gui.edt.fld(ctx, edt, &edt->pan, pan, ed);
   }
   gui.pan.end(ctx, pan, parent);
 }
@@ -1859,7 +1863,7 @@ ui_db_tbl_fltr_str_view(struct db_ui_view *d, struct db_tbl_view *view,
     /* search expression */
     struct gui_edit_box edt = {.flags = GUI_EDIT_SEL_ON_ACT};
     edt.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
-    gui.edt.box(ctx, &edt, pan, &fltr->buf);
+    gui.edt.box(ctx, &edt, pan, fltr->buf, MAX_FILTER, str_nil);
     if (edt.mod){
       fltr->row_cnt = 0;
       fltr->off[1] = 0;
@@ -2299,7 +2303,9 @@ ui_db_view_tree(struct db_ui_view *d, struct db_tree_view *t,
     struct gui_box lay = pan->box;
     struct gui_panel fltr = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
     struct gui_edit_box edt = {.box = fltr.box};
-    ui_edit_fnd(ctx, &edt, &fltr, pan, &d->tree.fnd_ed, &d->tree.fnd_buf);
+#if 0
+    ui_edit_fnd(ctx, &edt, &fltr, pan, &d->tree.fnd_ed, d->tree.fnd_buf, MAX_FILTER);
+#endif
 
     struct gui_tbl tbl = {.box = lay};
     gui.tbl.begin(ctx, &tbl, pan, t->tbl.off, &t->tbl.sort);

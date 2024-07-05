@@ -177,18 +177,19 @@ sys__rnd_gen128(uintptr_t hdl, void *dst) {
  *                                File
  * ---------------------------------------------------------------------------
  */
-static void
-sys__file_perm(char *mod, mode_t perm) {
-  mod[0] = (perm & S_IRUSR) ? 'r' : '-';
-  mod[1] = (perm & S_IWUSR) ? 'w' : '-';
-  mod[2] = (perm & S_IXUSR) ? 'x' : '-';
-  mod[3] = (perm & S_IRGRP) ? 'r' : '-';
-  mod[4] = (perm & S_IWGRP) ? 'w' : '-';
-  mod[5] = (perm & S_IXGRP) ? 'x' : '-';
-  mod[6] = (perm & S_IROTH) ? 'r' : '-';
-  mod[7] = (perm & S_IWOTH) ? 'w' : '-';
-  mod[8] = (perm & S_IXOTH) ? 'x' : '-';
-  mod[9] = 0;
+static unsigned
+sys__file_perm(mode_t perm) {
+  unsigned mod = 0;
+  mod |= castu(!!(perm & S_IRUSR)) << 0u;
+  mod |= castu(!!(perm & S_IWUSR)) << 1u;
+  mod |= castu(!!(perm & S_IXUSR)) << 2u;
+  mod |= castu(!!(perm & S_IRGRP)) << 3u;
+  mod |= castu(!!(perm & S_IWGRP)) << 4u;
+  mod |= castu(!!(perm & S_IXGRP)) << 5u;
+  mod |= castu(!!(perm & S_IROTH)) << 6u;
+  mod |= castu(!!(perm & S_IWOTH)) << 7u;
+  mod |= castu(!!(perm & S_IXOTH)) << 8u;
+  return mod;
 }
 static int
 sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
@@ -208,8 +209,7 @@ sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
   }
   info->siz = castsz(stats.st_size);
   info->mtime = stats.st_mtime;
-  sys__file_perm(info->perm, stats.st_mode);
-
+  info->perm = sys__file_perm(stats.st_mode);
   if (S_ISDIR(stats.st_mode)) {
     info->type = SYS_FILE_DIR;
   } else if (S_ISLNK(stats.st_mode)) {

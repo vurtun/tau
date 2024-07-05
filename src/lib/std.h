@@ -48,7 +48,10 @@
   (type *)((void *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
 #define div_round_up(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
-#define fourcc(c) ((c[0])|(c[1] << 8)|(c[2] << 16)|(c[3] << 24))
+
+#define twocc(s) castu((s[0] << 8u) + s[1])
+#define threecc(s) castu((s[0] << 16u) + (s[1] << 8u) + s[2])
+#define fourcc(s) castu((s[0] << 24u) + (s[1] << 16u) + (s[2] << 8u) + s[3])
 
 #define between(x, a, b) ((a) <= (x) && (x) < (b))
 #define inbox(px, py, x, y, w, h)(between(px, x, x + w) && between(py, y, y + h))
@@ -77,7 +80,14 @@
 #define bit_word_idx(nr) ((unsigned long)(nr) & (BITS_PER_LONG - 1))
 #define bit_word_nxt(nr) ((unsigned long)((nr) + BITS_PER_LONG - bit_word_idx(nr)))
 #define bits_to_long(nr) (int)div_round_up((unsigned long)nr, BITS_PER_LONG)
+
+#define heap_parent(i) (((i)-1) >> 1)
+#define heap_right(i) (((i)+1) << 1)
+#define heap_left(i) (heap_right(i)-1)
 // clang-format on
+
+#define MAX_FILE_PATH (4*1024)
+#define MAX_FILE_NAME (256)
 
 typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
@@ -110,6 +120,10 @@ struct arena {
 struct lst_elm {
   struct lst_elm *prv;
   struct lst_elm *nxt;
+};
+struct lst_idx {
+  int prv;
+  int nxt;
 };
 struct color {
   unsigned char r, g, b, a;

@@ -368,27 +368,28 @@ gui_clip_end(struct gui_ctx *ctx, struct gui_clip *clip) {
   ctx->clip = *clip;
   return casti(ctx->clip.hdl);
 }
-static void
+static int
 gui__drw_resv(struct gui_ctx *ctx, const struct gfx_buf2d_cost *cost) {
   assert(ctx);
   assert(cost);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
-    return;
+    return 0;
   }
   struct sys *s = ctx->sys;
-  if (ctx->vtx_mem->size < s->gfx.buf2d.vbytes + cost->vbytes) {
-    int new_siz = ctx->vtx_mem->size * 2;
-    ctx->vtx_mem = s->mem.alloc(s, ctx->vtx_mem, new_siz, SYS_MEM_GROWABLE, str_hash(strv("gui")));
-    s->gfx.buf2d.vtx = ctx->vtx_mem->base;
+  if (ctx->vtx_buf_siz < s->gfx.buf2d.vbytes + cost->vbytes) {
+    ctx->oom_vtx_buf = 1;
+    ctx->oom = 1;
+    return 0;
   }
-  int icost = s->gfx.buf2d.icnt * szof(unsigned) + cost->icnt * szof(unsigned);
-  if (ctx->idx_mem->size < icost) {
-    int new_siz = ctx->idx_mem->size * 2;
-    ctx->idx_mem = s->mem.alloc(s, ctx->idx_mem, new_siz, SYS_MEM_GROWABLE, str_hash(strv("gui")));
-    s->gfx.buf2d.idx = recast(unsigned*, ctx->idx_mem->base);
+  int icost = cost->icnt * szof(unsigned);
+  if (ctx->idx_buf_siz < s->gfx.buf2d.icnt * szof(unsigned) + icost) {
+    ctx->oom_idx_buf = 1;
+    ctx->oom = 1;
+    return 0;
   }
+  return 1;
 }
 static void
 gui_drw_col(struct gui_ctx *ctx, unsigned col) {
@@ -410,8 +411,9 @@ gui_drw_box(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.box);
-  s->gfx.d2d.box(&s->gfx.buf2d, x0, y0, x1, y1, ctx->drw_col, ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.box)) {
+    s->gfx.d2d.box(&s->gfx.buf2d, x0, y0, x1, y1, ctx->drw_col, ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
@@ -422,9 +424,10 @@ gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.line);
-  s->gfx.d2d.ln(&s->gfx.buf2d, x0, y0, x1, y1, ctx->line_size, ctx->drw_col,
-    ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.line)) {
+    s->gfx.d2d.ln(&s->gfx.buf2d, x0, y0, x1, y1, ctx->line_size, ctx->drw_col,
+      ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_hln(struct gui_ctx *ctx, int y, int x0, int x1) {
@@ -462,8 +465,9 @@ gui_drw_circle(struct gui_ctx *ctx, int x, int y, int r) {
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.circle);
-  s->gfx.d2d.circle(&s->gfx.buf2d, x, y, r, ctx->drw_col, ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.circle)) {
+    s->gfx.d2d.circle(&s->gfx.buf2d, x, y, r, ctx->drw_col, ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_tri(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2) {
@@ -473,10 +477,16 @@ gui_drw_tri(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2)
   if (ctx->pass != GUI_RENDER) {
     return;
   }
+  if (!gui_inbox(x0, y0, &ctx->clip.box) &&
+      !gui_inbox(x1, y1, &ctx->clip.box) &&
+      !gui_inbox(x2, y2, &ctx->clip.box)) {
+    return;
+  }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.tri);
-  s->gfx.d2d.tri(&s->gfx.buf2d, x0, y0, x1, y1, x2, y2,
-      ctx->drw_col, ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.tri)) {
+    s->gfx.d2d.tri(&s->gfx.buf2d, x0, y0, x1, y1, x2, y2,
+        ctx->drw_col, ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *g) {
@@ -488,9 +498,10 @@ gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *g) {
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.ico);
-  s->gfx.d2d.ico(&s->gfx.buf2d, g->x0, g->y0, g->x1, g->y1, g->sx, g->sy,
-      ctx->drw_col, ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.ico)) {
+    s->gfx.d2d.ico(&s->gfx.buf2d, g->x0, g->y0, g->x1, g->y1, g->sx, g->sy,
+        ctx->drw_col, ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_rune(struct gui_ctx *ctx, int x, int y, int rune) {
@@ -539,8 +550,10 @@ gui_drw_sprite(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh,
     return;
   }
   struct sys *s = ctx->sys;
-  gui__drw_resv(ctx, &s->gfx.d2d.cost.img);
-  s->gfx.d2d.img(&s->gfx.buf2d, tex, dx, dy, dw, dh, sx, sy, sw, sh, ctx->clip.hdl);
+  if (gui__drw_resv(ctx, &s->gfx.d2d.cost.img)) {
+    s->gfx.d2d.img(&s->gfx.buf2d, tex, dx, dy, dw, dh,
+      sx, sy, sw, sh, ctx->clip.hdl);
+  }
 }
 static void
 gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
@@ -948,29 +961,12 @@ gui_cfg_scale(struct gui_cfg *out, const struct gui_cfg *in, float dpi_scale) {
   out->scrl = gui__scale_val(in->scrl, dpi_scale);
 }
 static void
-gui_init(struct gui_ctx *ctx, struct arena *mem, struct gui_args *args) {
+gui_init(struct gui_ctx *ctx, struct gui_args *args) {
   assert(ctx);
   gui_color_scheme(ctx, args->scm);
   gui_dflt_cfg(&ctx->cfg);
   if (args->scale != 0.0f) {
     gui_cfg_scale(&ctx->cfg, &ctx->cfg, args->scale);
-  }
-  struct sys *s = ctx->sys;
-  ctx->txt_state.buf = arena_dyn(mem, s, char, args->txt_mem);
-  ctx->vtx_mem = s->mem.alloc(s, 0, args->vtx_mem, SYS_MEM_GROWABLE, str_hash(strv("gui")));
-  ctx->idx_mem = s->mem.alloc(s, 0, args->idx_mem, SYS_MEM_GROWABLE, str_hash(strv("gui")));
-}
-static void
-gui_free(struct gui_ctx *ctx) {
-  struct sys *s = ctx->sys;
-  dyn_free(ctx->txt_state.buf, ctx->sys);
-  if (ctx->vtx_mem) {
-    s->mem.free(ctx->sys, ctx->vtx_mem);
-    ctx->vtx_mem = 0;
-  }
-  if (ctx->idx_mem) {
-    s->mem.free(ctx->sys, ctx->idx_mem);
-    ctx->idx_mem = 0;
   }
 }
 static int
@@ -1152,8 +1148,12 @@ gui_begin(struct gui_ctx *ctx) {
     } break;
     case GUI_RENDER: {
       s->tooltip.str = str_nil;
-      s->gfx.buf2d.vtx = ctx->vtx_mem->base;
-      s->gfx.buf2d.idx = recast(unsigned*, ctx->idx_mem->base);
+      s->gfx.buf2d.vtx = ctx->vtx_buf;
+      s->gfx.buf2d.idx = recast(unsigned*, ctx->idx_buf);
+
+      ctx->oom = 0;
+      ctx->oom_vtx_buf = 0;
+      ctx->oom_idx_buf = 0;
 
       struct gui_clip clp = {0};
       gui_drw_line_style(ctx, 1);
@@ -2142,16 +2142,6 @@ gui_scrl(struct gui_ctx *ctx, struct gui_scrl *s, struct gui_panel *parent) {
  *                                  Arrow
  * ---------------------------------------------------------------------------
  */
-enum gui_direction {
-  GUI_NORTH = 0x01,
-  GUI_WEST = 0x02,
-  GUI_SOUTH = 0x04,
-  GUI_EAST = 0x08
-};
-enum gui_dir {
-  GUI_DIR_HORIZONTAL = GUI_NORTH | GUI_SOUTH,
-  GUI_DIR_VERTICAL = GUI_WEST | GUI_EAST,
-};
 static void
 gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
           enum gui_direction orient) {
@@ -2169,8 +2159,10 @@ gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
                     pan->box.y.max, pan->box.x.max, pan->box.y.max);
       } break;
       case GUI_WEST: {
-        gui_drw_tri(ctx, pan->box.x.max, pan->box.y.min, pan->box.x.min,
-                    pan->box.y.mid, pan->box.x.min, pan->box.y.max);
+        gui_drw_tri(ctx,
+            pan->box.x.max, pan->box.y.min,
+            pan->box.x.max, pan->box.y.max,
+            pan->box.x.min, pan->box.y.mid);
       } break;
       case GUI_SOUTH: {
         gui_drw_tri(ctx, pan->box.x.min, pan->box.y.min, pan->box.x.mid,
@@ -2384,15 +2376,25 @@ gui_txt_ed_reset(struct gui_txt_ed *edt) {
   edt->cur = 0;
 }
 static void
-gui_txt_ed_clear(struct gui_txt_ed *edt, char **buf) {
+gui_txt_ed_clear(struct gui_txt_ed *edt) {
   assert(edt);
   gui_txt_ed_reset(edt);
-  dyn_clr(*buf);
+  edt->str = str_nil;
+  edt->buf[0] = 0;
 }
 static void
-gui_txt_ed_init(struct gui_txt_ed *edt) {
+gui_txt_ed_init(struct gui_txt_ed *edt, char *buf, int cap, struct str str) {
   assert(edt);
+  assert(buf);
+
   gui_txt_ed_reset(edt);
+  edt->buf = buf;
+  edt->cap = cap;
+  edt->str = str;
+}
+static void
+gui_txt_ed_assign(struct gui_txt_ed *ed, struct str s){
+  ed->str = str_sqz(ed->buf, ed->cap, s);
 }
 static void
 gui_txt_ed_redo_flush(struct gui_txt_ed_undo *s) {
@@ -2486,7 +2488,7 @@ gui_txt_ed_undo_make(struct gui_txt_ed_undo *s, int pos, int in_len,
   return s->buf + rdo->char_at;
 }
 static void
-gui_txt_ed_undo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
+gui_txt_ed_undo(struct gui_txt_ed *edt) {
   assert(edt);
   struct gui_txt_ed_undo *u = &edt->undo;
   if (u->undo_pnt == 0) {
@@ -2517,24 +2519,25 @@ gui_txt_ed_undo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
       rdo->char_at = casts(u->redo_char_pnt - udo.del_len);
       u->redo_char_pnt = casts(u->redo_char_pnt - udo.del_len);
       for loop(i, udo.del_len) {
-        u->buf[rdo->char_at + i] = (*buf)[udo.where + i];
+        u->buf[rdo->char_at + i] = edt->buf[udo.where + i];
       }
     } else {
       rdo->in_len = 0;
     }
-    dyn_cut(*buf, udo.where, udo.del_len);
+    edt->str = str_del(edt->buf, edt->str, udo.where, udo.del_len);
   }
   if (udo.in_len) {
-    dyn_put(*buf, s, udo.where, u->buf + udo.char_at, udo.in_len);
-    u->undo_char_pnt = casts(u->undo_char_pnt - udo.in_len);
+    struct str src = str(edt->buf + udo.char_at, udo.in_len);
+    edt->str = str_put(edt->buf, edt->cap, edt->str, udo.where, src);
+    u->undo_char_pnt = cast(short, u->undo_char_pnt - udo.in_len);
   }
-  edt->cur = utf_len(strp(*buf, *buf + udo.where + udo.in_len));
+  edt->cur = utf_len(str(edt->buf, udo.where + udo.in_len));
 
   u->undo_pnt--;
   u->redo_pnt--;
 }
 static void
-gui_txt_ed_redo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
+gui_txt_ed_redo(struct gui_txt_ed *edt) {
   assert(edt);
   struct gui_txt_ed_undo *u = &edt->undo;
   if (u->redo_pnt == GUI_EDT_UNDO_CNT) {
@@ -2552,19 +2555,20 @@ gui_txt_ed_redo(struct gui_txt_ed *edt, struct sys *s, char **buf) {
   if (rdo.del_len) {
     if (u->undo_char_pnt + udo->in_len <= u->redo_char_pnt) {
       udo->char_at = u->undo_char_pnt;
-      u->undo_char_pnt = casts(u->undo_char_pnt + udo->in_len);
+      u->undo_char_pnt = cast(short, u->undo_char_pnt + udo->in_len);
       /* now save the characters */
-      for loop(i, udo->in_len)
-        u->buf[udo->char_at + i] = (*buf)[udo->where + i];
+      for (int i = 0; i < udo->in_len; ++i)
+        u->buf[udo->char_at + i] = edt->buf[udo->where + i];
     } else {
       udo->in_len = udo->del_len = 0;
     }
-    dyn_cut(*buf, rdo.where, rdo.del_len);
+    edt->str = str_del(edt->buf, edt->str, rdo.where, rdo.del_len);
   }
   if (rdo.in_len) {
-    dyn_put(*buf, s, rdo.where, u->buf + rdo.char_at, rdo.in_len);
+    struct str src = str(u->buf + rdo.char_at, rdo.in_len);
+    edt->str = str_put(edt->buf, edt->cap, edt->str, rdo.where, src);
   }
-  edt->cur = utf_len(strp(*buf, *buf + rdo.where + rdo.in_len));
+  edt->cur = utf_len(str(edt->buf, rdo.where + rdo.in_len));
 
   u->undo_pnt++;
   u->redo_pnt++;
@@ -2575,29 +2579,30 @@ gui_txt_ed_undo_in(struct gui_txt_ed *edt, int where, int len) {
   gui_txt_ed_undo_make(&edt->undo, where, 0, len);
 }
 static void
-gui_txt_ed_undo_del(struct gui_txt_ed *edt, char **buf, int where, int len) {
+gui_txt_ed_undo_del(struct gui_txt_ed *edt, int where, int len) {
   assert(edt);
   char *p = gui_txt_ed_undo_make(&edt->undo, where, len, 0);
   if (p) {
-    mcpy(p, *buf + where, len);
+    mcpy(p, edt->buf + where, len);
   }
 }
 static void
-gui_txt_ed_undo_repl(struct gui_txt_ed *edt, char **buf, int where,
+gui_txt_ed_undo_repl(struct gui_txt_ed *edt, int where,
                      int old_len, int new_len) {
   assert(edt);
   char *p = gui_txt_ed_undo_make(&edt->undo, where, old_len, new_len);
   if (p) {
-    mcpy(p, *buf + where, old_len);
+    mcpy(p, edt->buf + where, old_len);
   }
 }
 static int
-gui_txt_ed_ext(char *buf, int line_begin, int char_idx, struct res *r) {
+gui_txt_ed_ext(const struct gui_txt_ed *edt, int line_begin, int char_idx,
+               struct res *r) {
   assert(buf);
   assert(r);
 
   int ext[2];
-  struct str view = utf_at(0, dyn_str(buf), line_begin + char_idx);
+  struct str view = utf_at(0, edt->str, line_begin + char_idx);
   res.fnt.ext(ext, r, view);
   return ext[0];
 }
@@ -2607,13 +2612,13 @@ struct gui_txt_row {
   int char_cnt;
 };
 static void
-gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
-                   int row_h, struct res *r) {
+gui_txt_ed_lay_row(struct gui_txt_row *row, const struct gui_txt_ed *edt,
+                   int line_begin, int row_h, struct res *r) {
   assert(buf);
   assert(row);
 
-  struct str begin = utf_at(0, dyn_str(buf), line_begin);
-  struct str txt = strp(begin.str, dyn_end(buf));
+  struct str begin = utf_at(0, edt->str, line_begin);
+  struct str txt = strp(begin.str, edt->str.end);
   struct str end  = begin;
 
   int cnt = 0;
@@ -2626,8 +2631,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
     cnt++;
   }
   int ext[2];
-  struct str ln = strp(begin.str, end.end);
-  res.fnt.ext(ext, r, ln);
+  res.fnt.ext(ext, r, strp(begin.str, end.end));
 
   row->char_cnt = cnt;
   row->baseline_y_dt = row_h;
@@ -2636,17 +2640,18 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, char *buf, int line_begin,
   row->y[1] = row_h;
 }
 static int
-gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r) {
+gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int x, int y, int row_h,
+                     struct res *r) {
   assert(buf);
   assert(r);
 
   int i = 0;
   int base_y = 0;
   struct gui_txt_row row = {0};
-  while (i < dyn_cnt(buf)) {
-    gui_txt_ed_lay_row(&row, buf, i, row_h, r);
+  while (i < edt->str.len) {
+    gui_txt_ed_lay_row(&row, edt, i, row_h, r);
     if (row.char_cnt <= 0) {
-      return dyn_cnt(buf);
+      return edt->str.len;
     } else if (i == 0 && y < base_y + row.y[0]) {
       return 0;
     } else if (y < base_y + row.y[1]) {
@@ -2655,14 +2660,14 @@ gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r) {
     base_y += row.baseline_y_dt;
     i += row.char_cnt;
   }
-  if (i >= dyn_cnt(buf)) {
-    return dyn_cnt(buf);
+  if (i >= edt->str.len) {
+    return edt->str.len;
   } else if (x < row.x[0]) {
     return i;
   } else if (x < row.x[1]) {
     int k = i, prev_x = row.x[0];
     for (i = 0; i < row.char_cnt; ++i) {
-      int w = gui_txt_ed_ext(buf, k, i, r);
+      int w = gui_txt_ed_ext(edt, k, i, r);
       if (x < prev_x + w) {
         if (x < prev_x + w / 2) {
           return k + i;
@@ -2675,7 +2680,7 @@ gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r) {
     }
   }
   unsigned rune = 0;
-  utf_at(&rune, dyn_str(buf), i + row.char_cnt - 1);
+  utf_at(&rune, edt->str, i + row.char_cnt - 1);
   if (rune == '\n') {
     return i + row.char_cnt - 1;
   } else {
@@ -2683,66 +2688,64 @@ gui_txt_ed_loc_coord(char *buf, int x, int y, int row_h, struct res *r) {
   }
 }
 static void
-gui_txt_ed_clk(struct gui_txt_ed *edt, char *buf, int x, int y, int row_h,
-               struct res *r) {
+gui_txt_ed_clk(struct gui_txt_ed *edt, int x, int y, int row_h, struct res *r) {
   assert(edt);
-  edt->cur = gui_txt_ed_loc_coord(buf, x, y, row_h, r);
+  edt->cur = gui_txt_ed_loc_coord(edt, x, y, row_h, r);
   edt->sel[0] = edt->sel[1] = edt->cur;
 }
 static void
-gui_txt_ed_drag(struct gui_txt_ed *edt, char *buf, int x, int y, int row_h,
-                struct res *r) {
+gui_txt_ed_drag(struct gui_txt_ed *edt, int x, int y, int row_h, struct res *r) {
   assert(edt);
-  int p = gui_txt_ed_loc_coord(buf, x, y, row_h, r);
+  int p = gui_txt_ed_loc_coord(edt, x, y, row_h, r);
   if (edt->sel[0] == edt->sel[1]) {
     edt->sel[0] = edt->cur;
   }
   edt->cur = edt->sel[1] = p;
 }
 static void
-gui_txt_ed_clamp(struct gui_txt_ed *edt, char *buf) {
+gui_txt_ed_clamp(struct gui_txt_ed *edt) {
   assert(edt);
-  int n = utf_len(dyn_str(buf));
+  int cnt = utf_len(edt->str);
   if (gui_txt_ed_has_sel(edt)) {
-    edt->sel[0] = (edt->sel[0] > n) ? n : edt->sel[0];
-    edt->sel[1] = (edt->sel[1] > n) ? n : edt->sel[1];
+    edt->sel[0] = (edt->sel[0] > cnt) ? cnt : edt->sel[0];
+    edt->sel[1] = (edt->sel[1] > cnt) ? cnt : edt->sel[1];
     edt->cur = (edt->sel[0] == edt->sel[1]) ? edt->sel[0] : edt->cur;
   }
-  if (edt->cur > n) {
-    edt->cur = n;
+  if (edt->cur > cnt) {
+    edt->cur = cnt;
   }
 }
 static void
-gui__txt_edt_del(struct gui_txt_ed *edt, char **buf, int where, int len) {
+gui__txt_edt_del(struct gui_txt_ed *edt, int where, int len) {
   assert(edt);
-  gui_txt_ed_undo_del(edt, buf, where, len);
-  dyn_cut(*buf, where, len);
-  gui_txt_ed_clamp(edt, *buf);
+  gui_txt_ed_undo_del(edt, where, len);
+  edt->str = str_del(edt->buf, edt->str, where, len);
+  gui_txt_ed_clamp(edt);
 }
 static void
-gui_txt_ed_del(struct gui_txt_ed *edt, char **buf, int where, int len) {
+gui_txt_ed_del(struct gui_txt_ed *edt, int where, int len) {
   assert(edt);
-  struct str begin = utf_at(0, dyn_str(*buf), where);
-  struct str end = utf_at(0, strp(begin.str, dyn_end(*buf)), len);
+  struct str begin = utf_at(0, edt->str, where);
+  struct str end = utf_at(0, strp(begin.str, edt->str.end), len);
   if (!begin.len) {
     return;
   }
-  int w = casti(begin.str - *buf);
+  int w = casti(begin.str - edt->buf);
   int n = casti(end.str - begin.str);
-  gui__txt_edt_del(edt, buf, w, n);
+  gui__txt_edt_del(edt, w, n);
 }
 static void
-gui_txt_ed_del_sel(struct gui_txt_ed *edt, char **buf) {
+gui_txt_ed_del_sel(struct gui_txt_ed *edt) {
   assert(edt);
-  gui_txt_ed_clamp(edt, *buf);
+  gui_txt_ed_clamp(edt);
   if (!gui_txt_ed_has_sel(edt)) {
     return;
   }
   if (edt->sel[0] < edt->sel[1]) {
-    gui_txt_ed_del(edt, buf, edt->sel[0], edt->sel[1] - edt->sel[0]);
+    gui_txt_ed_del(edt, edt->sel[0], edt->sel[1] - edt->sel[0]);
     edt->sel[1] = edt->cur = edt->sel[0];
   } else {
-    gui_txt_ed_del(edt, buf, edt->sel[1], edt->sel[0] - edt->sel[1]);
+    gui_txt_ed_del(edt, edt->sel[1], edt->sel[0] - edt->sel[1]);
     edt->sel[0] = edt->cur = edt->sel[1];
   }
 }
@@ -2767,13 +2770,13 @@ gui_txt_ed_move_sel_first(struct gui_txt_ed *edt) {
   edt->sel[1] = edt->sel[0];
 }
 static void
-gui_txt_ed_move_sel_last(struct gui_txt_ed *edt, char *buf) {
+gui_txt_ed_move_sel_last(struct gui_txt_ed *edt) {
   assert(edt);
   if (!gui_txt_ed_has_sel(edt)) {
     return;
   }
   gui_txt_ed_sort_sel(edt);
-  gui_txt_ed_clamp(edt, buf);
+  gui_txt_ed_clamp(edt);
 
   edt->cur = edt->sel[1];
   edt->sel[0] = edt->sel[1];
@@ -2786,7 +2789,7 @@ gui_rune_is_word_boundary(long c) {
   return 0;
 }
 static int
-gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
+gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt) {
   unsigned rune = 0;
   assert(edt);
   if (!edt->cur) {
@@ -2794,8 +2797,8 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
   }
   /* skip all trailing word boundary runes */
   int c = edt->cur - 1;
-  struct str at = utf_at(0, dyn_str(buf), c);
-  for utf_loop_rev(&rune, it, rest, strp(buf, at.str)) {
+  struct str at = utf_at(0, edt->str, c);
+  for utf_loop_rev(&rune, it, rest, strp(edt->buf, at.str)) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
@@ -2812,12 +2815,12 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt, char *buf) {
   return c;
 }
 static int
-gui_txt_ed_move_to_next_word(struct gui_txt_ed *edt, char *buf) {
+gui_txt_ed_move_to_next_word(struct gui_txt_ed *edt) {
   assert(edt);
   unsigned rune = 0;
   int c = edt->cur + 1;
-  struct str at = utf_at(0, dyn_str(buf), c);
-  for utf_loop(&rune, it, rest, strp(buf, at.str)) {
+  struct str at = utf_at(0, edt->str, c);
+  for utf_loop(&rune, it, rest, strp(edt->buf, at.str)) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
@@ -2843,38 +2846,42 @@ gui_txt_ed_prep_sel_at_cur(struct gui_txt_ed *edt) {
   }
 }
 static int
-gui_txt_ed_cut(struct gui_txt_ed *edt, char **buf) {
+gui_txt_ed_cut(struct gui_txt_ed *edt) {
   assert(edt);
   if (gui_txt_ed_has_sel(edt)) {
-    gui_txt_ed_del_sel(edt, buf); /* implicitly clamps */
+    gui_txt_ed_del_sel(edt); /* implicitly clamps */
     return 1;
   }
   return 0;
 }
 static int
-gui_txt_ed_paste(struct gui_txt_ed *edt, struct sys *s, char **buf,
-                 struct str txt) {
+gui_txt_ed_paste(struct gui_txt_ed *edt, struct str txt) {
   assert(edt);
   assert(buf);
 
   /* if there's a selection, the paste should delete it */
-  gui_txt_ed_clamp(edt, *buf);
-  gui_txt_ed_del_sel(edt, buf);
+  gui_txt_ed_clamp(edt);
+  gui_txt_ed_del_sel(edt);
 
-  const int cur = utf_at_idx(dyn_str(*buf), edt->cur);
-  dyn_put(*buf, s, cur, txt.str, txt.len);
+  const int cur = utf_at_idx(edt->str, edt->cur);
+  edt->str = str_put(edt->buf, edt->cap, edt->str, cur, txt);
+  if (edt->str.len) {
+    gui_txt_ed_undo_in(edt, cur, txt.len);
+    edt->cur += utf_len(txt);
+    return 1;
+  }
   gui_txt_ed_undo_in(edt, cur, txt.len);
   return 1;
 }
 static void
-gui_txt_ed_sel_all(struct gui_txt_ed *edt, char *buf) {
+gui_txt_ed_sel_all(struct gui_txt_ed *edt) {
   assert(edt);
   edt->sel[0] = 0;
-  edt->sel[1] = utf_len(dyn_str(buf));
+  edt->sel[1] = utf_len(edt->str);
   edt->cur = edt->sel[1];
 }
 static void
-gui_txt_ed_txt(struct gui_txt_ed *edt, struct sys *s, char **buf, struct str txt) {
+gui_txt_ed_txt(struct gui_txt_ed *edt, struct str txt) {
   assert(edt);
   assert(buf);
 
@@ -2883,31 +2890,34 @@ gui_txt_ed_txt(struct gui_txt_ed *edt, struct sys *s, char **buf, struct str txt
     if (rune == 127 || rune == '\n') {
       continue;
     }
-    struct str cur = utf_at(0, dyn_str(*buf), edt->cur);
-    int at = casti(cur.str - *buf);
-    if (dyn_empty(*buf)) {
-      dyn_asn(*buf, s, it.str, it.len);
+    struct str cur = utf_at(0, edt->str, edt->cur);
+    int at = casti(cur.str - edt->buf);
+    if (!edt->str.len) {
+      edt->str = str_sqz(edt->buf, edt->cap, it);
       edt->cur += 1;
-    } else if (!gui_txt_ed_has_sel(edt) && edt->cur < utf_len(dyn_str(*buf))) {
+    } else if (!gui_txt_ed_has_sel(edt) && edt->cur < utf_len(edt->str)) {
       if (edt->mode == GUI_EDT_MODE_REPLACE) {
-        gui_txt_ed_undo_repl(edt, buf, at, cur.len, it.len);
-        dyn_cut(*buf, at, cur.len);
+        gui_txt_ed_undo_repl(edt, at, cur.len, it.len);
+        edt->str = str_del(edt->buf, edt->str, at, cur.len);
       }
-      dyn_put(*buf, s, at, it.str, it.len);
-      edt->cur += 1;
+      edt->str = str_put(edt->buf, edt->cap, edt->str, at, str(it.str, it.len));
+      if (edt->str.len) {
+        edt->cur += 1;
+      }
     } else {
-      gui_txt_ed_del_sel(edt, buf); /* implicitly clamps */
-      cur = utf_at(0, dyn_str(*buf), edt->cur);
-      at = casti(cur.str - *buf);
-
-      dyn_put(*buf, s, at, it.str, it.len);
-      gui_txt_ed_undo_in(edt, at, it.len);
-      edt->cur += 1;
+      gui_txt_ed_del_sel(edt); /* implicitly clamps */
+      cur = utf_at(0, edt->str, edt->cur);
+      at = casti(cur.str - edt->buf);
+      edt->str = str_put(edt->buf, edt->cap, edt->str, at, str(it.str, it.len));
+      if (edt->str.len) {
+        gui_txt_ed_undo_in(edt, at, it.len);
+        edt->cur += 1;
+      }
     }
   }
 }
 static void
-gui_txt_ed_clip(struct gui_txt_ed *edt, char *buf, struct sys *s) {
+gui_txt_ed_clip(struct gui_txt_ed *edt, struct sys *s) {
   assert(edt);
   assert(s);
   if (!gui_txt_ed_has_sel(edt)) {
@@ -2916,12 +2926,12 @@ gui_txt_ed_clip(struct gui_txt_ed *edt, char *buf, struct sys *s) {
   /* selected text */
   int idx0 = min(edt->sel[0], edt->sel[1]);
   int idx1 = max(edt->sel[1], edt->sel[0]);
-  int sel0 = utf_at_idx(dyn_str(buf), idx0);
-  int sel1 = utf_at_idx(dyn_str(buf), idx1);
-  s->clipboard.set(str(buf + sel0, sel1 - sel0), s->mem.tmp);
+  int sel0 = utf_at_idx(edt->str, idx0);
+  int sel1 = utf_at_idx(edt->str, idx1);
+  s->clipboard.set(str(edt->buf + sel0, sel1 - sel0), s->mem.tmp);
 }
 static int
-gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *ctx) {
+gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
   assert(edt);
   assert(ctx);
 
@@ -2937,7 +2947,7 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   }
   /* selection */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_ALL)) {
-    gui_txt_ed_sel_all(edt, *buf);
+    gui_txt_ed_sel_all(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_UP)) {
@@ -2949,7 +2959,7 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_LEFT)) {
-    gui_txt_ed_clamp(edt, *buf);
+    gui_txt_ed_clamp(edt);
     gui_txt_ed_prep_sel_at_cur(edt);
     if (edt->sel[1] > 0) edt->sel[1]--;
     edt->cur = edt->sel[1];
@@ -2958,22 +2968,22 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_RIGHT)) {
     gui_txt_ed_prep_sel_at_cur(edt);
     edt->sel[1]++;
-    gui_txt_ed_clamp(edt, *buf);
+    gui_txt_ed_clamp(edt);
     edt->cur = edt->sel[1];
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_LEFT)) {
     if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
-    edt->cur = gui_txt_ed_move_to_prev_word(edt, *buf);
+    edt->cur = gui_txt_ed_move_to_prev_word(edt);
     edt->sel[1] = edt->cur;
-    gui_txt_ed_clamp(edt, *buf);
+    gui_txt_ed_clamp(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_RIGHT)) {
     if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
-    edt->cur = gui_txt_ed_move_to_next_word(edt, *buf);
+    edt->cur = gui_txt_ed_move_to_next_word(edt);
     edt->sel[1] = edt->cur;
-    gui_txt_ed_clamp(edt, *buf);
+    gui_txt_ed_clamp(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_START)) {
@@ -2983,7 +2993,7 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_END)) {
     gui_txt_ed_prep_sel_at_cur(edt);
-    edt->cur = edt->sel[1] = utf_len(dyn_str(*buf));
+    edt->cur = edt->sel[1] = utf_len(edt->str);
     *ret = 1;
   }
   /* movement */
@@ -2996,25 +3006,26 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_LEFT)) {
-    if (gui_txt_ed_has_sel(edt))
+    if (gui_txt_ed_has_sel(edt)) {
       gui_txt_ed_move_sel_first(edt);
-    else if (edt->cur > 0)
+    } else if (edt->cur > 0) {
       edt->cur--;
+    }
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUR_RIGHT)) {
     if (gui_txt_ed_has_sel(edt)) {
-      gui_txt_ed_move_sel_last(edt, *buf);
+      gui_txt_ed_move_sel_last(edt);
     } else {
       edt->cur++;
     }
-    gui_txt_ed_clamp(edt, *buf);
+    gui_txt_ed_clamp(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_WORD_LEFT)) {
     if (!gui_txt_ed_has_sel(edt)) {
-      edt->cur = gui_txt_ed_move_to_prev_word(edt, *buf);
-      gui_txt_ed_clamp(edt, *buf);
+      edt->cur = gui_txt_ed_move_to_prev_word(edt);
+      gui_txt_ed_clamp(edt);
     } else {
       gui_txt_ed_move_sel_first(edt);
     }
@@ -3022,10 +3033,10 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_WORD_RIGHT)) {
     if (!gui_txt_ed_has_sel(edt)) {
-      edt->cur = gui_txt_ed_move_to_next_word(edt, *buf);
-      gui_txt_ed_clamp(edt, *buf);
+      edt->cur = gui_txt_ed_move_to_next_word(edt);
+      gui_txt_ed_clamp(edt);
     } else {
-      gui_txt_ed_move_sel_last(edt, *buf);
+      gui_txt_ed_move_sel_last(edt);
     }
     *ret = 1;
   }
@@ -3034,21 +3045,21 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_END)) {
-    edt->cur = utf_len(dyn_str(*buf));
+    edt->cur = utf_len(edt->str);
     edt->sel[0] = edt->sel[1] = 0;
     *ret = 1;
   }
   /* modification */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_DELETE)) {
     if (!gui_txt_ed_has_sel(edt)) {
-      int n = utf_len(dyn_str(*buf));
+      int n = utf_len(edt->str);
       if (edt->cur < n) {
-        gui_txt_ed_del(edt, buf, edt->cur, 1);
+        gui_txt_ed_del(edt, edt->cur, 1);
       } else if (n) {
-        gui_txt_ed_del(edt, buf, n-1, 1);
+        gui_txt_ed_del(edt, n-1, 1);
       }
     } else {
-      gui_txt_ed_del_sel(edt, buf);
+      gui_txt_ed_del_sel(edt);
     }
     mod = 1;
     *ret = 1;
@@ -3056,33 +3067,33 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REMOVE)) {
     if (!gui_txt_ed_has_sel(edt)) {
       if (edt->cur > 0) {
-        gui_txt_ed_del(edt, buf, edt->cur - 1, 1);
+        gui_txt_ed_del(edt, edt->cur - 1, 1);
         edt->cur = max(0, edt->cur - 1);
-      } else if (utf_len(dyn_str(*buf))) {
-        gui_txt_ed_del(edt, buf, 0, 1);
+      } else if (utf_len(edt->str)) {
+        gui_txt_ed_del(edt, 0, 1);
       }
     } else {
-      gui_txt_ed_del_sel(edt, buf);
+      gui_txt_ed_del_sel(edt);
     }
     mod = 1;
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_UNDO)) {
-    gui_txt_ed_undo(edt, ctx->sys, buf);
+    gui_txt_ed_undo(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REDO)) {
-    gui_txt_ed_redo(edt, ctx->sys, buf);
+    gui_txt_ed_redo(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_COPY)) {
-    gui_txt_ed_clip(edt, *buf, ctx->sys);
+    gui_txt_ed_clip(edt, ctx->sys);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_CUT)) {
     if (gui_txt_ed_has_sel(edt)) {
-      gui_txt_ed_clip(edt, *buf, ctx->sys);
-      gui_txt_ed_cut(edt, buf);
+      gui_txt_ed_clip(edt, ctx->sys);
+      gui_txt_ed_cut(edt);
       mod = 1;
     }
     *ret = 1;
@@ -3092,7 +3103,7 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
     struct arena_scope scp;
     confine arena_scope(s->mem.tmp, &scp, s) {
       struct str p = s->clipboard.get(s->mem.tmp);
-      gui_txt_ed_paste(edt, s, buf, p);
+      gui_txt_ed_paste(edt, p);
     }
     mod = 1;
   }
@@ -3105,20 +3116,21 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, char **buf, struct gui_ctx *
  */
 static int
 gui_calc_edit_off(int *cur_ext, struct res *ret, const struct gui_txt_ed *edt,
-                  const char *slc, const int *txt_ext, int width) {
+                  const int *txt_ext, int width) {
   assert(edt);
   assert(slc);
   assert(cur_ext);
   assert(txt_ext);
 
-  res.fnt.ext(cur_ext, ret, str(slc, edt->cur));
+  struct str cur = utf_at(0, edt->str, edt->cur);
+  res.fnt.ext(cur_ext, ret, strp(edt->str.str, cur.str));
   int off = cur_ext[0] - (width >> 1);
   off = clamp(0, off, max(0, txt_ext[0] - width));
   return off;
 }
 static void
 gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
-                           struct gui_txt_ed *edt, char *buf, int cur_off,
+                           struct gui_txt_ed *edt, int cur_off,
                            int *txt_ext) {
   assert(ctx);
   assert(pan);
@@ -3126,12 +3138,12 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(txt_ext);
 
   /* calculate selection begin/end pixel offset */
-  int sel0 = utf_at_idx(dyn_str(buf), min(edt->sel[0], edt->sel[1]));
-  int sel1 = utf_at_idx(dyn_str(buf), max(edt->sel[1], edt->sel[0]));
+  int sel0 = utf_at_idx(edt->str, min(edt->sel[0], edt->sel[1]));
+  int sel1 = utf_at_idx(edt->str, max(edt->sel[1], edt->sel[0]));
 
   int sel_end_off[2] = {0}, sel_begin_off[2] = {0};
-  gui_txt_ext(sel_begin_off, ctx, str(buf, sel0));
-  gui_txt_ext(sel_end_off, ctx, str(buf, sel1));
+  gui_txt_ext(sel_begin_off, ctx, str(edt->buf, sel0));
+  gui_txt_ext(sel_end_off, ctx, str(edt->buf, sel1));
 
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
   if (sel0 > 0) {
@@ -3139,7 +3151,7 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
     struct gui_panel lbl = {.box = pan->box, .state = pan->state};
     lbl.box.x = gui_min_ext(pan->box.x.min - cur_off, sel_begin_off[0]);
     gui_align_txt(&lbl.box, &align, txt_ext);
-    gui_txt_drw(ctx, &lbl, str(buf, sel0), -1, 0);
+    gui_txt_drw(ctx, &lbl, str(edt->buf, sel0), -1, 0);
   }
   if (gui_txt_ed_has_sel(edt)) {
     /* draw text in selection */
@@ -3153,9 +3165,9 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
 
     struct gui_panel lbl = {.box = b, .state = pan->state};
     gui_align_txt(&lbl.box, &align, txt_ext);
-    gui_txt_drw(ctx, &lbl, strp(buf + sel0, buf + sel1), -1, 0);
+    gui_txt_drw(ctx, &lbl, strp(edt->buf + sel0, edt->buf + sel1), -1, 0);
   }
-  const int buf_len = utf_len(dyn_str(buf));
+  const int buf_len = utf_len(edt->str);
   if (sel1 < buf_len) {
     /* text after selection */
     int sel_w = txt_ext[0] - sel_end_off[0];
@@ -3165,13 +3177,13 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
     lbl.box.x = gui_min_ext(pan->box.x.min + off, sel_w);
 
     gui_align_txt(&lbl.box, &align, txt_ext);
-    gui_txt_drw(ctx, &lbl, strp(buf + sel1, dyn_end(buf)), -1, 0);
+    gui_txt_drw(ctx, &lbl, strp(edt->buf + sel1, edt->str.end), -1, 0);
   }
 }
 static void
 gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
                    struct gui_panel *pan, struct gui_txt_ed *edt,
-                   char *buf, int cur_off, int *cur_ext, int *txt_ext) {
+                   int cur_off, int *cur_ext, int *txt_ext) {
   assert(ctx);
   assert(box);
   assert(pan);
@@ -3185,12 +3197,12 @@ gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
   {
     box->active = pan->id == ctx->focused;
     if (box->active && gui_txt_ed_has_sel(edt)) {
-      gui_edit_field_drw_txt_sel(ctx, pan, edt, buf, cur_off, txt_ext);
+      gui_edit_field_drw_txt_sel(ctx, pan, edt, cur_off, txt_ext);
     } else {
       static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
       struct gui_panel lbl = {.box = pan->box, .state = pan->state};
       gui_align_txt(&lbl.box, &align, txt_ext);
-      gui_txt_drw(ctx, &lbl, dyn_str(buf), -1, 0);
+      gui_txt_drw(ctx, &lbl, edt->str, -1, 0);
     }
   }
   gui_clip_end(ctx, &clip);
@@ -3207,7 +3219,7 @@ gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
 }
 static void
 gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
-                     struct gui_panel *pan, struct gui_txt_ed *edt, char **buf,
+                     struct gui_panel *pan, struct gui_txt_ed *edt,
                      struct gui_input *in, int cur_off) {
   assert(in);
   assert(ctx);
@@ -3221,14 +3233,14 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
     box->focused = 1;
     edt->mode = GUI_EDT_MODE_INSERT;
     if (box->flags & GUI_EDIT_SEL_ON_ACT) {
-      gui_txt_ed_sel_all(edt, *buf);
+      gui_txt_ed_sel_all(edt);
     } else if (box->flags & GUI_EDIT_GOTO_END_ON_ACT) {
-      int n = utf_len(dyn_str(*buf));
+      int n = utf_len(edt->str);
       edt->cur = edt->sel[0] = edt->sel[1] = n;
     }
     if (box->flags & GUI_EDIT_CLR_ON_ACT) {
-      dyn_clr(*buf);
       edt->cur = edt->sel[0] = edt->sel[1] = 0;
+      edt->str = str_nil;
     }
   }
   if (in->lost_focus) {
@@ -3239,7 +3251,7 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
   box->active = pan->id == ctx->focused;
   if (box->active) {
     int key = 0;
-    box->mod = !!gui_txt_ed_on_key(&key, edt, buf, ctx);
+    box->mod = !!gui_txt_ed_on_key(&key, edt, ctx);
     if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_COMMIT)) {
       ctx->focused = ctx->root.id;
       box->unfocused = 1;
@@ -3250,21 +3262,21 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
       box->aborted = 1;
     }
     if (!key && s->txt_len) {
-      gui_txt_ed_txt(edt, ctx->sys, buf, str(s->txt, s->txt_len));
+      gui_txt_ed_txt(edt, str(s->txt, s->txt_len));
       box->mod = 1;
     }
   }
   int mouse_pos = s->mouse.pos[0] - pan->box.x.min + cur_off;
   if (in->mouse.btn.left.pressed) {
-    gui_txt_ed_clk(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res);
+    gui_txt_ed_clk(edt, mouse_pos, 0, pan->box.y.ext, ctx->res);
   } else if (in->mouse.btn.left.dragged) {
-    gui_txt_ed_drag(edt, *buf, mouse_pos, 0, pan->box.y.ext, ctx->res);
+    gui_txt_ed_drag(edt, mouse_pos, 0, pan->box.y.ext, ctx->res);
   }
 }
-static void
+static struct str
 gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
                struct gui_panel *pan, struct gui_panel *parent,
-               struct gui_txt_ed *edt, char **buf) {
+               struct gui_txt_ed *edt) {
   assert(edt);
   assert(ctx);
   assert(box);
@@ -3277,10 +3289,10 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
     /* calculate cursor offset  */
     int cur_ext[2], txt_ext[2];
     if (pan->id == ctx->focused) {
-      gui_txt_ed_clamp(edt, *buf);
+      gui_txt_ed_clamp(edt);
     }
-    res.fnt.ext(txt_ext, ctx->res, dyn_str(*buf));
-    const int cur = gui_calc_edit_off(cur_ext, ctx->res, edt, *buf, txt_ext, pan->box.x.ext);
+    res.fnt.ext(txt_ext, ctx->res, edt->str);
+    int cur = gui_calc_edit_off(cur_ext, ctx->res, edt, txt_ext, pan->box.x.ext);
     if (pan->is_hot) {
       struct sys *s = ctx->sys;
       s->cursor = SYS_CUR_IBEAM;
@@ -3289,11 +3301,12 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
     case GUI_INPUT: {
       struct gui_input in = {0};
       gui_input(&in, ctx, pan, GUI_BTN_LEFT);
-      gui_edit_field_input(ctx, box, pan, edt, buf, &in, cur);
+      gui_edit_field_input(ctx, box, pan, edt, &in, cur);
     } break;
     case GUI_RENDER: {
-      if (pan->state != GUI_HIDDEN)
-        gui_edit_field_drw(ctx, box, pan, edt, *buf, cur, cur_ext, txt_ext);
+      if (pan->state != GUI_HIDDEN) {
+        gui_edit_field_drw(ctx, box, pan, edt, cur, cur_ext, txt_ext);
+      }
     } break;
     case GUI_FINISHED:
       break;
@@ -3310,12 +3323,13 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
       case GUI_DND_ENTER:
       case GUI_DND_PREVIEW: break;
       case GUI_DND_DELIVERY: {
-        dyn_asn_str(*buf, ctx->sys, *str);
+        edt->str = str_sqz(edt->buf, edt->cap, *str);
       } break;}
       paq->response = GUI_DND_ACCEPT;
     }
     gui_dnd_dst_end(ctx);
   }
+  return edt->str;
 }
 static void
 gui_edit_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
@@ -3340,9 +3354,10 @@ gui_edit_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   gui_drw_hln(ctx, b->y.max, b->x.min, b->x.max);
   gui_drw_vln(ctx, b->x.max, b->y.min + 1, b->y.max);
 }
-static void
+static struct str
 gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
-         struct gui_panel *parent, struct gui_txt_ed *ed, char **buf) {
+         struct gui_panel *parent, struct gui_txt_ed *ed) {
+
   assert(ed);
   assert(ctx);
   assert(edt);
@@ -3352,7 +3367,8 @@ gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
   gui_panel_begin(ctx, &edt->pan, parent);
   {
     struct gui_box *b = &edt->box;
-    if (ctx->pass == GUI_RENDER && edt->pan.state != GUI_HIDDEN) {
+    if (ctx->pass == GUI_RENDER &&
+        edt->pan.state != GUI_HIDDEN) {
       gui_edit_drw(ctx, &edt->pan);
     }
     /* content */
@@ -3360,13 +3376,14 @@ gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
     struct gui_panel content = {.focusable = 1};
     content.box.x = gui_shrink(&b->x, pad[0]);
     content.box.y = gui_shrink(&b->y, pad[1]);
-    gui_edit_field(ctx, edt, &content, &edt->pan, ed, buf);
+    gui_edit_field(ctx, edt, &content, &edt->pan, ed);
   }
   gui_panel_end(ctx, &edt->pan, parent);
+  return ed->str;
 }
-static void
+static struct str
 gui_edit_box(struct gui_ctx *ctx, struct gui_edit_box *box,
-             struct gui_panel *parent, char **buf) {
+             struct gui_panel *parent, char *buf, int cap, struct str s) {
   assert(buf);
   assert(ctx);
   assert(box);
@@ -3377,10 +3394,10 @@ gui_edit_box(struct gui_ctx *ctx, struct gui_edit_box *box,
   if (ctx->focused == id) {
     edt = &ctx->txt_ed_state;
     if (ctx->prev_focused != id) {
-      gui_txt_ed_init(edt);
+      gui_txt_ed_init(edt, buf, cap, s);
     }
   }
-  gui_edit(ctx, box, parent, edt, buf);
+  return gui_edit(ctx, box, parent, edt);
 }
 
 /* ---------------------------------------------------------------------------
@@ -3422,10 +3439,12 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *spin) {
   assert(spin);
 
   int mod = 0;
-  if (dyn_empty(ctx->txt_state.buf)) {
-    dyn_add(ctx->txt_state.buf, ctx->sys, '0');
+  if (!ctx->txt_state.str.len) {
+    ctx->txt_state.buf[0] = '0';
+    ctx->txt_state.str = str(ctx->txt_state.buf, 1);
   }
-  dyn_add(ctx->txt_state.buf, ctx->sys, 0);
+  int last = min(ctx->txt_state.str.len, cntof(ctx->txt_state.buf)-1);
+  ctx->txt_state.buf[last] = 0;
   switch (spin->typ) {
     case GUI_SPIN_INT: {
       char *ep = 0;
@@ -3447,7 +3466,6 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *spin) {
       assert(0);
       break;
   }
-  dyn_pop(ctx->txt_state.buf);
   return mod;
 }
 static void
@@ -3457,20 +3475,21 @@ gui_spin_focus(struct gui_ctx *ctx, struct gui_spin_val *spin,
   assert(ctx);
   assert(spin);
 
-  dyn_clr(ctx->txt_state.buf);
+  ctx->txt_state.buf[0] = 0;
+  ctx->txt_state.str = str_nil;
   switch (spin->typ) {
   case GUI_SPIN_INT:
-    dyn_fmt(ctx->txt_state.buf, ctx->sys, "%d", spin->val.i);
+    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%d", spin->val.i);
     break;
   case GUI_SPIN_FLT:
-    dyn_fmt(ctx->txt_state.buf, ctx->sys, "%.2f", spin->val.f);
+    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%.2f", spin->val.f);
     break;
   default:
     assert(0);
     break;
   }
-  gui_txt_ed_init(ed);
-  gui_txt_ed_sel_all(ed, ctx->txt_state.buf);
+  gui_txt_ed_init(ed, ctx->txt_state.buf, cntof(ctx->txt_state.buf), ctx->txt_state.str);
+  gui_txt_ed_sel_all(ed);
 }
 static int
 gui_spin_key(struct gui_ctx *ctx, struct gui_spin_val *spin) {
@@ -3574,18 +3593,15 @@ gui_spin_abs_drag(struct sys *s, struct gui_spin_val *spin,
     break;
   }
 }
-static void
+static struct str
 gui_spin_str(char *buf, int cap, const struct gui_spin_val *spin) {
   assert(buf);
   assert(spin);
-
   switch (spin->typ) {
   case GUI_SPIN_INT:
-    fmtsn(buf, cap, "%d", spin->val.i);
-    break;
+    return str_fmtsn(buf, cap, "%d", spin->val.i);
   case GUI_SPIN_FLT:
-    fmtsn(buf, cap, "%.2f", spin->val.f);
-    break;
+    return str_fmtsn(buf, cap, "%.2f", spin->val.f);
   default:
     assert(0);
     break;
@@ -3640,22 +3656,19 @@ gui_spin(struct gui_ctx *ctx, struct gui_spin *s, struct gui_panel *parent,
       if (ctx->prev_focused != id) {
         gui_spin_focus(ctx, spin, ed);
       }
-      struct gui_txt_buf *txt = &ctx->txt_state;
-      gui_edit_field(ctx, &edt, &edit_pan, &s->pan, ed, &txt->buf);
+      gui_edit_field(ctx, &edt, &edit_pan, &s->pan, ed);
       if (edt.commited) {
         modified = gui_spin_commit(ctx, spin) || modified;
       }
     } else {
       /* convert number to string */
-      char buf[dyn_fix_siz(char, 256)];
-      char *dum = dyn__static(buf, 256);
-      gui_spin_str(dum, 256, spin);
+      char buf[256];
+      struct str str = gui_spin_str(buf, cntof(buf), spin);
 
       /* edit field */
       struct gui_txt_ed *ed = &ctx->txt_ed_tmp_state;
-      gui_txt_ed_init(ed);
-
-      gui_edit_field(ctx, &edt, &edit_pan, &s->pan, ed, &dum);
+      gui_txt_ed_init(ed, buf, cntof(buf), str);
+      gui_edit_field(ctx, &edt, &edit_pan, &s->pan, ed);
       if (edt.focused) {
         gui_spin_focus(ctx, spin, &ctx->txt_ed_state);
       } else if (edt.unfocused) {
@@ -3827,7 +3840,8 @@ gui_grp_begin(struct gui_ctx *ctx, struct gui_grp *grp,
   gui_txt_ext(grp->ext, ctx, txt);
   grp->content.y = gui_min_max(grp->box.y.min + grp->ext[1], grp->box.y.max);
   grp->content.x = grp->box.x;
-  if (ctx->pass == GUI_RENDER && grp->pan.state != GUI_HIDDEN) {
+  if (ctx->pass == GUI_RENDER &&
+      grp->pan.state != GUI_HIDDEN) {
     gui_grp_drw_hdr(ctx, grp, &grp->pan, txt);
   }
 }
@@ -3842,7 +3856,8 @@ gui_grp_end(struct gui_ctx *ctx, struct gui_grp *grp, struct gui_panel *parent) 
 
   grp->pan.box.x = gui_min_ext(grp->pan.box.x.min, ext[0]);
   grp->pan.box.y = gui_min_ext(grp->pan.box.y.min, ext[1]);
-  if (ctx->pass == GUI_RENDER && grp->pan.state != GUI_HIDDEN) {
+  if (ctx->pass == GUI_RENDER &&
+      grp->pan.state != GUI_HIDDEN) {
     gui_grp_drw(ctx, grp, &grp->pan);
   }
   gui_panel_end(ctx, &grp->pan, parent);
@@ -5562,21 +5577,34 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(tab);
   assert(parent);
 
-  tab->tab_w = ctx->cfg.tab;
-  tab->off = tab->box.x.min;
   tab->total = cnt;
+  tab->tab_w = ctx->cfg.tab;
   tab->sel.idx = sel_idx;
   tab->sel.mod = 0;
 
-  tab->hdr.x = tab->box.x;
-  tab->hdr.y = gui_min_ext(tab->box.y.min, ctx->cfg.item);
-  tab->cnt = min(tab->total, (tab->hdr.x.ext - ctx->cfg.scrl) / tab->tab_w);
-  tab->at = tab->hdr.y.max;
-
   int gap = ctx->cfg.pan_gap[0];
-  tab->bdy.x = gui_shrink(&tab->hdr.x, ctx->cfg.pan_pad[0]);
-  tab->bdy.y = gui_min_max(tab->hdr.y.max + gap, tab->box.y.max);
-  tab->bdy.y = gui_shrink(&tab->bdy.y, ctx->cfg.pan_gap[1]);
+  switch(tab->hdr_pos) {
+  case GUI_TAB_HDR_TOP: {
+    tab->hdr.x = tab->box.x;
+    tab->hdr.y = gui_min_ext(tab->box.y.min, ctx->cfg.item);
+    tab->at = tab->hdr.y.max;
+    tab->off = tab->box.x.min;
+
+    tab->bdy.x = gui_shrink(&tab->hdr.x, ctx->cfg.pan_pad[0]);
+    tab->bdy.y = gui_min_max(tab->hdr.y.max + gap, tab->box.y.max);
+    tab->bdy.y = gui_shrink(&tab->bdy.y, ctx->cfg.pan_gap[1]);
+  } break;
+  case GUI_TAB_HDR_BOT: {
+    tab->hdr.x = tab->box.x;
+    tab->hdr.y = gui_max_ext(tab->box.y.max, ctx->cfg.item);
+    tab->at = tab->hdr.y.min;
+    tab->off = tab->box.x.max;
+
+    tab->bdy.x = gui_shrink(&tab->hdr.x, ctx->cfg.pan_pad[0]);
+    tab->bdy.y = gui_min_max(tab->box.y.min, tab->hdr.y.min - gap);
+    tab->bdy.y = gui_shrink(&tab->bdy.y, ctx->cfg.pan_gap[1]);
+  } break;}
+  tab->cnt = min(tab->total, (tab->hdr.x.ext - ctx->cfg.scrl) / tab->tab_w);
 
   tab->pan.box = tab->box;
   gui_panel_begin(ctx, &tab->pan, parent);
@@ -5597,9 +5625,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     }
     gui_btn_end(ctx, &tab->btn, &tab->pan);
     gui_enable(ctx, tab->cnt >= cnt);
-
     tab->hdr.x = gui_min_max(tab->btn.box.x.max, tab->hdr.x.max);
-    tab->off = tab->hdr.x.min;
   }
 }
 static void
@@ -5622,6 +5648,12 @@ gui_tab_hdr_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(tab);
   assert(hdr);
 
+  switch(tab->hdr_pos) {
+  case GUI_TAB_HDR_TOP:
+    tab->off = hdr->box.x.min; break;
+  case GUI_TAB_HDR_BOT:
+    tab->off = hdr->box.x.max; break;
+  }
   hdr->pan.box = hdr->box;
   gui_panel_begin(ctx, &hdr->pan, &tab->pan);
 }
@@ -5640,25 +5672,50 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   assert(slot);
 
   const struct gui_box *p = &slot->box;
-  int top = p->y.min + ((!is_act) ? 1 : 0);
-  int height = p->y.ext - ((!is_act) ? 1 : 0);
+  switch(tab->hdr_pos) {
+  case GUI_TAB_HDR_TOP: {
+    int top = p->y.min + ((!is_act) ? 1 : 0);
+    int height = p->y.ext - ((!is_act) ? 1 : 0);
 
-  gui_drw_line_style(ctx, 1);
-  gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
-  gui_drw_box(ctx, p->x.min, top, p->x.max, top + height);
+    gui_drw_line_style(ctx, 1);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
+    gui_drw_box(ctx, p->x.min, top, p->x.max, top + height);
 
-  gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-  gui_drw_hln(ctx, top, p->x.min, p->x.max - 1);
-  if (!is_act) {
-    gui_drw_hln(ctx, p->y.max, p->x.min, p->x.max);
-  }
-  if (tab->idx == 0 || (tab->idx - 1) != tab->sel.idx) {
-    gui_drw_vln(ctx, p->x.min, top, p->y.max);
-  }
-  if (tab->sel.idx != (tab->idx + 1)) {
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
+    gui_drw_hln(ctx, top, p->x.min, p->x.max - 1);
+    if (!is_act) {
+      gui_drw_hln(ctx, p->y.max, p->x.min, p->x.max);
+    }
+    if (tab->idx == 0 || (tab->idx - 1) != tab->sel.idx) {
+      gui_drw_vln(ctx, p->x.min, top, p->y.max);
+    }
+    if (tab->sel.idx != (tab->idx + 1)) {
+      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
+      gui_drw_vln(ctx, p->x.max - 1, top, p->y.max);
+    }
+  } break;
+  case GUI_TAB_HDR_BOT: {
+    int bot = p->y.max + ((!is_act) ? 1 : 0);
+    int height = p->y.ext - ((!is_act) ? 1 : 0);
+
+    gui_drw_line_style(ctx, 1);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
+    gui_drw_box(ctx, p->x.min, bot, p->x.max, bot - height);
+
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-    gui_drw_vln(ctx, p->x.max - 1, top, p->y.max);
-  }
+    gui_drw_hln(ctx, bot, p->x.min, p->x.max - 1);
+    if (!is_act) {
+      gui_drw_hln(ctx, p->y.min, p->x.min, p->x.max);
+    }
+    if (tab->idx == 0 || (tab->idx - 1) != tab->sel.idx) {
+      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
+      gui_drw_vln(ctx, p->x.min, bot, p->y.min);
+    }
+    if (tab->sel.idx != (tab->idx + 1)) {
+      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
+      gui_drw_vln(ctx, p->x.max - 1, p->y.min, bot);
+    }
+  } break;}
 }
 static void
 gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -5669,8 +5726,16 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(slot);
 
   int is_act = (tab->sel.idx == tab->idx);
-  hdr->slot.x = gui_min_ext(tab->off, tab->tab_w);
-  hdr->slot.y = hdr->pan.box.y;
+  switch(tab->hdr_pos) {
+  default:
+  case GUI_TAB_HDR_TOP: {
+    hdr->slot.x = gui_min_ext(tab->off, tab->tab_w);
+    hdr->slot.y = hdr->pan.box.y;
+  } break;
+  case GUI_TAB_HDR_BOT: {
+    hdr->slot.x = gui_max_ext(tab->off, tab->tab_w);
+    hdr->slot.y = hdr->pan.box.y;
+  } break;}
 
   slot->box = hdr->slot;
   slot->focusable = is_act != 0;
@@ -5678,9 +5743,15 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     gui__tab_hdr_slot_drw(ctx, tab, slot, is_act);
   }
   hdr->id = id;
-  tab->off = slot->box.x.max;
   slot->box.x = gui_shrink(&slot->box.x, ctx->cfg.pan_pad[0]);
   hdr->slot = slot->box;
+
+  switch(tab->hdr_pos) {
+  case GUI_TAB_HDR_TOP:
+    tab->off = slot->box.x.max; break;
+  case GUI_TAB_HDR_BOT:
+    tab->off = slot->box.x.min; break;
+  }
 }
 static void
 gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -5756,7 +5827,7 @@ gui_tab_hdr_slot_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 }
 static void
 gui_tab_hdr_slot(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                    struct gui_tab_ctl_hdr *hdr, struct str txt) {
+                 struct gui_tab_ctl_hdr *hdr, struct str txt) {
   assert(ctx);
   assert(tab);
   assert(hdr);
@@ -5769,15 +5840,28 @@ gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   assert(tab);
   assert(pan);
   const struct gui_box *b = &pan->box;
-  gui_drw_line_style(ctx, 1);
 
-  gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-  gui_drw_hln(ctx, tab->at, tab->off, b->x.max - 2);
-  gui_drw_vln(ctx, b->x.min, tab->at, b->y.max - 1);
+  switch(tab->hdr_pos) {
+  case GUI_TAB_HDR_TOP: {
+    gui_drw_line_style(ctx, 1);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
+    gui_drw_hln(ctx, tab->at, tab->off, b->x.max - 2);
+    gui_drw_vln(ctx, b->x.min, tab->at, b->y.max - 1);
 
-  gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-  gui_drw_hln(ctx, b->y.max - 1, b->x.min + 1, b->x.max - 2);
-  gui_drw_vln(ctx, b->x.max - 2, tab->at, b->y.max - 1);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
+    gui_drw_hln(ctx, b->y.max - 1, b->x.min + 1, b->x.max - 2);
+    gui_drw_vln(ctx, b->x.max - 2, tab->at, b->y.max - 1);
+  } break;
+  case GUI_TAB_HDR_BOT: {
+    gui_drw_line_style(ctx, 1);
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
+    gui_drw_hln(ctx, b->y.min, b->x.min, b->x.max);
+    gui_drw_vln(ctx, b->x.min, b->y.min, tab->at);
+
+    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
+    gui_drw_hln(ctx, tab->at, b->x.min, tab->off);
+    gui_drw_vln(ctx, b->x.max - 2, b->y.min, tab->at);
+  } break;}
 }
 static void
 gui_tab_ctl_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -5785,7 +5869,8 @@ gui_tab_ctl_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(ctx);
   assert(tab);
   assert(parent);
-  if (ctx->pass == GUI_RENDER && tab->pan.state != GUI_HIDDEN) {
+  if (ctx->pass == GUI_RENDER &&
+      tab->pan.state != GUI_HIDDEN) {
     gui__tab_ctl_drw(ctx, tab, &tab->pan);
   }
   gui_panel_end(ctx, &tab->pan, parent);
@@ -6464,7 +6549,6 @@ gui_tml_trk_evt(struct gui_ctx *ctx, struct gui_tml *t,
 static const struct gui_api gui__api = {
   .version = GUI_VERSION,
   .init = gui_init,
-  .free = gui_free,
   .begin = gui_begin,
   .end = gui_end,
   .enable = gui_enable,
@@ -6626,6 +6710,7 @@ static const struct gui_api gui__api = {
       .sel_all = gui_txt_ed_sel_all,
     },
   },
+#if 0
   .spin = {
     .val = gui_spin,
     .flt = gui_spin_flt,
@@ -6633,6 +6718,7 @@ static const struct gui_api gui__api = {
     .num = gui_spin_int,
     .i = gui_spin_i,
   },
+#endif
   .grp = {
     .begin = gui_grp_begin,
     .end = gui_grp_end,

@@ -185,7 +185,6 @@ struct gui_panel {
   unsigned has_focus : 1;
   unsigned is_focused : 1;
 };
-
 enum gui_collapse_state {
   GUI_COLLAPSED,
   GUI_EXPANDED,
@@ -283,6 +282,10 @@ enum gui_txt_ed_mode {
   GUI_EDT_MODE_REPLACE
 };
 struct gui_txt_ed {
+  struct str str;
+  char *buf;
+  int cap;
+
   int off, cur;
   int sel[2];
 
@@ -316,6 +319,16 @@ struct gui_edit_box {
 };
 
 /* Widget: Scroll */
+enum gui_direction {
+  GUI_NORTH = 0x01,
+  GUI_WEST = 0x02,
+  GUI_SOUTH = 0x04,
+  GUI_EAST = 0x08
+};
+enum gui_dir {
+  GUI_DIR_HORIZONTAL = GUI_NORTH | GUI_SOUTH,
+  GUI_DIR_VERTICAL = GUI_WEST | GUI_EAST,
+};
 struct gui_scrl {
   struct gui_box box;     /* in */
   int min[2];             /* in */
@@ -731,16 +744,21 @@ struct gui_tab_ctl_sort {
   unsigned mod : 1;
   int dst, src;
 };
+enum gui_tab_ctl_hdr_pos {
+  GUI_TAB_HDR_TOP = 0,
+  GUI_TAB_HDR_BOT,
+};
 struct gui_tab_ctl {
-  struct gui_box box;           /* in */
-  struct gui_panel pan;         /* out */
-  struct gui_box bdy;           /* out */
-  struct gui_box hdr;           /* out */
-  int cnt;                      /* out */
-  struct gui_tab_ctl_sel sel;   /* in-out */
-  struct gui_btn btn;           /* out */
-  unsigned show_btn : 1;        /* in */
-  struct gui_tab_ctl_sort sort; /* out */
+  struct gui_box box;               /* in */
+  struct gui_panel pan;             /* out */
+  struct gui_box bdy;               /* out */
+  struct gui_box hdr;               /* out */
+  int cnt;                          /* out */
+  struct gui_tab_ctl_sel sel;       /* in-out */
+  struct gui_btn btn;               /* out */
+  unsigned show_btn : 1;            /* in */
+  struct gui_tab_ctl_sort sort;     /* out */
+  enum gui_tab_ctl_hdr_pos hdr_pos; /* in */
   /* internal */
   int tab_w;
   int total, idx;
@@ -750,8 +768,8 @@ struct gui_tab_ctl {
 /* Widget: Grid */
 enum gui_grid_flags {
   GUI_GRID_DFLT = 0,
-  GUI_GRID_X    = 1 << 0,
-  GUI_GRID_Y    = 1 << 1,
+  GUI_GRID_X    = 0x01,
+  GUI_GRID_Y    = 0x02,
   GUI_GRID_XY   = GUI_GRID_X|GUI_GRID_Y,
 };
 struct gui_grid {
@@ -958,7 +976,8 @@ struct gui_btn_state {
 };
 struct gui_txt_buf {
   unsigned long long owner_id;
-  char *buf;
+  struct str str;
+  char buf[2*1024];
 };
 enum gui_dnd_paq_state {
   GUI_DND_ENTER,
@@ -1001,9 +1020,6 @@ struct gui_dnd_src_arg {
   enum gui_mouse_btn_id drag_btn;
 };
 struct gui_args {
-  int vtx_mem;
-  int idx_mem;
-  int txt_mem;
   float scale;
   enum gui_col_scheme scm;
 };
@@ -1035,10 +1051,15 @@ struct gui_ctx {
   unsigned long long cur_id;
 
   /* draw */
-  struct mem_blk *vtx_mem;
-  struct mem_blk *idx_mem;
+  int vtx_buf_siz;
+  int idx_buf_siz;
+  void *vtx_buf;
+  void *idx_buf;
   int line_size;
   unsigned drw_col;
+  unsigned oom : 1;
+  unsigned oom_vtx_buf : 1;
+  unsigned oom_idx_buf : 1;
 
   /* drag & drop */
   unsigned dnd_act : 1;
@@ -1243,21 +1264,21 @@ struct gui_scrl_api {
   void (*barv)(struct gui_ctx *ctx, struct gui_scrl_bar *s, struct gui_panel *parent);
 };
 struct gui_edt_buf {
-  void (*init)(struct gui_txt_ed *edt);
+  void (*init)(struct gui_txt_ed *edt, char *buf, int cap, struct str str);
   int (*has_sel)(struct gui_txt_ed *edt);
   void (*reset)(struct gui_txt_ed *edt);
-  void (*undo)(struct gui_txt_ed *edt, struct sys *sys, char **buf);
-  void (*redo)(struct gui_txt_ed *edt, struct sys *sys, char **buf);
-  int (*cut)(struct gui_txt_ed *edt, char **buf);
-  int (*paste)(struct gui_txt_ed *edt, struct sys *sys, char **buf, struct str txt);
-  void (*sel_all)(struct gui_txt_ed *edt, char *buf);
+  void (*undo)(struct gui_txt_ed *edt);
+  void (*redo)(struct gui_txt_ed *edt);
+  int (*cut)(struct gui_txt_ed *edt);
+  int (*paste)(struct gui_txt_ed *edt, struct str txt);
+  void (*sel_all)(struct gui_txt_ed *edt);
 };
 struct gui_edt_api {
   struct gui_edt_buf buf;
   void (*drw)(struct gui_ctx *ctx, const struct gui_panel *pan);
-  void (*fld)(struct gui_ctx *ctx, struct gui_edit_box *box, struct gui_panel *pan, struct gui_panel *parent, struct gui_txt_ed *edt, char **buf);
-  void (*txt)(struct gui_ctx *ctx, struct gui_edit_box *edt, struct gui_panel *parent, struct gui_txt_ed *ed, char **buf);
-  void (*box)(struct gui_ctx *ctx, struct gui_edit_box *box, struct gui_panel *parent, char **buf);
+  struct str (*fld)(struct gui_ctx *ctx, struct gui_edit_box *box, struct gui_panel *pan, struct gui_panel *parent, struct gui_txt_ed *edt);
+  struct str (*txt)(struct gui_ctx *ctx, struct gui_edit_box *edt, struct gui_panel *parent, struct gui_txt_ed *ed);
+  struct str (*box)(struct gui_ctx *ctx, struct gui_edit_box *box, struct gui_panel *parent, char *buf, int cap, struct str s);
 };
 struct gui_spin_api {
   int (*val)(struct gui_ctx *ctx, struct gui_spin *s, struct gui_panel *parent, struct gui_spin_val *spin);
@@ -1434,9 +1455,8 @@ struct gui_time_line_api {
 };
 struct gui_api {
   int version;
-  void (*init)(struct gui_ctx *ctx, struct arena *mem, struct gui_args *args);
+  void (*init)(struct gui_ctx *ctx, struct gui_args *args);
   void (*color_scheme)(struct gui_ctx *ctx, enum gui_col_scheme scm);
-  void (*free)(struct gui_ctx *ctx);
   struct gui_panel*(*begin)(struct gui_ctx *ctx);
   void (*end)(struct gui_ctx *ctx);
   int (*enable)(struct gui_ctx *ctx, int cond);
