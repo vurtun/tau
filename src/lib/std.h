@@ -44,8 +44,8 @@
 
 #define zero(d, sz) memset(d, 0, (size_t)(sz))
 #define offsetof(st, m) ((int)((uintptr_t) & (((st *)0)->m)))
-#define containerof(ptr, type, member)                           \
-  (type *)((void *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
+#define containerof(ptr, type, member)\
+  (type*)((void*)((char*)(1?(ptr):&((type*)0)->member)-offsetof(type,member)))
 #define div_round_up(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
 
@@ -86,6 +86,10 @@
 #define heap_left(i) (heap_right(i)-1)
 // clang-format on
 
+#define KB(n) (1024 * n)
+#define MB(n) (1024 * KB(n))
+#define GB(n) (1024 * MB(n))
+
 #define MAX_FILE_PATH (4*1024)
 #define MAX_FILE_NAME (256)
 
@@ -121,10 +125,6 @@ struct lst_elm {
   struct lst_elm *prv;
   struct lst_elm *nxt;
 };
-struct lst_idx {
-  int prv;
-  int nxt;
-};
 struct color {
   unsigned char r, g, b, a;
 };
@@ -134,7 +134,6 @@ struct guid {
   unsigned short d3;
   unsigned char d4[8];
 };
-
 #define confine for
 #define dyn(T) T*
 #define tbl(T) T*

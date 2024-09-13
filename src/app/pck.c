@@ -173,29 +173,29 @@ static const struct file_tbl_col_def file_tbl_def[FILE_TBL_MAX] = {
   [FILE_TBL_PERM] =  {.title = strv("Permission"),     .ui = {.type = GUI_LAY_SLOT_FIX, .size = 160, .con = {100, 800}}},
   [FILE_TBL_DATE] =  {.title = strv("Date Modified"),  .ui = {.type = GUI_LAY_SLOT_FIX, .size = 300, .con = {200, 800}}},
 };
-static const struct gui_split_lay_slot file_split_def[FILE_SPLIT_MAX] = {
-  {.type = GUI_LAY_SLOT_FIX, .size = 400, .con = {100, 1000}},
-  {.type = GUI_LAY_SLOT_DYN, .size =   1, .con = {100, 10000}},
-};
 // clang-format on
 
 /* -----------------------------------------------------------------------------
- *                                  FILE
+ *                                  VIEW
  * -----------------------------------------------------------------------------
  */
 static int
 file_type(struct str ext) {
   unsigned u = 0;
   unsigned int i = 0;
-  if (ext.len == 1) {
+  switch (ext.len) {
+  case 0: break;
+  case 1: {
     u = castu(ext.str[0]);
     unsigned k = (u * 0x3d7a774e) >> 29u;
     i = 5 + ((0x20465731ull >> (unsigned long long)(k*4)) & 0xf);
-  } else if (ext.len == 2) {
+  } break;
+  case 2: {
     u = twocc(ext.str);
     unsigned k = (u * 0x7172a30bu) >> 28u;
     i = 13 + (0xa6314728ull >> (unsigned long long)(k*4)) & 0xf;
-  } else if (ext.len == 3) {
+  } break;
+  case 3: {
     static const unsigned char t[256] = {72, 0, 0, 0, 0, 0, 14, 78, 0, 0, 0, 0,
       45, 0, 0, 0, 0, 0, 80, 35, 56, 82, 0, 3, 0, 0, 48, 42, 0, 61, 0, 8, 2, 0,
       51, 63, 0, 0, 43, 11, 0, 0, 0, 22, 0, 7, 0, 0, 0, 79, 0, 33, 4, 0, 0, 21,
@@ -210,13 +210,13 @@ file_type(struct str ext) {
       0, 0, 65
     };
     u = threecc(ext.str);
-    unsigned k = (u * 0xDDC8D774) >> 24u;
-    i = t[k];
-  } else {
+    i = t[(u * 0xddc8d774) >> 24u];
+  } break;
+  default: {
     u = fourcc(ext.str);
     unsigned k = (u * 0x76e2bba) >> 29u;
     i = 95 + ((0x5142036ull >> (unsigned long long)(k*4)) & 0xf);
-  }
+  } break; }
   return (file_defs[i].id == u) ? casti(i) : 0;
 }
 static enum res_ico_id
@@ -273,29 +273,30 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *s,
 
   char buf[MAX_FILE_PATH];
   struct str ospath = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(path), strf(name));
-  struct str ext = path_ext(ospath);
   mset(elm,0,szof(elm[0]));
 
   struct sys_file_info info = {0};
   if (!s->file.info(s, &info, ospath, s->mem.tmp)) {
-    elm->perm = 0;
-    elm->name = name;
-    elm->file_type = 0;
     elm->sys_type = SYS_FILE_DEF;
+    elm->file_type = 0;
+    elm->name = name;
+    elm->perm = 0;
     return;
   }
-  elm->name = name;
-  elm->size = info.siz;
-  elm->mtime = info.mtime;
   elm->sys_type = info.type;
-  elm->perm = info.perm;
   if (elm->sys_type == SYS_FILE_DEF ||
       elm->sys_type == SYS_FILE_LNK) {
+    struct str ext = path_ext(ospath);
     elm->file_type = castu(file_type(ext));
   } else if (elm->sys_type == SYS_FILE_DIR) {
     elm->file_type = 1;
     elm->isdir = 1;
   }
+  elm->name = name;
+  elm->size = info.siz;
+  elm->perm = info.perm;
+  elm->mtime = info.mtime;
+  elm->sys_type = info.type;
 }
 static int
 file_view_lst_partition(struct file_elm *a, int(*cmp)(const void*, const void*)) {
@@ -395,7 +396,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s, struct arena *tmp,
   if (lst->page.cnt >= FILE_LIST_ELM_BUF_CNT) {
     file_view_lst_partition(ptr, qry->cmp);
   }
-  qsort(ptr, lst->page.cnt, szof(lst->page.elms[0]), qry->cmp);
+  qsort(ptr, castsz(lst->page.cnt), szof(lst->page.elms[0]), qry->cmp);
   lst->page_cnt = (lst->page.total + FILE_LIST_ELM_CNT - 1) / FILE_LIST_ELM_CNT;
   lst->page.idx = qry->page;
 }
@@ -430,7 +431,7 @@ file_view_lst_cd(struct file_view *fs, struct file_list_view *lst,
     qry.fltr = lst->fltr;
     qry.fullpath = lst->nav_path;
     qry.cmp = file_view_lst_elm_cmp_name_asc;
-    file_view_lst_qry(lst, s, fs->tmp_arena, &qry);
+    file_view_lst_qry(lst, s, s->mem.tmp, &qry);
   }
 }
 static void
@@ -449,307 +450,26 @@ file_view_lst_init(struct file_view *fs, struct sys *s, struct gui_ctx *ctx) {
   /* open home directory */
   file_view_lst_cd(fs, &fs->lst, s, fs->home);
 }
-
-/* -----------------------------------------------------------------------------
- *                                  TREE
- * -----------------------------------------------------------------------------
- */
-static struct lst_elm*
-file_tree_node_sort_after_elm(struct file_tree_node *n,
-                              struct file_tree_node *s) {
-  assert(s);
-  assert(n);
-  struct lst_elm *elm = 0;
-  for lst_each(elm, &n->sub) {
-    struct file_tree_node *it = 0;
-    it = lst_get(elm, struct file_tree_node, hook);
-    if (str_cmp(s->fullpath, it->fullpath) < 0) {
-      break;
-    }
-  }
-  return elm;
-}
-static void
-file_tree_node_lnk(struct file_tree_node *n,
-                   struct file_tree_node *s) {
-  assert(s);
-  assert(n);
-
-  struct lst_elm *elm = file_tree_node_sort_after_elm(n, s);
-  lst_del(&s->hook);
-  lst_init(&s->hook);
-  lst__add(&s->hook, elm->prv, elm);
-}
-static void
-file_tree_node_init(struct sys *_sys, struct arena *mem, struct file_tree_node *s,
-                    struct file_tree_node *n, struct str p, unsigned long long id) {
-  assert(_sys);
-  assert(mem);
-  assert(s);
-  assert(n);
-
-  s->id = id;
-  s->parent = n;
-  s->depth = n->depth + 1;
-  s->fullpath = arena_str(mem, _sys, p);
-
-  lst_init(&s->hook);
-  lst_init(&s->sub);
-  file_tree_node_lnk(n, s);
-}
-static struct file_tree_node*
-file_node_alloc(struct file_tree_view *tree, struct sys *_sys, struct arena *mem) {
-  assert(tree);
-  assert(_sys);
-  assert(mem);
-
-  struct file_tree_node *s = 0;
-  if (lst_any(&tree->del_lst)) {
-    s = lst_get(lst_first(&tree->del_lst), struct file_tree_node, hook);
-    lst_del(&s->hook);
-    memset(s, 0, sizeof(*s));
-  } else {
-    s = arena_alloc(mem, _sys, szof(*s));
-  }
-  return s;
-}
-static struct file_tree_node*
-file_view_tree_node_new(struct file_tree_view *tree, struct sys *_sys,
-                        struct arena *mem, struct file_tree_node *n,
-                        struct str path, unsigned long long id) {
-  assert(tree);
-  assert(_sys);
-  assert(mem);
-  assert(n);
-
-  struct file_tree_node *s = 0;
-  s = file_node_alloc(tree, _sys, mem);
-  file_tree_node_init(_sys, mem, s, n, path, id);
-  return s;
-}
-static void
-file_view_tree_node_del(struct file_tree_view *tree, struct file_tree_node *n) {
-  assert(n);
-  assert(tree);
-
-  struct lst_elm *elm = 0;
-  struct lst_elm *item = 0;
-  for lst_each_safe(elm, item, &n->sub) {
-    struct file_tree_node *s = 0;
-    s = lst_get(elm, struct file_tree_node, hook);
-    file_view_tree_node_del(tree, s);
-  }
-  lst_del(&n->hook);
-  lst_init(&n->hook);
-  lst_add(&tree->del_lst, &n->hook);
-}
 static int
-file_view_tree_build(struct file_tree_view *tree,
-                     struct file_tree_node *n, struct sys *_sys,
-                     struct arena *mem, struct arena *tmp) {
-  assert(tree);
-  assert(_sys);
-  assert(mem);
-  assert(tmp);
-  assert(n);
-
-  int upt = 0;
-  if (n->parent && !set_fnd(tree->exp, n->parent->id)) {
-    return upt;
-  }
-  struct arena_scope scp;
-  confine arena_scope(tmp, &scp, _sys) {
-    unsigned long long *set = arena_set(tmp, _sys, 1024);
-    struct lst_elm *elm = 0;
-    for lst_each(elm, &n->sub) {
-      struct file_tree_node *s;
-      s = lst_get(elm, struct file_tree_node, hook);
-      set_put(set, _sys, s->id);
-    }
-    /* validate child nodes */
-    struct sys_dir_iter it = {0};
-    for sys_dir_lst_each(_sys, &it, tmp, n->fullpath) {
-      if (it.name.str[0] == '.' || !_sys->dir.exists(_sys, it.fullpath, tmp)) {
-        continue;
-      }
-      unsigned long long id = str_hash(it.fullpath);
-      if (!set_fnd(set, id)) {
-        file_view_tree_node_new(tree, _sys, mem, n, it.fullpath, id);
-        upt = 1;
-      }
-      set_del(set, id);
-    }
-    /* remove deleted directory nodes */
-    struct lst_elm *safe = 0;
-    for lst_each_safe(elm, safe, &n->sub) {
-      struct file_tree_node *s;
-      s = lst_get(elm, struct file_tree_node, hook);
-      if (!set_fnd(set, s->id)) {
-        continue;
-      }
-      file_view_tree_node_del(tree, s);
-    }
-    set_free(set, _sys);
-  }
-  /* recurse child directory nodes */
-  struct lst_elm *it = 0;
-  for lst_each(it, &n->sub) {
-    struct file_tree_node *s;
-    s = lst_get(it, struct file_tree_node, hook);
-    upt |= file_view_tree_build(tree, s, _sys, mem, tmp);
-  }
-  return upt;
-}
-static struct file_tree_node**
-file_view_tree_serial(struct file_tree_view *tree,
-                      struct file_tree_node *n,
-                      struct file_tree_node **lst,
-                      struct sys *_sys) {
-  assert(tree);
-  assert(lst);
-  assert(_sys);
-  assert(n);
-
-  dyn_add(lst, _sys, n);
-  if (set_fnd(tree->exp, n->id)) {
-    struct lst_elm *it = 0;
-    for lst_each(it, &n->sub) {
-      struct file_tree_node *s = 0;
-      s = lst_get(it, struct file_tree_node, hook);
-      lst = file_view_tree_serial(tree, s, lst, _sys);
-    }
-  }
-  return lst;
-}
-static void
-file_tree_update(struct file_view *fs, struct sys *_sys) {
-  assert(fs);
-  assert(_sys);
-
-  struct arena *tmp = fs->tmp_arena;
-  file_view_tree_build(&fs->tree, &fs->tree.root, _sys, &fs->tree.mem, tmp);
-  dyn_clr(fs->tree.lst);
-  fs->tree.lst = file_view_tree_serial(&fs->tree, &fs->tree.root, fs->tree.lst, _sys);
-}
-static struct file_tree_node*
-file_tree_node_fnd(struct file_tree_node *n, struct str str) {
-  assert(n);
-  struct lst_elm *elm = 0;
-  struct file_tree_node *s = 0;
-  for lst_each(elm, &n->sub) {
-    s = lst_get(elm, struct file_tree_node, hook);
-    struct str file_name = path_file(s->fullpath);
-    if (str_eq(str, file_name)) {
-      return s;
-    }
-  }
-  return s;
-}
-static void
-file_view_tree_open(struct file_view *fs, struct file_tree_view *tree,
-                    struct sys *_sys, struct str p) {
-  assert(tree);
-  assert(_sys);
-  assert(fs);
-
-  int off = fs->home.len + 1;
-  if (p.len < off) {
-    return;
-  }
-  struct file_tree_node *n = &tree->root;
-  struct str path = str_rhs(p, off);
-  for str_tok(it, _, path, strv("/")) {
-    struct str fullpath = strp(p.str, it.end);
-    if (!_sys->dir.exists(_sys, fullpath, fs->tmp_arena)) {
-      break;
-    }
-    /* create or find node to dig deeper */
-    struct file_tree_node *s = file_tree_node_fnd(n, it);
-    if (!s) {
-      unsigned long long id = str_hash(strp(p.str, it.end));
-      s = file_view_tree_node_new(tree, _sys, &tree->mem, n, fullpath, id);
-    }
-    tree->jmp = 1;
-    tree->jmp_to = s->id;
-    set_put(tree->exp, _sys, s->id);
-    n = s;
-  }
-  file_tree_update(fs, _sys);
-}
-static void
-file_tree_view_clr(struct file_tree_view *tree, struct sys *_sys) {
-  assert(tree);
-  assert(_sys);
-
-  dyn_free(tree->lst, _sys);
-  set_free(tree->exp, _sys);
-  arena_free(&tree->mem, _sys);
-
-  tree->rev = 0;
-  tree->lst = 0;
-  tree->exp = 0;
-
-  lst_init(&tree->del_lst);
-  memset(tree->off, 0, sizeof(tree->off));
-}
-static void
-file_tree_view_init(struct file_view *fs, struct sys *_sys) {
-  assert(fs);
-  assert(_sys);
-
-  fs->tree.lst = arena_dyn(&fs->tree.mem, _sys, struct file_tree_node*, 1024);
-  fs->tree.exp = arena_set(&fs->tree.mem, _sys, 1024);
-  lst_init(&fs->tree.del_lst);
-  zero2(fs->tree.off);
-
-  /* setup root node */
-  fs->tree.root.fullpath = fs->home;
-  fs->tree.root.id = str_hash(fs->home);
-  lst_init(&fs->tree.root.hook);
-  lst_init(&fs->tree.root.sub);
-  set_put(fs->tree.exp, _sys, fs->tree.root.id);
-}
-/* -----------------------------------------------------------------------------
- *                                  VIEW
- * -----------------------------------------------------------------------------
- */
-static int
-file_view_init(struct file_view *fs, struct sys *_sys, struct gui_ctx *ctx,
-               struct arena *tmp_arena) {
+file_view_init(struct file_view *fs, struct sys *_sys, struct gui_ctx *ctx) {
   assert(_sys);
   assert(ctx);
-  assert(mem);
-  assert(tmp_arena);
+  assert(fs);
 
   fs->lst_rev = 1;
-  fs->tree_rev = 1;
-  fs->tmp_arena = tmp_arena;
   fs->home = str_set(fs->home_path, cntof(fs->home_path), str0(getenv("HOME")));
   if (str_is_inv(fs->home)) {
     return -ENAMETOOLONG;
   }
-  struct gui_split_lay_cfg cfg = {0};
-  cfg.slots = file_split_def;
-  cfg.cnt = FILE_SPLIT_MAX;
-  gui.splt.lay.bld(fs->split, ctx, &cfg);
-
   file_view_lst_init(fs, _sys, ctx);
-  file_tree_view_init(fs, _sys);
   return 0;
 }
 static void
-file_view_update(struct file_view *fs, struct sys *_sys) {
-  assert(_sys);
-  if (fs->tree_rev != fs->tree.rev) {
-    file_tree_update(fs, _sys);
-    fs->tree.rev = fs->tree_rev;
-  }
-}
-static void
 file_view_free(struct file_view *fs, struct sys *_sys) {
+  assert(fs);
   assert(_sys);
+  unused(_sys);
   file_view_lst_clr(&fs->lst);
-  file_tree_view_clr(&fs->tree, _sys);
 }
 
 /* -----------------------------------------------------------------------------
@@ -826,7 +546,6 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
     if (gui.btn.ico(ctx, &home, pan, RES_ICO_HOME)) {
       /* change the directory to home  */
       lst->fltr = str_nil;
-      file_view_tree_open(fs, &fs->tree, ctx->sys, fs->home);
       file_view_lst_cd(fs, &fs->lst, ctx->sys, fs->home);
     }
     gui.tooltip(ctx, &home.pan, strv("Goto Home Directory"));
@@ -856,14 +575,14 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
 static void
 ui__file_view_tbl_elm_perm(char *mod, unsigned perm) {
   assert(mod);
-  mod[0] = (perm & 0x01) ? 'r' : '-';
-  mod[1] = (perm & 0x02) ? 'w' : '-';
-  mod[2] = (perm & 0x04) ? 'x' : '-';
-  mod[3] = (perm & 0x08) ? 'r' : '-';
-  mod[4] = (perm & 0x10) ? 'w' : '-';
-  mod[5] = (perm & 0x20) ? 'x' : '-';
-  mod[6] = (perm & 0x40) ? 'r' : '-';
-  mod[7] = (perm & 0x80) ? 'w' : '-';
+  mod[0] = (perm & 0x001) ? 'r' : '-';
+  mod[1] = (perm & 0x002) ? 'w' : '-';
+  mod[2] = (perm & 0x004) ? 'x' : '-';
+  mod[3] = (perm & 0x008) ? 'r' : '-';
+  mod[4] = (perm & 0x010) ? 'w' : '-';
+  mod[5] = (perm & 0x020) ? 'x' : '-';
+  mod[6] = (perm & 0x040) ? 'r' : '-';
+  mod[7] = (perm & 0x080) ? 'w' : '-';
   mod[8] = (perm & 0x100) ? 'x' : '-';
   mod[9] = 0;
 }
@@ -883,8 +602,7 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   {
     struct gui_cfg_stk stk[1] = {0};
     confine gui_cfg_pushu_on_scope(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, fi->isdir) {
-      char perm[10];
-      ui__file_view_tbl_elm_perm(perm, fi->perm);
+      char perm[10]; ui__file_view_tbl_elm_perm(perm, fi->perm);
       struct tm *mod_time = localtime(&fi->mtime);
       const struct file_def *fd = &file_defs[fi->file_type];
       enum res_ico_id ico = file_icon(fi->file_type);
@@ -970,11 +688,8 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
     struct file_elm *fi = lst->page.elms + dir;
     if (fi->isdir) {
       char buf[MAX_FILE_PATH];
-      struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s",
-          strf(lst->nav_path), strf(fi->name));
-
+      struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(lst->nav_path), strf(fi->name));
       lst->fltr = str_nil;
-      file_view_tree_open(fs, &fs->tree, ctx->sys, file_path);
       file_view_lst_cd(fs, &fs->lst, ctx->sys, file_path);
       ctx->lst_state.cur_idx = -1;
     }
@@ -1004,244 +719,55 @@ ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
   gui.pan.end(ctx, pan, parent);
 }
 static void
-ui_file_view_page(struct file_view *fs, struct file_list_view *lst,
-                  struct gui_ctx *ctx, struct gui_panel *pan,
-                  struct gui_panel *parent) {
-  assert(fs);
+ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
+                  struct gui_tab_ctl *tab) {
   assert(lst);
-  assert(app);
   assert(ctx);
-  assert(pan);
-  assert(parent);
+  assert(tab);
 
-  gui.pan.begin(ctx, pan, parent);
+  confine gui_disable_on_scope(&gui, ctx, lst->page.idx <= 0) {
+    struct gui_btn prv = {.box = tab->hdr};
+    prv.box.x = gui.bnd.min_ext(tab->hdr.x.min, ctx->cfg.scrl);
+    if (gui__scrl_btn(ctx, &prv, &tab->pan, GUI_WEST)) {
+      assert(lst->page.idx >= 0);
+      /* query previous page */
+      struct file_view_lst_qry qry = {0};
+      qry.cmp = file_view_lst_elm_cmp_name_asc;
+      qry.fullpath = lst->nav_path;
+      qry.page = lst->page.idx - 1;
+      qry.fltr = lst->fltr;
+      file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
+    }
+    tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
+  }
+  struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
+  gui.tab.hdr.begin(ctx, tab, &hdr);
   {
-    struct gui_tab_ctl tab = {.box = pan->box};
-    tab.hdr_pos = GUI_TAB_HDR_BOT;
-    gui.tab.begin(ctx, &tab, pan, 1, 0);
-    {
-      confine gui_disable_on_scope(&gui, ctx, lst->page.idx <= 0) {
-        struct gui_btn nxt = {.box = tab.hdr};
-        nxt.box.x = gui.bnd.max_ext(tab.hdr.x.max, ctx->cfg.scrl);
-        if (gui__scrl_btn(ctx, &nxt, &tab.pan, GUI_EAST)) {
-          assert(lst->page.idx >= 0);
-          /* query next page  */
-          struct file_view_lst_qry qry = {0};
-          qry.cmp = file_view_lst_elm_cmp_name_asc;
-          qry.fullpath = lst->nav_path;
-          qry.page = lst->page.idx - 1;
-          qry.fltr = lst->fltr;
-          file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
-        }
-        tab.hdr.x = gui_min_max(tab.hdr.x.min, nxt.pan.box.x.min);
-      }
-      struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
-      gui.tab.hdr.begin(ctx, &tab, &hdr);
-      {
-        char buf[128];
-        struct str ospath = str_fmtsn(buf, cntof(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
-        gui.tab.hdr.slot.txt(ctx, &tab, &hdr, ospath);
-        gui.tooltip(ctx, &tab.pan, ospath);
-      }
-      gui.tab.hdr.end(ctx, &tab, &hdr);
+    char buf[128];
+    struct str info = str_fmtsn(buf, cntof(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
+    confine gui_disable_on_scope(&gui, ctx, lst->page_cnt == 1) {
+      struct gui_panel slot = {0};
+      gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, info);
+      gui.tooltip(ctx, &slot, info);
+    }
+  }
+  gui.tab.hdr.end(ctx, tab, &hdr);
 
-      confine gui_disable_on_scope(&gui, ctx, lst->page_cnt <= lst->page.idx+1) {
-        struct gui_btn prv = {.box = hdr.pan.box};
-        prv.box.x = gui.bnd.max_ext(tab.off, ctx->cfg.scrl);
-        if (gui__scrl_btn(ctx, &prv, &tab.pan, GUI_WEST)) {
-          assert(lst->page.idx < pst->page_cnt);
-          /* query previous page  */
-          struct file_view_lst_qry qry = {0};
-          qry.cmp = file_view_lst_elm_cmp_name_asc;
-          qry.fullpath = lst->nav_path;
-          qry.fltr = lst->fltr;
-          qry.page = lst->page.idx + 1;
-          file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
-        }
-      }
-      struct gui_panel bdy = {.box = tab.bdy};
-      ui_file_sel_view(fs, lst, ctx, &bdy, &tab.pan);
+  confine gui_disable_on_scope(&gui, ctx, lst->page_cnt <= lst->page.idx+1) {
+    struct gui_btn nxt = {.box = hdr.pan.box};
+    nxt.box.x = gui.bnd.min_ext(tab->off, ctx->cfg.scrl);
+    if (gui__scrl_btn(ctx, &nxt, &tab->pan, GUI_EAST)) {
+      assert(lst->page.idx < pst->page_cnt);
+      /* query next page  */
+      struct file_view_lst_qry qry = {0};
+      qry.cmp = file_view_lst_elm_cmp_name_asc;
+      qry.fullpath = lst->nav_path;
+      qry.page = lst->page.idx + 1;
+      qry.fltr = lst->fltr;
+      file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
     }
-    gui.tab.end(ctx, &tab, pan);
+    tab->off = nxt.box.x.max;
   }
-  gui.pan.end(ctx, pan, parent);
-}
-static void
-ui_file_view_tree_node(struct gui_ctx *ctx, struct gui_tree_node *node,
-                       struct gui_panel *parent, struct file_tree_node *n){
-  assert(n);
-  assert(ctx);
-  assert(node);
-  assert(parent);
-
-  gui.tree.begin(ctx, node, parent, n->depth);
-  {
-    struct gui_cfg_stk stk[1] = {0};
-    static const unsigned col = col_rgb_hex(0xeecd4a);
-    confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], col) {
-      struct gui_panel lbl = {.box = node->box};
-      struct str txt = path_file(n->fullpath);
-      enum res_ico_id ico = node->open ? RES_ICO_FOLDER_OPEN : RES_ICO_FOLDER;
-      gui.ico.box(ctx, &lbl, &node->pan, ico, txt);
-      gui.tooltip(ctx, &node->pan, n->fullpath);
-    }
-  }
-  gui.tree.end(ctx, node, parent);
-}
-static int
-ui_file_view_tree_elm(struct gui_ctx *ctx, struct file_tree_view *tree,
-                      struct file_tree_node *n, struct gui_lst_reg *reg,
-                      struct gui_panel *elm, int is_sel) {
-  assert(n);
-  assert(ctx);
-  assert(reg);
-  assert(elm);
-  assert(tree);
-
-  int ret = 0;
-  gui.lst.reg.elm.begin(ctx, reg, elm, n->id, is_sel);
-  {
-    struct gui_tree_node node = {0};
-    node.type = lst_any(&n->sub) ? GUI_TREE_NODE : GUI_TREE_LEAF;
-    node.open = set_fnd(tree->exp, n->id);
-    ui_file_view_tree_node(ctx, &node, elm, n);
-    if (node.changed) {
-      if (node.open) {
-        set_put(tree->exp, ctx->sys, n->id);
-      } else {
-        set_del(tree->exp, n->id);
-      }
-      ret = 1;
-    }
-  }
-  gui.lst.reg.elm.end(ctx, reg, elm);
-  return ret;
-}
-static void
-ui_file_view_tree_key(struct file_view *fs, struct file_tree_view *tree,
-                      struct gui_ctx *ctx, struct gui_lst *lst) {
-  assert(tree);
-  assert(ctx);
-  assert(lst);
-  assert(fs);
-
-  /* tree node expansion */
-  int plus = bit_tst_clr(ctx->keys, GUI_KEY_TREE_EXPAND);
-  int opening = bit_tst_clr(ctx->keys, GUI_KEY_TREE_RIGHT);
-  if (plus || opening) {
-    struct file_tree_node *n = tree->lst[tree->sel];
-    set_put(tree->exp, ctx->sys, n->id);
-    fs->tree_rev++;
-    return;
-  }
-  /* tree node collapse and jump to parent node */
-  int minus = bit_tst_clr(ctx->keys, GUI_KEY_TREE_COLLAPSE);
-  int closing = bit_tst_clr(ctx->keys, GUI_KEY_TREE_LEFT);
-  if (minus || closing) {
-    struct file_tree_node *n = tree->lst[tree->sel];
-    if (closing && !set_fnd(tree->exp, n->id)) {
-      for (int i = tree->sel; i > 0; --i) {
-        int nidx = i - 1;
-        struct file_tree_node *p = tree->lst[nidx];
-        if (p->depth >= n->depth) {
-          continue;
-        }
-        tree->off[1] = gui.lst.lay.clamps(&lst->lay, nidx);
-        gui.lst.set_sel_idx(ctx, lst, nidx);
-        gui.lst.set_cur_idx(ctx, lst, nidx);
-        tree->sel = nidx;
-        break;
-      }
-    } else {
-      set_del(tree->exp, n->id);
-    }
-    fs->tree_rev++;
-  }
-}
-static int
-ui_file_view_tree_jmp_elm(struct file_tree_view *tree,
-                          unsigned long long jmp_id) {
-  for dyn_loop(i, tree->lst) {
-    assert(i < dyn_cnt(tree->lst));
-    struct file_tree_node *n = tree->lst[i];
-    if (n->id == jmp_id) {
-      return i;
-    }
-  }
-  return dyn_cnt(tree->lst);
-}
-static void
-ui_file_view_tree(struct file_view *fs, struct file_tree_view *tree,
-                  struct gui_ctx *ctx, struct gui_panel *pan,
-                  struct gui_panel *parent) {
-  assert(ctx);
-  assert(pan);
-  assert(tree);
-  assert(parent);
-
-  gui.pan.begin(ctx, pan, parent);
-  {
-    /* tree list */
-    struct gui_lst_cfg cfg = {0};
-    gui.lst.cfg(&cfg, dyn_cnt(tree->lst), tree->off[1]);
-    cfg.sel.src = GUI_LST_SEL_SRC_EXT;
-
-    struct gui_lst_reg reg = {.box = pan->box};
-    gui.lst.reg.begin(ctx, &reg, pan, &cfg, tree->off);
-    for gui_lst_reg_loop(i,gui,&reg) {
-      /* tree nodes */
-      struct gui_panel elm = {0};
-      struct file_tree_node *n = tree->lst[i];
-      if (ui_file_view_tree_elm(ctx, tree, n, &reg, &elm, tree->sel == i)) {
-        fs->tree_rev++;
-      }
-    }
-    if (tree->jmp) {
-      /* jump to list element */
-      int idx = ui_file_view_tree_jmp_elm(tree, tree->jmp_to);
-      if (idx < dyn_cnt(tree->lst)) {
-        gui.lst.reg.ctr(&reg, idx);
-        tree->sel = idx;
-      }
-      tree->jmp = 0;
-    }
-    gui.lst.reg.end(ctx, &reg, pan, tree->off);
-    if (reg.lst.sel.mod) {
-      /* selection */
-      tree->sel = reg.lst.sel.idx;
-      struct file_tree_node *n = tree->lst[tree->sel];
-      fs->lst.fltr = str_nil;
-      file_view_lst_cd(fs, &fs->lst, ctx->sys, n->fullpath);
-    }
-    if (reg.lst.ctl.has_focus) {
-      /* key handling */
-      ui_file_view_tree_key(fs, tree, ctx, &reg.lst);
-    }
-  }
-  gui.pan.end(ctx, pan, parent);
-}
-static void
-ui_file_sel_split(struct file_view *fs, struct gui_ctx *ctx,
-                  struct gui_panel *pan, struct gui_panel *parent) {
-  assert(ctx);
-  assert(pan);
-  assert(parent);
-  gui.pan.begin(ctx, pan, parent);
-  {
-    struct gui_split spt = {.box = pan->box};
-    int lay[GUI_SPLIT_COL(FILE_SPLIT_MAX)];
-    gui.splt.begin(ctx, &spt, pan, GUI_SPLIT_FIT, GUI_HORIZONTAL, lay, fs->split);
-    {
-      struct gui_panel tree = {.box = spt.item};
-      ui_file_view_tree(fs, &fs->tree, ctx, &tree, &spt.pan);
-      gui.splt.sep(ctx, &spt, lay, fs->split);
-
-      struct gui_panel tbl = {.box = spt.item};
-      ui_file_view_page(fs, &fs->lst, ctx, &tbl, &spt.pan);
-    }
-    gui.splt.end(ctx, &spt, pan);
-  }
-  gui.pan.end(ctx, pan, parent);
 }
 static struct str
 ui_file_sel(char *filepath, int n, struct file_view *fs, struct gui_ctx *ctx,
@@ -1255,26 +781,37 @@ ui_file_sel(char *filepath, int n, struct file_view *fs, struct gui_ctx *ctx,
   struct str ret = str_inv;
   gui.pan.begin(ctx, pan, parent);
   {
+    /* navigation bar */
     int gap = ctx->cfg.pan_gap[1];
     struct gui_box lay = pan->box;
-    struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
     struct gui_panel nav = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
-    struct gui_panel tbl = {.box = lay};
     ui_file_lst_view_nav_bar(fs, &fs->lst, ctx, &nav, pan);
-    ui_file_sel_split(fs, ctx, &tbl, pan);
-
-    /* file selection */
-    int dis = fs->lst.sel_idx < 0 || fs->lst.sel_idx >= fs->lst.page.cnt;
-    if (!dis) {
-      struct file_elm *elm = &fs->lst.page.elms[fs->lst.sel_idx];
-      dis = elm->isdir || !elm->isvalid;
-    }
-    confine gui_disable_on_scope(&gui, ctx, dis) {
-      if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
-        struct file_elm *elm = &fs->lst.page.elms[fs->lst.sel_idx];
-        ret = str_fmtsn(filepath, n, "%.*s/%.*s", strf(fs->lst.nav_path), strf(elm->name));
+    {
+      /* file table */
+      struct gui_tab_ctl tab = {.box = lay, .hdr_pos = GUI_TAB_HDR_BOT};
+      gui.tab.begin(ctx, &tab, pan, 1, 0);
+      {
+        struct gui_panel bdy = {.box = tab.bdy};
+        ui_file_view_page(&fs->lst, ctx, &tab);
+        ui_file_sel_view(fs, &fs->lst, ctx, &bdy, &tab.pan);
       }
-      gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));
+      gui.tab.end(ctx, &tab, pan);
+
+      /* file selection */
+      int dis = fs->lst.sel_idx < 0 || fs->lst.sel_idx >= fs->lst.page.cnt;
+      if (!dis) {
+        struct file_elm *elm = &fs->lst.page.elms[fs->lst.sel_idx];
+        dis = elm->isdir || !elm->isvalid;
+      }
+      confine gui_disable_on_scope(&gui, ctx, dis) {
+        struct gui_btn open = {.box = tab.hdr};
+        open.box.x = gui.bnd.min_max(tab.off + ctx->cfg.gap[0], tab.hdr.x.max);
+        if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
+          struct file_elm *elm = &fs->lst.page.elms[fs->lst.sel_idx];
+          ret = str_fmtsn(filepath, n, "%.*s/%.*s", strf(fs->lst.nav_path), strf(elm->name));
+        }
+        gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));
+      }
     }
   }
   gui.pan.end(ctx, pan, parent);
@@ -1287,7 +824,6 @@ ui_file_sel(char *filepath, int n, struct file_view *fs, struct gui_ctx *ctx,
  */
 static const struct pck_api pck__api = {
   .init = file_view_init,
-  .update = file_view_update,
   .shutdown = file_view_free,
   .ui = ui_file_sel,
 };

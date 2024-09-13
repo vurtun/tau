@@ -14,12 +14,15 @@
 #define CFG_COLOR_TEXT          0xFF101010
 #endif
 
-#define CFG_DB_MAX_MEMORY       MB(1)
-#define CFG_GUI_VTX_MEMORY      KB(256)
-#define CFG_GUI_IDX_MEMORY      KB(256)
-#define CFG_GUI_MAX_MEMORY      (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY)
-
 /* shortcuts  */
+struct gui_app_key {
+  int code;
+  unsigned mod;
+};
+struct app_ui_shortcut {
+  struct gui_app_key key;
+  struct gui_app_key alt;
+};
 static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_ACT]                = {.key = {SYS_KEY_RETURN, 0}},
   [GUI_KEY_DEACT]              = {.key = {SYS_KEY_ESCAPE, 0}},
@@ -82,4 +85,9 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
   [GUI_KEY_EDIT_SEL_WORD_RIGHT]= {.key = {SYS_KEY_RIGHT, SYS_KEYMOD_CTRL|SYS_KEYMOD_SHIFT}},
 };
 // clang-format on
+
+#define CFG_DB_MAX_MEMORY       MB(1)
+#define CFG_GUI_VTX_MEMORY      KB(256)
+#define CFG_GUI_IDX_MEMORY      KB(256)
+#define CFG_GUI_MAX_MEMORY      (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY)
 

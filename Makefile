@@ -33,10 +33,10 @@ debug: CC = clang
 debug: $(BIN)
 
 .PHONY: release
-release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -mfma -mskstk
+release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -mfma -mshstk
 release: CFLAGS += -DRELEASE_MODE
 release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
-release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic -mskstk
+release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic -mshstk
 release: CC = clang
 release: $(BIN)
 
@@ -76,6 +76,7 @@ release: $(BIN)
 $(BIN): src/sys/sys_x11.o src/app.o
 	rm -r -f bin
 	@mkdir -p bin
+	rm src/app.o
 	$(CC) $(CFLAGS) -c src/sys/sys_x11.m -o src/sys/sys_x11.o $(SYSLIBS) $(SYSINCL)
 	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/sys_x11.o $(SYSLIBS) $(SYSINCL)
 

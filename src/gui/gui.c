@@ -1347,8 +1347,7 @@ gui_txt_ext(int *ext, struct gui_ctx *ctx, struct str txt) {
 static int
 gui_txt_width(struct gui_ctx *ctx, struct str txt) {
   assert(ctx);
-
-  int ext[2];
+  int ext[2] = {0};
   gui_txt_ext(ext, ctx, txt);
   return ext[0];
 }
@@ -1502,7 +1501,7 @@ gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[1024];
+  char buf[256];
   const int n = fmtvsn(buf, cntof(buf), fmt, args);
   if (n < cntof(buf)) {
     gui_lbl(ctx, pan, parent, cut, str0(buf));
@@ -1530,7 +1529,7 @@ gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[1024];
+  char buf[128];
   strftime(buf, cntof(buf), fmt, tm);
   gui_txt(ctx, pan, parent, str0(buf), 0);
 }
@@ -1870,7 +1869,6 @@ gui_chk_boxi(struct gui_ctx *ctx, struct gui_panel *pan,
   *chkd = gui_chk_box_bool(st);
   return ret;
 }
-
 /* ---------------------------------------------------------------------------
  *                                  Toggle
  * ---------------------------------------------------------------------------
@@ -5598,7 +5596,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     tab->hdr.x = tab->box.x;
     tab->hdr.y = gui_max_ext(tab->box.y.max, ctx->cfg.item);
     tab->at = tab->hdr.y.min;
-    tab->off = tab->box.x.max;
+    tab->off = tab->box.x.min;
 
     tab->bdy.x = gui_shrink(&tab->hdr.x, ctx->cfg.pan_pad[0]);
     tab->bdy.y = gui_min_max(tab->box.y.min, tab->hdr.y.min - gap);
@@ -5648,12 +5646,7 @@ gui_tab_hdr_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(tab);
   assert(hdr);
 
-  switch(tab->hdr_pos) {
-  case GUI_TAB_HDR_TOP:
-    tab->off = hdr->box.x.min; break;
-  case GUI_TAB_HDR_BOT:
-    tab->off = hdr->box.x.max; break;
-  }
+  tab->off = hdr->box.x.min;
   hdr->pan.box = hdr->box;
   gui_panel_begin(ctx, &hdr->pan, &tab->pan);
 }
@@ -5726,16 +5719,8 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(slot);
 
   int is_act = (tab->sel.idx == tab->idx);
-  switch(tab->hdr_pos) {
-  default:
-  case GUI_TAB_HDR_TOP: {
-    hdr->slot.x = gui_min_ext(tab->off, tab->tab_w);
-    hdr->slot.y = hdr->pan.box.y;
-  } break;
-  case GUI_TAB_HDR_BOT: {
-    hdr->slot.x = gui_max_ext(tab->off, tab->tab_w);
-    hdr->slot.y = hdr->pan.box.y;
-  } break;}
+  hdr->slot.x = gui_min_ext(tab->off, tab->tab_w);
+  hdr->slot.y = hdr->pan.box.y;
 
   slot->box = hdr->slot;
   slot->focusable = is_act != 0;
@@ -5745,13 +5730,7 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   hdr->id = id;
   slot->box.x = gui_shrink(&slot->box.x, ctx->cfg.pan_pad[0]);
   hdr->slot = slot->box;
-
-  switch(tab->hdr_pos) {
-  case GUI_TAB_HDR_TOP:
-    tab->off = slot->box.x.max; break;
-  case GUI_TAB_HDR_BOT:
-    tab->off = slot->box.x.min; break;
-  }
+  tab->off = slot->box.x.max;
 }
 static void
 gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -5813,25 +5792,45 @@ gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 }
 static void
 gui_tab_hdr_slot_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                    struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+                    unsigned long long id, struct str txt) {
+  assert(ctx);
+  assert(tab);
+  assert(hdr);
+  assert(slot);
+
+  static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
+  gui_tab_hdr_slot_begin(ctx, tab, hdr, slot, id);
+  gui_txt(ctx, slot, &hdr->pan, txt, &align);
+  gui_tab_hdr_slot_end(ctx, tab, hdr, slot, 0);
+}
+static void
+gui_tab_hdr_slot(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                 struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+                 struct str txt) {
+  assert(ctx);
+  assert(tab);
+  assert(hdr);
+  gui_tab_hdr_slot_id(ctx, tab, hdr, slot, str_hash(txt), txt);
+}
+static void
+gui_tab_hdr_item_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                     struct gui_tab_ctl_hdr *hdr, unsigned long long id,
                     struct str txt) {
   assert(ctx);
   assert(tab);
   assert(hdr);
-  static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
-
   struct gui_panel slot = {0};
-  gui_tab_hdr_slot_begin(ctx, tab, hdr, &slot, id);
-  gui_txt(ctx, &slot, &hdr->pan, txt, &align);
-  gui_tab_hdr_slot_end(ctx, tab, hdr, &slot, 0);
+  gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, id, txt);
 }
 static void
-gui_tab_hdr_slot(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+gui_tab_hdr_item(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                  struct gui_tab_ctl_hdr *hdr, struct str txt) {
   assert(ctx);
   assert(tab);
   assert(hdr);
-  gui_tab_hdr_slot_id(ctx, tab, hdr, str_hash(txt), txt);
+  struct gui_panel slot = {0};
+  gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, str_hash(txt), txt);
 }
 static void
 gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
@@ -5859,7 +5858,7 @@ gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
     gui_drw_vln(ctx, b->x.min, b->y.min, tab->at);
 
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-    gui_drw_hln(ctx, tab->at, b->x.min, tab->off);
+    gui_drw_hln(ctx, tab->at, tab->off, b->x.max - 2);
     gui_drw_vln(ctx, b->x.max - 2, b->y.min, tab->at);
   } break;}
 }
@@ -6710,7 +6709,6 @@ static const struct gui_api gui__api = {
       .sel_all = gui_txt_ed_sel_all,
     },
   },
-#if 0
   .spin = {
     .val = gui_spin,
     .flt = gui_spin_flt,
@@ -6718,7 +6716,6 @@ static const struct gui_api gui__api = {
     .num = gui_spin_int,
     .i = gui_spin_i,
   },
-#endif
   .grp = {
     .begin = gui_grp_begin,
     .end = gui_grp_end,
@@ -6838,6 +6835,10 @@ static const struct gui_api gui__api = {
         .end = gui_tab_hdr_slot_end,
         .txt_id = gui_tab_hdr_slot_id,
         .txt = gui_tab_hdr_slot,
+      },
+      .item = {
+        .txt_id = gui_tab_hdr_item_id,
+        .txt = gui_tab_hdr_item,
       },
     },
   },

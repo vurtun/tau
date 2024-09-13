@@ -1411,6 +1411,10 @@ struct gui_tbl_api {
 struct gui_tab_ctl_hdr_slot_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot, unsigned long long id);
   void (*end)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot, struct gui_input *in);
+  void (*txt_id)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot, unsigned long long id, struct str txt);
+  void (*txt)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot, struct str txt);
+};
+struct gui_tab_ctl_hdr_item_api {
   void (*txt_id)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, unsigned long long id, struct str txt);
   void (*txt)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr, struct str txt);
 };
@@ -1418,6 +1422,7 @@ struct gui_tab_ctl_hdr_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr);
   void (*end)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_tab_ctl_hdr *hdr);
   struct gui_tab_ctl_hdr_slot_api slot;
+  struct gui_tab_ctl_hdr_item_api item;
 };
 struct gui_tab_ctl_api {
   struct gui_tab_ctl_hdr_api hdr;

@@ -24,17 +24,10 @@
 #include "sys/sys.h"
 #include "gui/res.h"
 #include "gui/gui.h"
+#include "app/cfg.h"
 #include "app/pck.h"
 #include "app/dbs.h"
 
-struct gui_app_key {
-  int code;
-  unsigned mod;
-};
-struct app_ui_shortcut {
-  struct gui_app_key key;
-  struct gui_app_key alt;
-};
 enum app_view_state {
   APP_VIEW_STATE_FILE,
   APP_VIEW_STATE_DB,
@@ -42,17 +35,16 @@ enum app_view_state {
 struct app_view {
   enum app_view_state state;
   enum app_view_state last_state;
-  struct db_ui_view *db;
+  struct db_view *db;
   struct str file_path;
+  int path_buf_off;
 };
 #define APP_VIEW_CNT 32
-#define APP_VIEW_PATH_BUF (MAX_FILE_PATH*APP_VIEW_CNT)
+#define APP_VIEW_PATH_BUF (MAX_FILE_PATH * APP_VIEW_CNT)
 struct app {
   struct sys sys;
   struct res res;
   struct gui_ctx gui;
-  struct mem_blk *db_mem;
-  struct mem_blk *gui_mem;
   struct file_view fs;
 
   /* views */
@@ -63,7 +55,10 @@ struct app {
   unsigned char tab_cnt;
   unsigned char tabs[APP_VIEW_CNT];
   struct app_view views[APP_VIEW_CNT];
-  char buf[APP_VIEW_PATH_BUF];
+  char path_buf[APP_VIEW_PATH_BUF];
+
+  char db_mem[CFG_DB_MAX_MEMORY];
+  char gui_mem[CFG_GUI_MAX_MEMORY];
 };
 static struct sys_api sys;
 static struct res_api res;
@@ -71,7 +66,6 @@ static struct gui_api gui;
 static struct pck_api pck;
 static struct db_api dbs;
 
-#include "app/cfg.h"
 #include "lib/fmt.c"
 #include "lib/std.c"
 #include "lib/math.c"
@@ -100,7 +94,8 @@ app_view_new(struct app *app) {
 static void
 app_view_del(struct app *app, int idx) {
   assert(app);
-  assert(idx < APP_VIEW_CNT);
+  assert(idx >= 0);
+  assert(idx < cntof(app->views));
   assert(!(app->unused & (1u << idx)));
 
   struct app_view *view = &app->views[idx];
@@ -109,23 +104,26 @@ app_view_del(struct app *app, int idx) {
 }
 static void
 app_view_setup(struct app *app, int idx) {
-  assert(idx < APP_VIEW_CNT);
-  assert(!(app->unused & (1u << idx)));
   assert(app);
+  assert(idx >= 0);
+  assert(idx < cntof(app->views));
+  assert(!(app->unused & (1u << idx)));
 
   struct app_view *view = &app->views[idx];
   view->state = APP_VIEW_STATE_FILE;
   view->last_state = view->state;
+  view->path_buf_off = idx * MAX_FILE_PATH;
 }
 static int
 app_view_init(struct app *app, int idx, struct str path) {
-  assert(idx < APP_VIEW_CNT);
-  assert(!(app->unused & (1u << idx)));
   assert(app);
+  assert(idx >= 0);
+  assert(idx < cntof(app->views));
+  assert(!(app->unused & (1u << idx)));
 
   struct app_view *view = &app->views[idx];
   app_view_setup(app, idx);
-  view->file_path = str_set(app->buf + idx * MAX_FILE_PATH, MAX_FILE_PATH, path);
+  view->file_path = str_set(app->path_buf + view->path_buf_off, MAX_FILE_PATH, path);
   if (str_is_inv(view->file_path)) {
     return -1;
   }
@@ -133,59 +131,80 @@ app_view_init(struct app *app, int idx, struct str path) {
   return 0;
 }
 static int
-app_view_add(struct app *app, int idx) {
+app_tab_add(struct app *app, int idx) {
   assert(app);
-  assert(app->tab_cnt < APP_VIEW_CNT);
+  assert(idx >= 0);
+  assert(tab_idx < cntof(app->views));
+  assert(app->tab_cnt < cntof(app->tabs));
+  assert(!(app->unused & (1u << idx)));
   app->tabs[app->tab_cnt] = castb(idx);
   return app->tab_cnt++;
 }
 static void
-app_view_rm(struct app *app, int idx) {
+app_tab_rm(struct app *app, int tab_idx) {
   assert(app);
   assert(app->tab_cnt > 0);
-  assert(idx < APP_VIEW_CNT);
-
-  app_view_del(app, app->tabs[idx]);
-  arr_rm(app->tabs, idx, app->tab_cnt);
+  assert(tab_idx >= 0);
+  assert(tab_idx < app->tab_cnt);
+  assert(tab_idx < cntof(app->tabs));
+  arr_rm(app->tabs, tab_idx, app->tab_cnt);
   app->tab_cnt--;
+  app->sel_tab = castb(clamp(0, app->sel_tab, app->tab_cnt-1));
 }
 static void
-app_open_files(struct app *app, const struct str *files, int file_cnt) {
+app_tab_close(struct app *app, int tab_idx) {
+  assert(app);
+  assert(app->tab_cnt > 0);
+  assert(tab_idx >= 0);
+  assert(tab_idx < app->tab_cnt);
+  assert(tab_idx < cntof(app->tabs));
+  assert(!(app->unused & (1u << tab_idx)));
+  app_view_del(app, app->tabs[tab_idx]);
+  app_tab_rm(app, tab_idx);
+}
+static void
+app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   assert(app);
   assert(sys);
   assert(files);
-
+  assert(file_cnt >= 0);
   /* open each database in new tab */
   for (int i = 0; app->unused && i < file_cnt; ++i) {
     int view = app_view_new(app);
     if (app_view_init(app, view, files[i]) < 0) {
       app_view_del(app, view);
       continue;
-    } else {
-      app->sel_tab = castb(app_view_add(app, view));
     }
-    struct db_ui_view *db = 0;
-    db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, files[i]);
+    app->sel_tab = castb(app_tab_add(app, view));
+    struct db_view *db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, files[i]);
     if (db) {
       app->views[view].db = db;
     } else {
-      app_view_del(app, view);
+      app_tab_close(app, app->sel_tab);
     }
   }
 }
-static void
-app_swap_view(struct app *app, int dst_idx, int src_idx) {
+static int
+app_tab_open(struct app *app) {
   assert(app);
-  assert(dst_idx < APP_VIEW_CNT);
-  assert(src_idx < APP_VIEW_CNT);
-  assert(!(app->unused & (1u << dst_idx)));
-  assert(!(app->unused & (1u << src_idx)));
-
-  int dst = app->tabs[dst_idx];
-  int src = app->tabs[src_idx];
-
-  app->tabs[dst_idx] = castb(src);
-  app->tabs[src_idx] = castb(dst);
+  assert(app->unused > 0);
+  assert(app->tab_cnt < cntof(app->tabs));
+  int view = app_view_new(app);
+  app->sel_tab = castb(app_tab_add(app, view));
+  return app->sel_tab;
+}
+static void
+app_tab_swap(struct app *app, int dst_idx, int src_idx) {
+  assert(app);
+  assert(dst_idx >= 0);
+  assert(src_idx >= 0);
+  assert(dst_idx < app->tab_cnt);
+  assert(src_idx < app->tab_cnt);
+  assert(dst_idx < cntof(app->tabs));
+  assert(src_idx < cntof(app->tabs));
+  assert(!(app->unused & (1u << app->tabs[dst_idx])));
+  assert(!(app->unused & (1u << app->tabs[src_idx])));
+  iswap(app->tabs[dst_idx], app->tabs[src_idx]);
 }
 static void
 app_init(struct app *app) {
@@ -195,17 +214,15 @@ app_init(struct app *app) {
   app->sys.win.y = -1;
   app->sys.win.w = 800;
   app->sys.win.h = 600;
-  app->sys.gfx.clear_color = col_rgb(0,0,0);
+  app->sys.gfx.clear_color = col_black;
   sys.init(&app->sys);
   {
     struct res_args args = {0};
+    args.sys = &app->sys;
     args.run_cnt = KB(16);
     args.hash_cnt = KB(32);
-    args.sys = &app->sys;
     res.init(&app->res, &args);
   }
-  app->db_mem = app->sys.mem.alloc(&app->sys, 0, CFG_DB_MAX_MEMORY, 0, 0);
-  app->gui_mem = app->sys.mem.alloc(&app->sys, 0, CFG_GUI_MAX_MEMORY, 0, 0);
   {
     struct gui_args args = {0};
     args.scale = app->sys.dpi_scale;
@@ -216,16 +233,16 @@ app_init(struct app *app) {
     }
     app->gui.sys = &app->sys;
     app->gui.res = &app->res;
-    app->gui.vtx_buf = app->gui_mem->base;
-    app->gui.idx_buf = app->gui_mem->base + CFG_GUI_VTX_MEMORY;
+    app->gui.vtx_buf = app->gui_mem;
+    app->gui.idx_buf = app->gui_mem + CFG_GUI_VTX_MEMORY;
     app->gui.vtx_buf_siz = CFG_GUI_VTX_MEMORY;
     app->gui.idx_buf_siz = CFG_GUI_IDX_MEMORY;
     gui.init(&app->gui, &args);
   }
-  if (pck.init(&app->fs, &app->sys, &app->gui, app->sys.mem.tmp) < 0) {
+  if (pck.init(&app->fs, &app->sys, &app->gui) < 0) {
 
   }
-  dbs.init(app->db_mem);
+  dbs.init(app->db_mem, szof(app->db_mem));
 
   app->tab_cnt = 0;
   app->unused = ~0u;
@@ -252,16 +269,15 @@ app_shutdown(struct app *app) {
     app_view_del(app, idx);
     used = ~app->unused;
   }
-  app->sys.mem.free(&app->sys, app->db_mem);
-  app->sys.mem.free(&app->sys, app->gui_mem);
-
   pck.shutdown(&app->fs, &app->sys);
   res.shutdown(&app->res);
   sys.shutdown(&app->sys);
 }
 
 /* -----------------------------------------------------------------------------
+ *
  *                                  GUI
+ *
  * -----------------------------------------------------------------------------
  */
 static void
@@ -272,14 +288,14 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   assert(pan);
   assert(parent);
 
-  struct str path = pck.ui(view->file_path.str, MAX_FILE_PATH, &app->fs, ctx, pan, parent);
-  if (str_is_val(path)) {
-    view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, path);
+  view->file_path = pck.ui(app->path_buf + view->path_buf_off, MAX_FILE_PATH, &app->fs, ctx, pan, parent);
+  if (str_is_val(view->file_path)) {
+    view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, view->file_path);
     view->state = APP_VIEW_STATE_DB;
     if (view->db) {
       int new_view = app_view_new(app);
       app_view_setup(app, new_view);
-      app_view_add(app, new_view);
+      app_tab_add(app, new_view);
       app->sys.repaint = 1;
     }
   }
@@ -300,8 +316,7 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
     } break;
     case APP_VIEW_STATE_DB: {
       dbs.ui(view->db, ctx, &bdy, pan);
-    } break;
-    }
+    } break;}
   }
   gui.pan.end(ctx, pan, parent);
 }
@@ -318,7 +333,7 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       switch (paq->state) {
       case GUI_DND_DELIVERY: {
         int file_cnt = paq->size;
-        app_open_files(app, file_urls, file_cnt);
+        app_tab_open_files(app, file_urls, file_cnt);
         paq->response = GUI_DND_ACCEPT;
       } break;
       case GUI_DND_LEFT: break;
@@ -456,21 +471,18 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
       if (tab.sort.mod) {
-        app_swap_view(app, tab.sort.dst, tab.sort.src);
+        app_tab_swap(app, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
         /* close database view tab */
-        assert(app->tab_cnt > 1);
-        app_view_rm(app, app->sel_tab);
-        app->sel_tab = castb(clamp(0, tab.sel.idx, app->tab_cnt-1));
+        app_tab_close(app, app->sel_tab);
       }
       if (app->unused) {
         /* add/open new file view tab */
         struct gui_btn add = {.box = hdr.pan.box};
         add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
         if (gui.btn.ico(ctx, &add, &hdr.pan, RES_ICO_FOLDER_ADD)) {
-          int view = app_view_new(app);
-          app->sel_tab = castb(app_view_add(app, view));
+          app_tab_open(app);
         }
       }
       /* tab body */
@@ -480,7 +492,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
         /* tab selection */
         int ret = ui_app_tab_view_lst(app, ctx, &bdy, pan);
         if (ret >= 0) {
-          app_swap_view(app, 0, ret);
+          app_tab_swap(app, 0, ret);
           app->show_tab_lst = 0;
           app->sel_tab = 0;
         }
@@ -560,8 +572,6 @@ main(int argc, char **argv) {
         break;
       }
     }
-    pck.update(&app.fs, &app.sys);
-
     /* user interface */
     if (app.sys.style_mod) {
       gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);

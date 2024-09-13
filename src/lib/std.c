@@ -2746,7 +2746,7 @@ str_del(char *b, struct str in, int pos, int len) {
   if (pos >= in.len) {
     return str_rm(b, in, len);
   }
-  assert(pos + len < in.len);
+  assert(pos + len <= in.len);
   memmove(b + pos, b + pos + len, castsz(in.len - pos));
   return str(b, in.len - len);
 }
@@ -2896,10 +2896,6 @@ lck_rel(struct lck *lck) {
  *                                  Arena
  * ---------------------------------------------------------------------------
  */
-#define KB(n) (1024 * n)
-#define MB(n) (1024 * KB(n))
-#define GB(n) (1024 * MB(n))
-
 #define ARENA_ALIGNMENT 8
 #define ARENA_BLOCK_SIZE KB(64)
 
@@ -2909,7 +2905,6 @@ lck_rel(struct lck *lck) {
 #define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(szof(T) * (n))), (n)))
 #define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
 #define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, -(n)))
-
 #define arena_scope(a,s,sys)\
   (int uniqid(_i_) = (arena_scope_push(s,a), 0); uniqid(_i_) < 1;\
     uniqid(_i_) = (arena_scope_pop(s,a,sys), 1))
@@ -3149,7 +3144,7 @@ struct dyn_hdr {
 
 #define dyn_each(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
 #define dyn_loop(i,c) (int i = 0; i < dyn_cnt(c); ++i)
-#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it != (c) + (r).hi; it += (r).step)
+#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it < (c) + (r).hi; it += (r).step)
 #define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += (r).step)
 
 #define dyn_asn(b, s, x, n) do {                    \

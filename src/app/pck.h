@@ -4,9 +4,10 @@
 #define FILE_LIST_ELM_BUF_CNT     (FILE_LIST_ELM_CNT*2)
 #define FILE_LIST_STR_BUF_SIZ     (FILE_LIST_ELM_BUF_CNT*MAX_FILE_NAME)
 #define FILE_LIST_MAX_FILTER      64
+#define FILE_TREE_ELM_CNT         256
+#define FILE_TREE_STR_BUF_SIZ     (FILE_TREE_ELM_CNT*MAX_FILE_NAME)
 #define FILE_SPLIT_MAX            2
 
-struct arena;
 struct gui_api;
 struct gui_ctx;
 struct gui_panel;
@@ -33,7 +34,7 @@ enum file_tbl_hdr_col {
   FILE_TBL_DATE,
   FILE_TBL_MAX,
 };
-struct file_tbl {
+struct file_tbl_ui {
   int cnt;
   struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(FILE_TBL_MAX)];
@@ -55,7 +56,7 @@ struct file_list_view {
   struct file_list_page page;
 
   double off[2];
-  struct file_tbl tbl;
+  struct file_tbl_ui tbl;
 
   struct str nav_path;
   char nav_buf[MAX_FILE_PATH];
@@ -65,47 +66,16 @@ struct file_list_view {
   char fltr_buf[FILE_LIST_MAX_FILTER];
   struct gui_txt_ed fltr_ed;
 };
-
-
-struct file_tree_node {
-  struct file_tree_node *parent;
-  struct lst_elm hook;
-  struct lst_elm sub;
-  unsigned long long id;
-  struct str fullpath;
-  int depth;
-};
-struct file_tree_view {
-  unsigned rev;
-  struct arena mem;
-  struct file_tree_node root;
-  dyn(struct file_tree_node*) lst;
-  struct lst_elm del_lst;
-  unsigned long long *exp;
-  int sel;
-  double off[2];
-  unsigned jmp:1;
-  unsigned long jmp_to;
-};
-
-
 struct file_view {
   int state;
-  struct arena *tmp_arena;
   char home_path[MAX_FILE_PATH];
   struct str home;
-  int split[GUI_SPLIT_CAP(FILE_SPLIT_MAX)];
   unsigned lst_rev;
   struct file_list_view lst;
-  unsigned tree_rev;
-  struct file_tree_view tree;
 };
-
-
 struct pck_api {
   int version;
-  int (*init)(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx, struct arena *tmp);
-  void (*update)(struct file_view*, struct sys *sys);
+  int (*init)(struct file_view *fs, struct sys *sys, struct gui_ctx *ctx);
   void (*shutdown)(struct file_view*, struct sys *sys);
   struct str (*ui)(char *filepath, int n, struct file_view*, struct gui_ctx *ctx,
                    struct gui_panel *pan, struct gui_panel *parent);
