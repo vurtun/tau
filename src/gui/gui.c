@@ -4376,6 +4376,7 @@ gui_lst_on_sel(struct gui_ctx *ctx, struct gui_lst_sel *sel,
     st->sel_op = is_sel ? GUI_LST_SEL_OP_CLR : GUI_LST_SEL_OP_SET;
     st->sel_idx = sel->idx;
   }
+  sel->sel_cnt = sel->end_idx - sel->begin_idx;
 }
 static void
 gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,

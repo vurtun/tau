@@ -514,6 +514,7 @@ struct gui_lst_sel {
   enum gui_lst_sel_op op;
   int begin_idx;
   int end_idx;
+  int sel_cnt;
   int idx;
   /* out: key event */
   unsigned mod : 1;

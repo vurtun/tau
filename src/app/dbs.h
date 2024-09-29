@@ -5,13 +5,13 @@ struct gui_api;
 struct gui_ctx;
 struct gui_panel;
 
-#define DB_MAX_FILTER   64
-#define DB_TBL_VIEW_CNT 64
-#define DB_MAX_TBL_NAME 256
-#define DB_MAX_TBL_SQL  1024
-#define DB_MAX_ELM_CNT  256
-#define DB_MAX_FLTR_STR 32
-#define DB_MAX_FLTR_CNT 32
+#define DB_MAX_FILTER     64
+#define DB_TBL_VIEW_CNT   64
+#define DB_MAX_TBL_NAME   256
+#define DB_MAX_TBL_SQL    1024
+#define DB_MAX_ELM_CNT    256
+#define DB_MAX_FLTR_STR   32
+#define DB_MAX_FLTR_CNT   32
 
 #define DB_INFO_NAME_STR_BUF_SIZ (DB_MAX_ELM_CNT * DB_MAX_TBL_NAME)
 #define DB_INFO_SQL_STR_BUF_SIZ (DB_MAX_ELM_CNT * DB_MAX_TBL_SQL)
@@ -28,10 +28,10 @@ struct db_tree_tbl_state {
   double off[2];
 };
 #define DB_TBL_MAP(TYPE)\
-  TYPE(TBL,     "table",    RES_ICO_TABLE)\
-  TYPE(VIEW,    "view",     RES_ICO_IMAGE)\
-  TYPE(IDX,     "index",    RES_ICO_TAG)\
-  TYPE(TRIGGER, "trigger",  RES_ICO_BOLT)
+  TYPE(TBL,       "table",    RES_ICO_TABLE)\
+  TYPE(VIEW,      "view",     RES_ICO_IMAGE)\
+  TYPE(IDX,       "index",    RES_ICO_TAG)\
+  TYPE(TRIGGER,   "trigger",  RES_ICO_BOLT)
 
 enum db_tbl_type {
 #define DB_TBL_TYPE(a,b,c) DB_TBL_TYPE_##a,
@@ -116,6 +116,8 @@ struct db_tbl_fltr_tm {
 
 enum db_tbl_fltr_elm_typ {
   DB_TBL_FLTR_ELM_TYP_STR,
+  DB_TBL_FLTR_ELM_TYP_SEL,
+  DB_TBL_FLTR_ELM_TYP_TM
 };
 struct db_tbl_fltr_elm {
   unsigned enabled: 1;
@@ -141,7 +143,6 @@ struct db_tbl_fltr_view {
   struct db_tbl_fltr_state tbl_col;
   double off[2];
 
-  dyn(char) buf;
   struct arena_scope scp;
   struct str *data;
 

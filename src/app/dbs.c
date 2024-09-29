@@ -432,7 +432,6 @@ db_tbl_view_setup(struct db_view *db, int idx, struct sys *_sys,
   tbl->tmp_mem = tmp_mem;
   tbl->cols = arena_dyn(&tbl->mem, _sys, struct db_tbl_col, 128);
   tbl->name = arena_str(&tbl->mem, _sys, id);
-  tbl->fltr.buf = arena_dyn(&tbl->mem, _sys, char, DB_MAX_FILTER);
   tbl->fltr.unused = ~0u;
 
   struct arena_scope scp = {0};
@@ -795,7 +794,7 @@ db_info_sel_elms(struct db_view *db, struct db_info_view *info,
                  const struct gui_lst_sel *sel) {
   assert(db);
   assert(sel);
-  assert(inf);
+  assert(info);
   if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
     tbl_clr(&info->sel);
   }
@@ -814,21 +813,23 @@ db_info_sel_elms(struct db_view *db, struct db_info_view *info,
     }
     return;
   }
-  /* multi-selection */
-  sqlite3_stmt *stmt = 0;
-  struct str sql = str_fmtsn(db->sql_qry_buf, cntof(db->sql_qry_buf), "SELECT rowid FROM sqlite_master LIMIT %d, %d;", sel->begin_idx, sel->end_idx - sel->begin_idx);
-  int rc = sqlite3_prepare_v2(db->con, str_beg(sql), -1, &stmt, 0);
-  assert(rc == SQLITE_OK);
-  while (sqlite3_step(stmt) == SQLITE_ROW && info->sel.cnt < cntof(info->sel.keys)) {
-    long long rowid = sqlite3_column_int64(stmt, 0);
-    switch (sel->op){
-    case GUI_LST_SEL_OP_SET:
-      tbl_put(&info->sel, hash_lld(rowid), &rowid); break;
-    case GUI_LST_SEL_OP_CLR:
-      tbl_del(&info->sel, hash_lld(rowid)); break;
+  if (sel->sel_cnt + info->sel.cnt < cntof(info->sel.keys)) {
+    /* multi-selection */
+    sqlite3_stmt *stmt = 0;
+    struct str sql = str_fmtsn(db->sql_qry_buf, cntof(db->sql_qry_buf), "SELECT rowid FROM sqlite_master LIMIT %d, %d;", sel->begin_idx, sel->end_idx - sel->begin_idx);
+    int rc = sqlite3_prepare_v2(db->con, str_beg(sql), -1, &stmt, 0);
+    assert(rc == SQLITE_OK);
+    while (sqlite3_step(stmt) == SQLITE_ROW && info->sel.cnt < cntof(info->sel.keys)) {
+      long long rowid = sqlite3_column_int64(stmt, 0);
+      switch (sel->op){
+      case GUI_LST_SEL_OP_SET:
+        tbl_put(&info->sel, hash_lld(rowid), &rowid); break;
+      case GUI_LST_SEL_OP_CLR:
+        tbl_del(&info->sel, hash_lld(rowid)); break;
+      }
     }
+    sqlite3_finalize(stmt);
   }
-  sqlite3_finalize(stmt);
 }
 
 /* ---------------------------------------------------------------------------

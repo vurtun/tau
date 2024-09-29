@@ -135,7 +135,7 @@ struct guid {
 };
 #define confine for
 #define dyn(T) T*
-#define TBL_CAP(n) ((n)+((n)>>2))
+#define TBL_CAP(n) ((n)+((n)>>2)+1)
 #define tbl(T,N) {\
   unsigned long long keys[TBL_CAP(N)];\
   T vals[TBL_CAP(N)];\
