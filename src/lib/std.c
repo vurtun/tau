@@ -15,8 +15,8 @@ npow2(int x) {
  * ---------------------------------------------------------------------------
  */
 #define forever while(1)
-#define loopr(i,r) (int i = (r).lo; i != (r).hi; i += (r).step)
-#define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += (r).step, ++j)
+#define loopr(i,r) (int i = (r).lo; i != (r).hi; i += 1)
+#define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += 1, ++j)
 #define loop(i,n) (int i = 0; i < (n); ++i)
 
 /* ---------------------------------------------------------------------------
@@ -55,25 +55,27 @@ mset(void *addr, int c, int n) {
  *                                Range
  * ---------------------------------------------------------------------------
  */
-#define rng(b,e,s,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), s)
-#define intvl(b,n,s) rng(b,n,s,n)
-#define rngn(n) rng(0,(n),1,(n))
-#define slc(b,e) rng((b),(e),1,(e)-(b))
+#define rng(b,e,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), n)
+#define intvl(b,n) rng(b,n,n)
+#define rngn(n) rng(0,(n),(n))
+#define rng_inv (struct rng){-1,-1,-1,-1}
 
+#define slc(b,e) rng((b),(e),(e)-(b))
 #define slc_beg(p,r) ((p)+(r).lo)
 #define slc_end(p,r) ((p)+(r).hi)
-#define slc_at(p,r,i) ((p)+(w).lo+i*(r).step)
+#define slc_at(p,r,i) (slc_beg(p,r)[i])
 
 #define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
 #define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
 #define rng_has_excl(a,b) ((a)->lo < (b)->lo && (a)->hi > (b)->hi)
-#define rng_has_exclv(a, v) ((v) > (a)->lo && (v) < (a)->hi)
+#define rng_has_exclv(a,v) ((v) > (a)->lo && (v) < (a)->hi)
 #define rng_overlaps(a,b) (max((a)->lo, (b)->lo) <= min((a)->hi, (b)->hi))
+#define rng_is_inv(a) (a.cnt < 0 || a.total < 0)
 
 #define rng_clamp(a,v) clamp((a)->lo, v, (a)->hi)
-#define rng_len(r) (((r)->hi - (r)->lo)
+#define rng_cnt(r) ((r)->cnt)
 #define rng_shft(r, d) (r)->lo += (d), (r)->hi += (d)
-#define rng_norm(r,v) (castf(castd(rng_clamp(r,v) - (r)->lo) / castd(rng_len(r))))
+#define rng_norm(r,v) (castf(castd(rng_clamp(r,v) - (r)->lo) / castd(rng_cnt(r))))
 
 #define rng_rhs(r,n) rng_sub(r,n,(r)->cnt)
 #define rng_lhs(r,n) rng_sub(r,0,n)
@@ -87,15 +89,16 @@ rng__bnd(int i, int n) {
   return clamp(v, 0, l);
 }
 static force_inline struct rng
-rng__mk(int lo, int hi, int s) {
-  struct rng r = {.lo = lo, .hi = hi, .step = s};
-  assert((lo <= hi && s > 0) || (lo >= hi && s < 0));
-  r.cnt = abs(r.hi - r.lo) / abs(s);
+rng__mk(int lo, int hi, int n) {
+  assert(lo <= hi);
+  struct rng r = {.lo = lo, .hi = hi};
+  r.cnt = abs(r.hi - r.lo);
+  r.total = n;
   return r;
 }
 static force_inline struct rng
 rng_sub(const struct rng *r, int b, int e) {
-  struct rng ret = rng(b, e, r->step, r->cnt);
+  struct rng ret = rng(b, e, r->total);
   rng_shft(&ret, r->lo);
   return ret;
 }
@@ -141,6 +144,14 @@ fnv1au64(unsigned long long id, unsigned long long h) {
 static unsigned long long
 hash_ptr(const void *ptr) {
   return fnv1a64(&ptr, szof(void *), FNV1A64_HASH_INITIAL);
+}
+static unsigned long long
+hash_int(long long d) {
+  return fnv1a64(&d, szof(d), FNV1A64_HASH_INITIAL);
+}
+static unsigned long long
+hash_lld(long long d) {
+  return fnv1a64(&d, szof(d), FNV1A64_HASH_INITIAL);
 }
 
 /* ---------------------------------------------------------------------------
@@ -295,10 +306,10 @@ guid__sep(const char *s) {
 static inline int
 guid_str(struct guid *g, struct str gstr) {
   assert(g);
-  if (gstr.len < GUID_STR_LEN) {
+  if (gstr.rng.cnt < GUID_STR_LEN) {
     return 0;
   }
-  const char *s = gstr.str;
+  const char *s = gstr.ptr + gstr.rng.lo;
   int ret =
     guid__hex32(&g->d1, s + 0) &&
     guid__sep(s + 8) &&
@@ -383,7 +394,7 @@ guid_hash64(const struct guid *g) {
 #define arr_each(it,a,n) arr_eachp(it,a,(a)+(n))
 #define arr_eachv(it,a) arr_eachp(it,(a),(a)+cntof(a))
 #define arr_loopv(i,a) (int i = 0; i < cntof(a); ++i)
-#define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += (r).step)
+#define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += 1)
 #define arr_rm(a,i,n) memmove(&(a)[i], &a[i+1], (size_t)(n - 1 - i) * sizeof((a)[0]))
 
 /* ---------------------------------------------------------------------------
@@ -2382,14 +2393,6 @@ fold_case(long *out, long c) {
 #define STR_HASH32(s)   castu((H32(s,0,0)^(H32(s,0,0)>>16)))
 #define STR_HASH64(s)   castu((H64(s,0,0)^(H64(s,0,0)>>16)))
 
-static inline unsigned
-str__match_hash(struct str s) {
-  unsigned int h = 0;
-  for (int i = 0; s.len; ++i) {
-    h = 65599u * h + (unsigned char)s.str[i];
-  }
-  return h ^ (h >> 16);
-}
 #define match(s) switch(str__match_hash(s))
 #define with4(s) case STR_HASH4(s)
 #define with8(s) case STR_HASH8(s)
@@ -2398,92 +2401,105 @@ str__match_hash(struct str s) {
 #define with64(s) case STR_HASH64(s)
 
 #define cstrn(s) casti(strlen(s))
-#define str(s,n) (struct str){s, (s) + (n), (n)}
-#define strp(b,e) (struct str){.str = (b), .end = (e), .len = casti((e) - (b))}
-#define str0(s) (struct str){(s), (s) + cstrn(s), cstrn(s)}
-#define strv(s) str(s, cntof(s)-1)
-#define strf(s) (s).len, (s).str
-#define str_inv (struct str){0,0,-1}
-#define str_nil (struct str){0,0,0}
-#define str_is_inv(s) ((s).len < 0)
-#define str_is_val(s) ((s).len >= 0)
+#define str(p,r) (struct str){.ptr = p, .rng = r}
+#define strptr(p,b,e,n) (struct str){.ptr = p, .rng = rng(casti(b-p),casti(e-p), n)}
+#define strp(b,e) strptr(b,b,e,casti(e-b))
+#define strn(s,n) str(s,rngn(n))
+#define str0(s) str(s,rngn(cstrn(s)))
+#define strv(s) (struct str){.ptr = s, .rng = {0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
+#define strf(s) s.rng.cnt, str_beg(s)
+#define str_nil (struct str){0,rngn(0)}
+#define str_inv (struct str){0,rng_inv}
+#define str_len(s) rng_cnt(&(s).rng)
+#define str_is_empty(s) (str_len(s) == 0)
+#define str_is_inv(s) rng_is_inv(s.rng)
+#define str_is_val(s) (!rng_is_inv(s.rng))
 #define str_eq(a,b) (str_cmp(a,b) == 0)
 #define str_neq(a,b) (str_cmp(a,b) != 0)
-#define str_sub(s,b,e) str((s).str + (b), (e) - (b))
-#define str_rhs(s, n) str_sub(s, min((s).len, n), (s).len)
-#define str_lhs(s, n) str_sub(s, 0, min((s).len, n))
-#define str_cut_lhs(s, n) *(s) = str_rhs(*(s), n)
-#define str_cut_rhs(s, n) *(s) = str_lhs(*(s), n)
+#define str_sub(s,b,e) str((s).ptr, rng_sub(&(s).rng, b, e))
+#define str_rhs(s,n) str_sub(s, min(str_len(s), n), str_len(s))
+#define str_lhs(s,n) str_sub(s, 0, min(str_len(s), n))
+#define str_cut_lhs(s,n) *(s) = str_rhs(*(s), n)
+#define str_cut_rhs(s,n) *(s) = str_lhs(*(s), n)
+#define str_beg(s) slc_beg((s).ptr, (s).rng)
+#define str_end(s) slc_end((s).ptr, (s).rng)
+#define str_at(s,i) slc_at((s).ptr, (s).rng, i)
 
-#define str_eachs(it,c,s) (const char *it = (c)->str; it < (c)->end; it += (s))
-#define str_eachr(it,s,r) (const char *it = (s).str + (r).lo; (it) != (s).str + (r).hi; (it) += (r).step)
-#define str_each(it,s) str_eachs(it,c,1)
-#define str_loops(i,c,s) (int i = 0; i < (c)->len; i += (s))
-#define str_loop(i,c) str_loops(i,c,1)
+#define str_each(it,c) (const char *it = slc_beg((c).ptr, (c).rng); it < slc_end((c).ptr, (c).rng); it += 1)
+#define str_eachr(it,s,r) (const char *it = (s).str + (s).rng.lo + (r).lo; (it) != (s).str + (s).rng.hi - (r).hi; (it) += 1)
+#define str_loop(i,s) (int i = 0; i < str_len(s); ++i)
 #define str_tok(it, rest, src, delim)                       \
   (struct str rest = src, it = str_split_cut(&rest, delim); \
-       it.len; it = str_split_cut(&rest, delim))
+   str_len(it); it = str_split_cut(&rest, delim))
 // clang-format on
 
+static inline unsigned
+str__match_hash(struct str s) {
+  unsigned int h = 0;
+  for str_loop(i,s) {
+    h = 65599u * h + castb(str_at(s,i));
+  }
+  return h ^ (h >> 16);
+}
 static unsigned long long
 str__hash(struct str s, unsigned long long id) {
-  assert(s.len >= 0);
-  return fnv1a64(s.str, s.len, id);
+  assert(str_len(s) >= 0);
+  return fnv1a64(str_beg(s), str_len(s), id);
 }
 static unsigned long long
 str_hash(struct str s) {
-  assert(s.len >= 0);
+  assert(str_len(s) >= 0);
   return str__hash(s, FNV1A64_HASH_INITIAL);
 }
 static int
 str_cmp(struct str a, struct str b) {
-  assert(a.str);
-  assert(a.len >= 0);
-  assert(b.str);
-  assert(b.len >= 0);
+  assert(a.ptr);
+  assert(str_len(a) >= 0);
+  assert(b.ptr);
+  assert(str_len(b) >= 0);
 
-  int n = min(a.len, b.len);
+  int n = min(str_len(a), str_len(b));
   for loop(i,n) {
-    if (a.str[i] < b.str[i]) {
+    if (str_at(a,i) < str_at(b,i)) {
       return -1;
-    } else if (a.str[i] > b.str[i]) {
+    } else if (str_at(a,i) > str_at(b,i)) {
       return +1;
     }
   }
-  if (a.len > b.len) {
+  if (str_len(a) > str_len(b)) {
     return +1;
-  } else if (a.len < b.len) {
+  } else if (str_len(a) < str_len(b)) {
     return -1;
   }
   return 0;
 }
 static int
 str_fnd(struct str hay, struct str needle) {
-  assert(hay.len >= 0);
-  assert(needle.len >= 0);
-  if (needle.len == 1) {
-    const char *ret = cpu_str_chr(hay.str, hay.len, needle.str[0]);
-    return ret ? casti(ret - hay.str) : hay.len;
+  assert(str_len(hay) >= 0);
+  assert(str_len(needle) >= 0);
+  if (str_len(needle) == 1) {
+    const char *ret = cpu_str_chr(str_beg(hay), str_len(hay), str_at(needle,0));
+    return ret ? casti(ret - str_beg(hay)) : str_len(hay);
   } else {
-    return cpu_str_fnd(hay.str, hay.len, needle.str, needle.len);
+    return cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
   }
 }
 static int
 str_has(struct str hay, struct str needle) {
-  assert(hay.str);
-  assert(hay.len >= 0);
-  assert(needle.str);
-  assert(needle.len >= 0);
-  return str_fnd(hay, needle) >= hay.len;
+  assert(hay.ptr);
+  assert(str_len(hay) >= 0);
+  assert(needle.ptr);
+  assert(str_len(needle) >= 0);
+  return str_fnd(hay, needle) >= str_len(hay);
 }
 static struct str
 str_split_cut(struct str *s, struct str delim) {
   assert(s);
-  assert(delim.str);
-  assert(delim.len >= 0);
+  assert(delim.ptr);
+  assert(str_len(delim) >= 0);
 
   int p = str_fnd(*s, delim);
-  if (p < s->len) {
+  if (p < str_len(*s)) {
     struct str ret = str_lhs(*s, p);
     str_cut_lhs(s, p + 1);
     return ret;
@@ -2495,29 +2511,29 @@ str_split_cut(struct str *s, struct str delim) {
 }
 static int
 str_fzy(struct str s, struct str p) {
-  const char *pat = p.str;
-  const char *str = s.str;
+  const char *pat = str_beg(p);
+  const char *str = str_beg(s);
 
   int run = 1;
   int score = 0;
   int remain = 0;
-  for (; str < s.end && pat < p.end; str++) {
+  for (; str < str_end(s) && pat < str_end(p); str++) {
     // clang-format off
-    while (*str == ' ' && str < s.end) {str++;}
-    while (*pat == ' ' && pat < p.end) {pat++;}
+    while (*str == ' ' && str < str_end(s)) {str++;}
+    while (*pat == ' ' && pat < str_end(p)) {pat++;}
     // clang-format on
     if (to_lower(*str) == to_lower(*pat)) {
-      score += run; run++; pat++;
+      score += run;
+      run++; pat++;
     } else {
       score--; run = 1;
     }
   }
-  remain = casti(s.end - str);
-  int val = score + remain + casti(s.str - str);
-  int left = casti(p.end - pat);
+  remain = casti(str_end(s) - str);
+  int val = score + remain + casti(str_beg(s) - str);
+  int left = casti(str_end(p) - pat);
   return casti(val * left - remain);
 }
-
 static void
 ut_str(struct sys *s) {
   unused(s);
@@ -2531,9 +2547,9 @@ ut_str(struct sys *s) {
   int long_pos = str_fnd(hay, strv("boot/usr/str_bootbany"));
   assert(long_pos == 12);
   int close_no = str_fnd(hay, strv("str/"));
-  assert(close_no == hay.len);
+  assert(close_no == str_len(hay));
   int no = str_fnd(hay, strv("rock"));
-  assert(no == hay.len);
+  assert(no == str_len(hay));
   int end = str_fnd(strv("test.exe"), strv(".exe"));
   assert(end == 4);
 }
@@ -2555,20 +2571,20 @@ static const unsigned utf_max[UTF_SIZ+1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10F
 #define utf_tst(c) (((c) & 0xC0) != 0x80)
 #define utf_val(u,i) (between(u, utf_min[i], utf_max[i]) && !between(u, 0xD800, 0xDFFF))
 #define utf_loop(rune, it, rest, src)\
-  (struct str rest = src, it = utf_dec(rune, &rest); it.len; it = utf_dec(rune, &rest))
+  (struct str rest = src, it = utf_dec(rune, &rest); it.rng.cnt; it = utf_dec(rune, &rest))
 #define utf_loop_rev(rune, it, rest, src)\
-  (struct str rest = src, it = utf_dec_rev(rune, &rest); it.len; it = utf_dec_rev(rune, &rest))
+  (struct str rest = src, it = utf_dec_rev(rune, &rest); str_len(it); it = utf_dec_rev(rune, &rest))
 
 static struct str
 utf_dec(unsigned *rune, struct str *s) {
   assert(s);
-  if (!s->len) {
+  if (str_is_empty(*s)) {
     if (rune) *rune = UTF_INVALID;
-    return strp(s->end, s->end);
+    return strptr(s->ptr, str_end(*s), str_end(*s), s->rng.total);
   }
   int n = 0;
   unsigned ret = 0;
-  const char *p = s->str;
+  const char *p = str_beg(*s);
   switch (*p & 0xf0) {
     // clang-format off
     case 0xf0: ret = (*p & 0x07), n = 3; break;
@@ -2578,19 +2594,19 @@ utf_dec(unsigned *rune, struct str *s) {
     default:   ret = (*p & 0xff), n = 0; break;
     // clang-format on
   }
-  if (s->str + n + 1 > s->end) {
+  if (str_beg(*s) + n + 1 > str_end(*s)) {
     if (rune) *rune = UTF_INVALID;
-    *s = strp(s->end, s->end);
+    *s = strptr(s->ptr, str_end(*s), str_end(*s), s->rng.total);
     return *s;
   }
-  struct str view = str(p, n + 1);
+  struct str view = strptr(s->ptr, p, p + n + 1, s->rng.total);
   for (int i = 0; i < n; ++i) {
     ret = (ret << 6) | (*(++p) & 0x3f);
   }
   if (rune) {
     *rune = ret;
   }
-  *s = strp(s->str + n + 1, s->end);
+  *s = strptr(s->ptr, str_beg(*s) + n + 1, str_end(*s), s->rng.total);
   return view;
 }
 static unsigned
@@ -2601,13 +2617,13 @@ utf_get(struct str s) {
 }
 static struct str
 utf_dec_rev(unsigned *rune, struct str *s) {
-  const char *p = s->end;
-  while (p > s->str) {
+  const char *p = str_end(*s);
+  while (p > str_beg(*s)) {
     char c = *(--p);
     if (utf_tst(c)) {
-      struct str r = strp(p, s->end);
+      struct str r = strptr(s->ptr, p, str_end(*s), s->rng.total);
       struct str it = utf_dec(rune, &r);
-      *s = strp(s->str, p);
+      *s = strptr(s->ptr, str_beg(*s), p, s->rng.total);
       return it;
     }
   }
@@ -2646,15 +2662,15 @@ utf_at(unsigned *rune, struct str s, int idx) {
   if (rune) {
     *rune = UTF_INVALID;
   }
-  return strp(s.end, s.end);
+  return strptr(s.ptr, str_end(s), str_end(s), s.rng.total);
 }
 static int
 utf_at_idx(struct str s, int idx) {
   struct str view = utf_at(0, s, idx);
-  if (view.len) {
-    return casti(view.str - s.str);
+  if (str_len(view)) {
+    return casti(str_beg(view) - str_beg(s));
   }
-  return s.len;
+  return str_len(s);
 }
 static int
 utf_len(struct str s) {
@@ -2672,83 +2688,83 @@ utf_len(struct str s) {
 static inline struct str
 str_set(char *b, int n, struct str s) {
   assert(b);
-  assert(s.len >= 0);
-  if (!s.len) {
-    return str(b,0);
-  } else if (s.len > n) {
+  assert(str_len(s) >= 0);
+  if (str_is_empty(s)) {
+    return strn(b,0);
+  } else if (str_len(s) > n) {
     return str_inv;
   }
-  mcpy(b, s.str, s.len);
-  return str(b, s.len);
+  mcpy(b, str_beg(s), str_len(s));
+  return strn(b, str_len(s));
 }
 static inline struct str
 str_sqz(char *b, int n, struct str s) {
   assert(b);
-  assert(s.len >= 0);
+  assert(str_len(s) >= 0);
 
-  int l = min(n, s.len);
-  mcpy(b, s.str, l);
-  return str(b, l);
+  int l = min(n, str_len(s));
+  mcpy(b, str_beg(s), l);
+  return strn(b,l);
 }
 static struct str
 str_add(char *b, int cap, struct str in, struct str s) {
   assert(b);
-  if (in.len + s.len < cap) {
-    mcpy(b + in.len, s.str, s.len);
-    return str(b, s.len + in.len);
+  if (str_len(in) + str_len(s) < cap) {
+    mcpy(b + str_len(in), str_beg(s), str_len(s));
+    return strn(b, str_len(s) + str_len(in));
   }
   int nn = 0;
   unsigned rune = 0;
-  int n = cap - s.len;
+  int n = cap - str_len(s);
   for utf_loop(&rune, it, _, s) {
-    int len = casti(it.end - s.str);
+    int len = casti(str_end(it) - str_beg(s));
     if (len >= n) {
       break;
     }
     nn = len;
   }
-  mcpy(b + in.len, s.str, nn);
-  return str(b, in.len + nn);
+  mcpy(b + str_len(in), str_beg(s), nn);
+  return strn(b, str_len(in) + nn);
 }
 static struct str
 str_rm(char *b, struct str in, int cnt) {
   assert(b);
-  int left = max(0, in.len - cnt);
-  return str(b, left);
+  int left = max(0, str_len(in) - cnt);
+  return strn(b, left);
 }
 static struct str
 str_put(char *b, int cap, struct str in, int pos, struct str s) {
-  if (pos >= in.len) {
+  if (pos >= str_len(in)) {
     return str_add(b, cap, in, s);
   }
-  if (in.len + s.len < cap) {
-    memmove(b + pos + s.len, b + pos, castsz(in.len - pos));
-    mcpy(b + pos, s.str, s.len);
-    return str(b, in.len + s.len);
+  if (str_len(in) + str_len(s) < cap) {
+    memmove(b + pos + str_len(s), b + pos, castsz(str_len(in) - pos));
+    mcpy(b + pos, str_beg(s), str_len(s));
+    return strn(b, str_len(in) + str_len(s));
   }
   int nn = 0;
   unsigned rune = 0;
-  int n = cap - s.len;
+  int n = cap - str_len(s);
   for utf_loop(&rune, it, _, s) {
-    int cnt = casti(it.end - s.str);
+    int cnt = casti(str_end(it) - str_beg(s));
     if (cnt >= -n) {
       break;
     }
     nn = cnt;
   }
-  memmove(b + pos + s.len, b + pos, cast(size_t, in.len - pos));
-  mcpy(b + pos, s.str, s.len);
-  return str(b, s.len + in.len);
+  memmove(b + pos + str_len(s), b + pos, cast(size_t, str_len(in) - pos));
+  mcpy(b + pos, str_beg(s), str_len(s));
+  return strn(b, str_len(s) + str_len(in));
 }
 static struct str
 str_del(char *b, struct str in, int pos, int len) {
   assert(b);
-  if (pos >= in.len) {
+  if (pos >= str_len(in)) {
     return str_rm(b, in, len);
   }
-  assert(pos + len <= in.len);
-  memmove(b + pos, b + pos + len, castsz(in.len - pos));
-  return str(b, in.len - len);
+  assert(pos + len <= str_len(in));
+  memmove(b + pos, b + pos + len, castsz(str_len(in) - pos));
+  return strn(b, str_len(in) - len);
 }
 static struct str
 str_fmtsn(char *buf, int n, const char *fmt, ...) {
@@ -2757,7 +2773,7 @@ str_fmtsn(char *buf, int n, const char *fmt, ...) {
   va_start(va, fmt);
   ret = fmtvsn(buf, n, fmt, va);
   va_end(va);
-  return str(buf, ret);
+  return strn(buf, ret);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2979,24 +2995,17 @@ arena_fmt(struct arena *a, struct sys *s, const char *fmt, ...) {
   va_start(args, fmt);
   fmtvsn(ret, n + 1, fmt, args);
   va_end(args);
-  return str(ret, n);
+  return strn(ret, n);
 }
 static char *
 arena_cstr_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
   assert(a);
   assert(s);
-  if (!cs.len || !r.cnt) {
+  if (!str_len(cs) || !r.cnt) {
     return 0;
   }
-  int i = 0;
   char *ret = arena_alloc(a, s, r.cnt + 1);
-  if (r.step == 1) {
-    mcpy(ret, cs.str, cs.len);
-  } else {
-    for str_eachr(it,cs,r) {
-      ret[i++] = *it;
-    }
-  }
+  mcpy(ret, str_beg(cs), str_len(cs));
   ret[r.cnt] = 0;
   return ret;
 }
@@ -3004,21 +3013,21 @@ static inline char *
 arena_cstr(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
   assert(s);
-  return arena_cstr_rng(a, s, cs, rngn(cs.len));
+  return arena_cstr_rng(a, s, cs, rngn(str_len(cs)));
 }
 static inline struct str
 arena_str(struct arena *a, struct sys *s, struct str cs) {
   assert(a);
   assert(s);
   char *ret = arena_cstr(a, s, cs);
-  return str(ret, cs.len);
+  return strn(ret, str_len(cs));
 }
 static inline struct str
 arena_str_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
   assert(a);
   assert(s);
   char *ret = arena_cstr_rng(a, s, cs, r);
-  return str(ret, r.cnt);
+  return strn(ret, r.cnt);
 }
 static void
 arena_free_last_blk(struct arena *a, struct sys *s) {
@@ -3136,7 +3145,7 @@ struct dyn_hdr {
 #define dyn_rm(a, i) (dyn_cnt(a) ? memmove(&((a)[i]), &((a)[i+1]),(size_t)((--(dyn__hdr(a)->cnt)) - i) * sizeof((a)[0])) :0)
 #define dyn_fmt(b, s, fmt, ...) ((b) = dyn__fmt((b), (s), (fmt), __VA_ARGS__))
 #define dyn_free(b,s) ((!(b))?0:(dyn__hdr(b)->cap <= 0) ? (b) = 0 : ((s)->mem.free((s),dyn__hdr(b)->blk), (b) = 0))
-#define dyn_str(b) str(dyn_begin(b), dyn_cnt(b))
+#define dyn_str(b) str(dyn_begin(b), rngn(dyn_cnt(b)))
 #define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
 #define dyn_asn_str(b,_sys,s) dyn_asn(b,_sys,(s).str,(s).len)
 #define dyn_val(b,i) assert(i < dyn_cnt(b))
@@ -3144,8 +3153,8 @@ struct dyn_hdr {
 
 #define dyn_each(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
 #define dyn_loop(i,c) (int i = 0; i < dyn_cnt(c); ++i)
-#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it < (c) + (r).hi; it += (r).step)
-#define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += (r).step)
+#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it < (c) + (r).hi; it += 1)
+#define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += 1)
 
 #define dyn_asn(b, s, x, n) do {                    \
   dyn_clr(b);                                       \
@@ -3260,7 +3269,7 @@ path_push(dyn(char) path, struct sys *s, struct str src) {
   while (p != path && p[-1] == '/') {
     dyn_pop(path);
   }
-  if (src.str[0] == '/') {
+  if (str_at(src,0) == '/') {
     src = str_rhs(src, 1);
   }
   dyn_fmt(path, s, "/%.*s", strf(src));
@@ -3268,23 +3277,135 @@ path_push(dyn(char) path, struct sys *s, struct str src) {
 }
 static struct str
 path_file(struct str path) {
-  for (const char *p = path.end; p > path.str; --p) {
+  for (const char *p = str_end(path); p > str_beg(path); --p) {
     if (p[-1] == '/') {
-      return strp(p, path.end);
+      return strptr(path.ptr, p, str_end(path), path.rng.total);
     }
   }
   return path;
 }
 static struct str
 path_ext(struct str path) {
-  for (const char *p = path.end; p > path.str; --p) {
+  for (const char *p = str_end(path); p > str_beg(path); --p) {
     if (p[-1] == '.') {
-      return strp(p, path.end);
+      return strptr(path.ptr, p, str_end(path), path.rng.total);
     }
   }
   return str_nil;
 }
 
+/* ---------------------------------------------------------------------------
+ *                                TABLE
+ * ---------------------------------------------------------------------------
+ */
+// clang-format off
+#define tbl__is_del(k) (((k) >> 63) != 0)
+#define tbl__dist(h,n,i) (((i) + (n) - ((h) % n)) % (n))
+#define tbl__key(k) ((k) != 0u && !tbl__is_del(k))
+#define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
+#define tbl__clr(s,cnt,cap) do {mset(s,0,szof(unsigned long long)*cap); *cnt = 0;} while(0)
+
+#define tbl_fnd(t, k) tbl__fnd((t)->keys, cntof((t)->keys), k)
+#define tbl_del(t, k) tbl__del((t)->keys, cntof((t)->keys), &(t)->cnt, k)
+#define tbl_clr(t) tbl__clr((t)->keys, &(t)->cnt, cntof((t)->keys))
+#define tbl_loop(n,i,t) tbl__loop(n,i,(t)->keys,cntof((t)->keys))
+#define tbl_put(t, k, v) do {assert(szof(*(v)) == szof((t)->vals[0])); tbl__put((t)->keys, (t)->vals, &(t)->cnt, cntof((t)->keys), k, v, szof((t)->vals[0]));} while(0)
+#define tbl_val(t,i) ((i) < cntof((t)->keys))
+#define tbl_inval(t,i) (!tbl_val(t,i))
+#define tbl_get(t,i) (tbl_val(t,i) ? ((t)->vals + (i)): 0)
+#define tbl_unref(t,i,d) (tbl_val(t,i) ? (t)->vals[i] : (d))
+#define tbl_has(t,k) tbl_val(t,tbl_fnd(t,k))
+
+// clang-format on
+
+static inline unsigned long long
+tbl__hash(unsigned long long k) {
+  unsigned long long h = k & 0x7fffffffffffffffllu;
+  return h | (h == 0);
+}
+static void
+tbl__swap(void *a, void *b, void *tmp, int siz) {
+  mcpy(tmp, a, siz);
+  mcpy(a, b, siz);
+  mcpy(b, tmp, siz);
+}
+static inline long long
+tbl__store(unsigned long long *keys, void *vals, int *cnt,
+           unsigned long long i, unsigned long long h,
+           void* val, int val_siz) {
+  keys[i] = h;
+  if (vals) {
+    unsigned long long off = (unsigned long long)val_siz * i;
+    mcpy((unsigned char*)vals + off, val, val_siz);
+  }
+  *cnt += 1;
+  return castll(i);
+}
+static long long
+tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
+         unsigned long long key, void *v, int val_siz) {
+  unsigned long long h = tbl__hash(key);
+  unsigned long long n = castull(cap);
+  unsigned long long i = h % n, b = i, dist = 0;
+  do {
+    unsigned long long k = keys[i];
+    if (!k) return tbl__store(keys, vals, cnt, i, h, v, val_siz);
+    unsigned long long d = tbl__dist(k, n, i);
+    if (d++ > dist++) continue;
+    if (tbl__is_del(k)) {
+      return tbl__store(keys, vals, cnt, i, h, v, val_siz);
+    }
+    iswap(h, keys[i]);
+    if (vals) {
+      void *tmp_val = (unsigned char*)vals + cap * val_siz;
+      void *cur_val = (unsigned char*)vals + i * (unsigned long long)val_siz;
+      tbl__swap(cur_val, v, tmp_val, val_siz);
+    }
+    dist = d;
+  } while ((i = ((i + 1) % n)) != b);
+  return castll(n);
+}
+static int
+tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {
+  assert(set);
+  unsigned long long h = tbl__hash(key);
+  unsigned long long n = castull(cap);
+  unsigned long long i = h % n, b = i, dist = 0;
+  do {
+    if (!set[i] || dist > tbl__dist(set[i],n,i)) {
+      return cap;
+    } else if(set[i] == h) {
+      return casti(i);
+    }
+    dist++;
+  } while ((i = ((i + 1) % n)) != b);
+  return cap;
+}
+static int
+tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
+  assert(set);
+  if (!cap) {
+    return cap;
+  }
+  int i = tbl__fnd(set, cap, key);
+  if (i < cap) {
+    set[i] |= 0x8000000000000000llu;
+    *cnt -= 1;
+  }
+  return i;
+}
+static int
+tbl__nxt_idx(unsigned long long *keys, int cap, int i) {
+  assert(keys);
+  for (; i < cap; ++i) {
+    if (tbl__key(keys[i])) {
+      return i;
+    }
+  }
+  return cap;
+}
+
+#if 0
 /* ---------------------------------------------------------------------------
  *                                  Set
  * ---------------------------------------------------------------------------
@@ -3641,6 +3762,7 @@ ut_tbl(struct sys *s) {
   assert(tbl_cnt(t) == 0);
   assert(tbl_cap(t) == 0);
 }
+#endif
 
 /* ---------------------------------------------------------------------------
  *                                  Sort

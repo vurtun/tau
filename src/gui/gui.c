@@ -536,7 +536,7 @@ gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
       gui_drw_glyph(ctx, &g);
       run_x = x + run->adv[i];
     }
-    x += run->adv[run->len-1] + ctx->res->fnt.space_adv * (!!it.rest.len);
+    x += run->adv[run->len-1] + ctx->res->fnt.space_adv * (!!str_len(it.rest));
   }
 }
 static void
@@ -819,12 +819,12 @@ gui_tooltip(struct gui_ctx *ctx, const struct gui_panel *pan, struct str str) {
   assert(ctx);
   if (pan->is_hov) {
     struct sys *s = ctx->sys;
-    if (str.len < szof(s->tooltip.buf)) {
-      mcpy(s->tooltip.buf, str.str, str.len);
-      s->tooltip.str = str(s->tooltip.buf, str.len);
+    if (str_len(str) < szof(s->tooltip.buf)) {
+      mcpy(s->tooltip.buf, str_beg(str), str_len(str));
+      s->tooltip.str = strn(s->tooltip.buf, str_len(str));
     } else {
-      mcpy(s->tooltip.buf, str.str, sizeof(s->tooltip.buf));
-      s->tooltip.str = str(s->tooltip.buf, szof(s->tooltip.buf));
+      mcpy(s->tooltip.buf, str_beg(str), sizeof(s->tooltip.buf));
+      s->tooltip.str = strn(s->tooltip.buf, szof(s->tooltip.buf));
     }
   }
 }
@@ -1085,7 +1085,7 @@ gui_sys_dnd_begin(struct gui_ctx *ctx, struct sys *s) {
   case SYS_DND_STR: {
     ctx->dnd_paq.type = STR_HASH16("[sys:str]");
     ctx->dnd_paq.data = &s->dnd.str;
-    ctx->dnd_paq.size = s->dnd.str.len;
+    ctx->dnd_paq.size = str_len(s->dnd.str);
   } break;}
 }
 static void
@@ -1361,16 +1361,16 @@ gui_txt_fit(struct res_txt_bnd *bnd, int space, struct gui_ctx *ctx,
 static void
 gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
                 struct str txt, int uln_pos, int uln_cnt) {
-  int n = txt.len;
+  int n = str_len(txt);
   uln_pos = clamp(0, uln_pos, n);
   uln_cnt = min(uln_cnt, max(0, n - uln_pos));
 
   struct str uln_min = utf_at(0, txt, uln_pos);
-  struct str uln_max = utf_at(0, strp(uln_min.end, txt.end), uln_cnt);
+  struct str uln_max = utf_at(0, strp(str_end(uln_min), str_end(txt)), uln_cnt);
 
   int off[2], len[2];
-  gui_txt_ext(off, ctx, strp(txt.str, uln_min.str));
-  gui_txt_ext(len, ctx, strp(uln_min.str, uln_max.str));
+  gui_txt_ext(off, ctx, strp(str_beg(txt), str_beg(uln_min)));
+  gui_txt_ext(len, ctx, strp(str_beg(uln_min), str_beg(uln_max)));
   gui_drw_hln(ctx, pan->box.y.max - 1, pan->box.x.min + off[0],
               pan->box.x.min + off[0] + len[0]);
 }
@@ -1433,7 +1433,7 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
     struct res_txt_bnd bnd;
     gui_txt_fit(&bnd, pan->box.x.ext, ctx, txt);
     ext[0] = bnd.width;
-    txt = strp(txt.str, bnd.end);
+    txt = strp(str_beg(txt), bnd.end);
   }
   /* align text */
   static const struct gui_align def_align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
@@ -2525,11 +2525,11 @@ gui_txt_ed_undo(struct gui_txt_ed *edt) {
     edt->str = str_del(edt->buf, edt->str, udo.where, udo.del_len);
   }
   if (udo.in_len) {
-    struct str src = str(edt->buf + udo.char_at, udo.in_len);
+    struct str src = strn(edt->buf + udo.char_at, udo.in_len);
     edt->str = str_put(edt->buf, edt->cap, edt->str, udo.where, src);
     u->undo_char_pnt = cast(short, u->undo_char_pnt - udo.in_len);
   }
-  edt->cur = utf_len(str(edt->buf, udo.where + udo.in_len));
+  edt->cur = utf_len(strn(edt->buf, udo.where + udo.in_len));
 
   u->undo_pnt--;
   u->redo_pnt--;
@@ -2563,10 +2563,10 @@ gui_txt_ed_redo(struct gui_txt_ed *edt) {
     edt->str = str_del(edt->buf, edt->str, rdo.where, rdo.del_len);
   }
   if (rdo.in_len) {
-    struct str src = str(u->buf + rdo.char_at, rdo.in_len);
+    struct str src = strn(u->buf + rdo.char_at, rdo.in_len);
     edt->str = str_put(edt->buf, edt->cap, edt->str, rdo.where, src);
   }
-  edt->cur = utf_len(str(edt->buf, rdo.where + rdo.in_len));
+  edt->cur = utf_len(strn(edt->buf, rdo.where + rdo.in_len));
 
   u->undo_pnt++;
   u->redo_pnt++;
@@ -2616,7 +2616,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, const struct gui_txt_ed *edt,
   assert(row);
 
   struct str begin = utf_at(0, edt->str, line_begin);
-  struct str txt = strp(begin.str, edt->str.end);
+  struct str txt = strp(str_beg(begin), str_end(edt->str));
   struct str end  = begin;
 
   int cnt = 0;
@@ -2629,7 +2629,7 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, const struct gui_txt_ed *edt,
     cnt++;
   }
   int ext[2];
-  res.fnt.ext(ext, r, strp(begin.str, end.end));
+  res.fnt.ext(ext, r, strp(str_beg(begin), str_end(end)));
 
   row->char_cnt = cnt;
   row->baseline_y_dt = row_h;
@@ -2646,10 +2646,10 @@ gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int x, int y, int row_h,
   int i = 0;
   int base_y = 0;
   struct gui_txt_row row = {0};
-  while (i < edt->str.len) {
+  while (i < str_len(edt->str)) {
     gui_txt_ed_lay_row(&row, edt, i, row_h, r);
     if (row.char_cnt <= 0) {
-      return edt->str.len;
+      return str_len(edt->str);
     } else if (i == 0 && y < base_y + row.y[0]) {
       return 0;
     } else if (y < base_y + row.y[1]) {
@@ -2658,8 +2658,8 @@ gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int x, int y, int row_h,
     base_y += row.baseline_y_dt;
     i += row.char_cnt;
   }
-  if (i >= edt->str.len) {
-    return edt->str.len;
+  if (i >= str_len(edt->str)) {
+    return str_len(edt->str);
   } else if (x < row.x[0]) {
     return i;
   } else if (x < row.x[1]) {
@@ -2724,12 +2724,12 @@ static void
 gui_txt_ed_del(struct gui_txt_ed *edt, int where, int len) {
   assert(edt);
   struct str begin = utf_at(0, edt->str, where);
-  struct str end = utf_at(0, strp(begin.str, edt->str.end), len);
-  if (!begin.len) {
+  struct str end = utf_at(0, strp(str_beg(begin), str_end(edt->str)), len);
+  if (!str_len(begin)) {
     return;
   }
-  int w = casti(begin.str - edt->buf);
-  int n = casti(end.str - begin.str);
+  int w = casti(str_beg(begin) - edt->buf);
+  int n = casti(str_beg(end) - str_beg(begin));
   gui__txt_edt_del(edt, w, n);
 }
 static void
@@ -2796,7 +2796,7 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt) {
   /* skip all trailing word boundary runes */
   int c = edt->cur - 1;
   struct str at = utf_at(0, edt->str, c);
-  for utf_loop_rev(&rune, it, rest, strp(edt->buf, at.str)) {
+  for utf_loop_rev(&rune, it, rest, strp(edt->buf, str_beg(at))) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
@@ -2818,7 +2818,7 @@ gui_txt_ed_move_to_next_word(struct gui_txt_ed *edt) {
   unsigned rune = 0;
   int c = edt->cur + 1;
   struct str at = utf_at(0, edt->str, c);
-  for utf_loop(&rune, it, rest, strp(edt->buf, at.str)) {
+  for utf_loop(&rune, it, rest, strp(edt->buf, str_beg(at))) {
     if (!gui_rune_is_word_boundary(rune)) {
       at = rest;
       break;
@@ -2863,12 +2863,12 @@ gui_txt_ed_paste(struct gui_txt_ed *edt, struct str txt) {
 
   const int cur = utf_at_idx(edt->str, edt->cur);
   edt->str = str_put(edt->buf, edt->cap, edt->str, cur, txt);
-  if (edt->str.len) {
-    gui_txt_ed_undo_in(edt, cur, txt.len);
+  if (str_len(edt->str)) {
+    gui_txt_ed_undo_in(edt, cur, str_len(txt));
     edt->cur += utf_len(txt);
     return 1;
   }
-  gui_txt_ed_undo_in(edt, cur, txt.len);
+  gui_txt_ed_undo_in(edt, cur, str_len(txt));
   return 1;
 }
 static void
@@ -2889,26 +2889,26 @@ gui_txt_ed_txt(struct gui_txt_ed *edt, struct str txt) {
       continue;
     }
     struct str cur = utf_at(0, edt->str, edt->cur);
-    int at = casti(cur.str - edt->buf);
-    if (!edt->str.len) {
+    int at = casti(str_beg(cur) - edt->buf);
+    if (!str_len(edt->str)) {
       edt->str = str_sqz(edt->buf, edt->cap, it);
       edt->cur += 1;
     } else if (!gui_txt_ed_has_sel(edt) && edt->cur < utf_len(edt->str)) {
       if (edt->mode == GUI_EDT_MODE_REPLACE) {
-        gui_txt_ed_undo_repl(edt, at, cur.len, it.len);
-        edt->str = str_del(edt->buf, edt->str, at, cur.len);
+        gui_txt_ed_undo_repl(edt, at, str_len(cur), str_len(it));
+        edt->str = str_del(edt->buf, edt->str, at, str_len(cur));
       }
-      edt->str = str_put(edt->buf, edt->cap, edt->str, at, str(it.str, it.len));
-      if (edt->str.len) {
+      edt->str = str_put(edt->buf, edt->cap, edt->str, at, it);
+      if (str_len(edt->str)) {
         edt->cur += 1;
       }
     } else {
       gui_txt_ed_del_sel(edt); /* implicitly clamps */
       cur = utf_at(0, edt->str, edt->cur);
-      at = casti(cur.str - edt->buf);
-      edt->str = str_put(edt->buf, edt->cap, edt->str, at, str(it.str, it.len));
-      if (edt->str.len) {
-        gui_txt_ed_undo_in(edt, at, it.len);
+      at = casti(str_beg(cur) - edt->buf);
+      edt->str = str_put(edt->buf, edt->cap, edt->str, at, it);
+      if (str_len(edt->str)) {
+        gui_txt_ed_undo_in(edt, at, str_len(it));
         edt->cur += 1;
       }
     }
@@ -2926,7 +2926,7 @@ gui_txt_ed_clip(struct gui_txt_ed *edt, struct sys *s) {
   int idx1 = max(edt->sel[1], edt->sel[0]);
   int sel0 = utf_at_idx(edt->str, idx0);
   int sel1 = utf_at_idx(edt->str, idx1);
-  s->clipboard.set(str(edt->buf + sel0, sel1 - sel0), s->mem.tmp);
+  s->clipboard.set(strn(edt->buf + sel0, sel1 - sel0), s->mem.tmp);
 }
 static int
 gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
@@ -3121,7 +3121,7 @@ gui_calc_edit_off(int *cur_ext, struct res *ret, const struct gui_txt_ed *edt,
   assert(txt_ext);
 
   struct str cur = utf_at(0, edt->str, edt->cur);
-  res.fnt.ext(cur_ext, ret, strp(edt->str.str, cur.str));
+  res.fnt.ext(cur_ext, ret, strp(str_beg(edt->str), str_beg(cur)));
   int off = cur_ext[0] - (width >> 1);
   off = clamp(0, off, max(0, txt_ext[0] - width));
   return off;
@@ -3140,8 +3140,8 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
   int sel1 = utf_at_idx(edt->str, max(edt->sel[1], edt->sel[0]));
 
   int sel_end_off[2] = {0}, sel_begin_off[2] = {0};
-  gui_txt_ext(sel_begin_off, ctx, str(edt->buf, sel0));
-  gui_txt_ext(sel_end_off, ctx, str(edt->buf, sel1));
+  gui_txt_ext(sel_begin_off, ctx, strn(edt->buf, sel0));
+  gui_txt_ext(sel_end_off, ctx, strn(edt->buf, sel1));
 
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
   if (sel0 > 0) {
@@ -3149,7 +3149,7 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
     struct gui_panel lbl = {.box = pan->box, .state = pan->state};
     lbl.box.x = gui_min_ext(pan->box.x.min - cur_off, sel_begin_off[0]);
     gui_align_txt(&lbl.box, &align, txt_ext);
-    gui_txt_drw(ctx, &lbl, str(edt->buf, sel0), -1, 0);
+    gui_txt_drw(ctx, &lbl, strn(edt->buf, sel0), -1, 0);
   }
   if (gui_txt_ed_has_sel(edt)) {
     /* draw text in selection */
@@ -3175,7 +3175,7 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
     lbl.box.x = gui_min_ext(pan->box.x.min + off, sel_w);
 
     gui_align_txt(&lbl.box, &align, txt_ext);
-    gui_txt_drw(ctx, &lbl, strp(edt->buf + sel1, edt->str.end), -1, 0);
+    gui_txt_drw(ctx, &lbl, strp(edt->buf + sel1, str_end(edt->str)), -1, 0);
   }
 }
 static void
@@ -3260,7 +3260,7 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
       box->aborted = 1;
     }
     if (!key && s->txt_len) {
-      gui_txt_ed_txt(edt, str(s->txt, s->txt_len));
+      gui_txt_ed_txt(edt, strn(s->txt, s->txt_len));
       box->mod = 1;
     }
   }
@@ -3437,11 +3437,11 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *spin) {
   assert(spin);
 
   int mod = 0;
-  if (!ctx->txt_state.str.len) {
+  if (!str_len(ctx->txt_state.str)) {
     ctx->txt_state.buf[0] = '0';
-    ctx->txt_state.str = str(ctx->txt_state.buf, 1);
+    ctx->txt_state.str = strn(ctx->txt_state.buf, 1);
   }
-  int last = min(ctx->txt_state.str.len, cntof(ctx->txt_state.buf)-1);
+  int last = min(str_len(ctx->txt_state.str), cntof(ctx->txt_state.buf)-1);
   ctx->txt_state.buf[last] = 0;
   switch (spin->typ) {
     case GUI_SPIN_INT: {

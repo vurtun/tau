@@ -183,15 +183,15 @@ static int
 file_type(struct str ext) {
   unsigned u = 0;
   unsigned int i = 0;
-  switch (ext.len) {
+  switch (str_len(ext)) {
   case 0: break;
   case 1: {
-    u = castu(ext.str[0]);
+    u = castu(str_at(ext,0));
     unsigned k = (u * 0x3d7a774e) >> 29u;
     i = 5 + ((0x20465731ull >> (unsigned long long)(k*4)) & 0xf);
   } break;
   case 2: {
-    u = twocc(ext.str);
+    u = twocc(str_beg(ext));
     unsigned k = (u * 0x7172a30bu) >> 28u;
     i = 13 + (0xa6314728ull >> (unsigned long long)(k*4)) & 0xf;
   } break;
@@ -209,11 +209,11 @@ file_type(struct str ext) {
       49, 0, 0, 0, 0, 0, 68, 0, 0, 0, 0, 19, 57, 1, 55, 0, 0, 0, 0, 44, 0, 0, 64,
       0, 0, 65
     };
-    u = threecc(ext.str);
+    u = threecc(str_beg(ext));
     i = t[(u * 0xddc8d774) >> 24u];
   } break;
   default: {
-    u = fourcc(ext.str);
+    u = fourcc(str_beg(ext));
     unsigned k = (u * 0x76e2bba) >> 29u;
     i = 95 + ((0x5142036ull >> (unsigned long long)(k*4)) & 0xf);
   } break; }
@@ -329,7 +329,7 @@ file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
   char *buf = lst->page.txt.buf[cur] + lst->page.txt.cnt;
   struct str ret = str_set(buf, cap, name);
   if (str_is_val(name)) {
-    lst->page.txt.cnt += name.len;
+    lst->page.txt.cnt += str_len(name);
   }
   return ret;
 }
@@ -362,7 +362,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s, struct arena *tmp,
     /* apply filter */
     struct file_elm elm = {0};
     file_view_lst_elm_init(&elm, s, qry->fullpath, it.name);
-    if ((qry->fltr.len && str_fnd(elm.name, qry->fltr) >= elm.name.len) ||
+    if ((str_len(qry->fltr) && str_fnd(elm.name, qry->fltr) >= str_len(elm.name)) ||
         (qry->page > lst->page.idx && qry->cmp(&elm, &piv) < 0) ||
         (qry->page < lst->page.idx && qry->cmp(&elm, &piv) > 0)) {
       continue;
@@ -554,10 +554,10 @@ ui_file_lst_view_nav_bar(struct file_view *fs, struct file_list_view *lst,
     if (gui.btn.ico(ctx, &up, pan, RES_ICO_FOLDER)) {
       /* go up to parent directory  */
       struct str file_name = path_file(lst->nav_path);
-      struct str file_path = strp(lst->nav_path.str, file_name.str);
-      if (file_path.len > fs->home.len) {
+      struct str file_path = strp(str_beg(lst->nav_path), str_beg(file_name));
+      if (str_len(file_path) > str_len(fs->home)) {
         lst->fltr = str_nil;
-        struct str dir = strp(lst->nav_path.str, file_name.str);
+        struct str dir = strp(str_beg(lst->nav_path), str_beg(file_name));
         file_view_lst_cd(fs, &fs->lst, ctx->sys, dir);
       }
     }

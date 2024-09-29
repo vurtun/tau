@@ -665,7 +665,7 @@ res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
     assert(run->len < RES_FNT_MAX_RUN);
     rune = rune >= RES_GLYPH_SLOTS ? '?': rune;
     fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
-    n += it.len;
+    n += str_len(it);
 
     assert(g->x1 >= g->x0 && g->x1 - g->x0 < UCHAR_MAX);
     assert(g->y1 >= g->y0 && g->y1 - g->y0 < UCHAR_MAX);
@@ -694,12 +694,12 @@ res_fnt_ext(int *ext, struct res *r, struct str txt) {
 
   ext[0] = 0;
   ext[1] = r->fnt.txt_height;
-  if (!txt.len) {
+  if (!str_len(txt)) {
     return;
   }
   for str_tok(it, _, txt, strv(" ")) {
     unsigned long long h = FNV1A64_HASH_INITIAL;
-    int n = div_round_up(it.len, 16);
+    int n = div_round_up(str_len(it), 16);
     struct str blk = it;
     for loop(i,n) {
       struct str seg = str_lhs(blk, 16);
@@ -713,7 +713,7 @@ res_fnt_ext(int *ext, struct res *r, struct str txt) {
       ext[0] += run->adv[run->len-1];
       blk = str_cut_lhs(&blk, run->off[run->len-1]);
     }
-    ext[0] += r->fnt.space_adv * (!!_.len);
+    ext[0] += r->fnt.space_adv * (!!str_len(_));
   }
 }
 static void
@@ -741,14 +741,14 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
   assert(bnd);
 
   mset(bnd, 0, szof(*bnd));
-  bnd->end = txt.end;
+  bnd->end = str_end(txt);
   if (!space) {
     return;
   }
   int ext = 0;
   for str_tok(it, _, txt, strv(" ")) {
     unsigned long long h = FNV1A64_HASH_INITIAL;
-    int n = div_round_up(it.len, 16);
+    int n = div_round_up(str_len(it), 16);
     struct str blk = it;
     for loop(i,n) {
       struct str seg = str_lhs(blk, 16);
@@ -771,10 +771,10 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
       }
       blk = str_cut_lhs(&blk, run->off[run->len-1]);
     }
-    bnd->width += r->fnt.space_adv * (!!_.len);
+    bnd->width += r->fnt.space_adv * (!!str_len(_));
   }
 done:
-  bnd->end = txt.str + bnd->len;
+  bnd->end = str_beg(txt) + bnd->len;
 }
 static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
@@ -821,12 +821,12 @@ res_lay_nxt(struct res_fnt_run_it *it, struct res *r) {
   assert(it);
   if (it->i == it->n) {
     it->at = str_split_cut(&it->rest, strv(" "));
-    it->n = div_round_up(it->at.len, 16);
+    it->n = div_round_up(str_len(it->at), 16);
     it->h = FNV1A64_HASH_INITIAL;
     it->blk = it->at;
     it->i = 0;
   }
-  if (!it->at.len) {
+  if (!str_len(it->at)) {
     return 0;
   }
   it->seg = str_lhs(it->blk, 16);

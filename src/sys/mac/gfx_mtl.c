@@ -25,7 +25,7 @@ struct gfx_mtl {
   id<MTLBuffer> buf[GFX_MTL_BUF_DEPTH];
 
   int tex_cnt;
-  tbl(int) tex_cache;
+  struct tbl(int, GFX_MAX_TEX_CNT) tex_cache;
   id<MTLTexture> tex_buf[GFX_MAX_TEX_CNT];
   id<MTLBuffer> arg_buf[GFX_MTL_BUF_DEPTH];
   struct gfx_tex tex[GFX_TEX_MAX];
@@ -120,14 +120,14 @@ gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dx, int dy, int dw, int dh,
   };
   unsigned long long tex_id = castull(tex);
   unsigned long long hash = fnv1au64(tex_id, FNV1A64_HASH_INITIAL);
-  int *idx = tbl_fnd(mtl->tex_cache, hash);
-  if (!idx) {
+  int tok = tbl_fnd(&mtl->tex_cache, hash);
+  if (tbl_inval(&mtl->tex_cache, tok)) {
     int tex_idx = mtl->tex_cnt++;
     mtl->tex_buf[tex_idx] = mtl->tex[tex].hdl;
-    tbl_put(mtl->tex_cache, mtl->sys, hash, &tex_idx);
+    tbl_put(&mtl->tex_cache, hash, &tex_idx);
     d->tex = castu(tex_idx);
   } else {
-    d->tex = castu(*idx);
+    d->tex = castu(tbl_unref(&mtl->tex_cache,tok,0));
   }
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_IMG);
   gfx__mtl_resv(buf, *d, cntof(gfx_box_seq));
@@ -230,7 +230,6 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     return -1;
   }
   s->gfx.buf2d.intern = mtl;
-  mtl->tex_cache = arena_tbl(&mtl->mem, s, int, GFX_TEX_MAX);
   mtl->sem = dispatch_semaphore_create(GFX_MTL_BUF_DEPTH);
   mtl->cmd_que = [mtl->dev newCommandQueue];
   mtl->lib = [mtl->dev newLibraryWithFile: @"gfx.metallib" error:&err];
@@ -293,7 +292,7 @@ gfx_mtl_begin(struct sys *s, int w, int h) {
   mtl->viewportSize.y = castu(h);
 
   mtl->tex_cnt = 1;
-  tbl_clr(mtl->tex_cache);
+  tbl_clr(&mtl->tex_cache);
   s->gfx.buf2d.vbytes = 0;
   s->gfx.buf2d.vtx = 0;
   s->gfx.buf2d.idx = 0;

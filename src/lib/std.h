@@ -95,15 +95,14 @@
 
 typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
-  int lo, hi, step, cnt;
+  int lo, hi, cnt, total;
 };
 struct str {
-  const char *str;
-  const char *end;
-  int len;
+  const char *ptr;
+  struct rng rng;
 };
 struct str_fnd_tbl {
-  int tbl[UCHAR_MAX + 1];
+  int tbl[UCHAR_MAX+1];
 };
 struct mem_blk {
   unsigned long long flags;
@@ -136,5 +135,10 @@ struct guid {
 };
 #define confine for
 #define dyn(T) T*
-#define tbl(T) T*
+#define TBL_CAP(n) ((n)+((n)>>2))
+#define tbl(T,N) {\
+  unsigned long long keys[TBL_CAP(N)];\
+  T vals[TBL_CAP(N)];\
+  int cnt;\
+}
 

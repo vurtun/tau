@@ -552,90 +552,67 @@ math_atan2(float in_y, float in_x) {
  * ---------------------------------------------------------------------------
  */
 /* vector */
-static const int nil2[2];
-static const int nil3[3];
-static const int nil4[4];
-
-#define op(r,e,a,p,b,i,s) ((r) e (a) p ((b) i (s)))
-#define opN(r,e,a,p,b,i,s,N)\
-  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    op((r)[uniqid(_i_)],e,(a)[uniqid(_i_)],p,(b)[uniqid(_i_)],i,s)
-#define lerpN(r,a,b,t,N)\
-  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    lerp((r)[uniqid(_i_)],(a)[uniqid(_i_)],(b)[uniqid(_i_)],t)
-#define mapN(r,fn,a,N)\
-  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)])
-#define map2N(r,fn,a,b,N)\
-  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)])
-#define map3N(r,fn,a,b,c,N)\
-  for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-    (r)[uniqid(_i_)] = fn((a)[uniqid(_i_)],(b)[uniqid(_i_)],(c)[uniqid(_i_)])
-#define dotN(r,a,b,N)\
-  do {r = 0; for (int uniqid(_i_) = 0; uniqid(_i_) < N; ++uniqid(_i_))\
-      r += (a)[uniqid(_i_)] * (b)[uniqid(_i_)];\
-  } while(0)
-#define lenN(r,a,N)\
-  do {float uniqid(_l_); dotN(uniqid(_l_),a,a,N);\
-    (r) = math_sqrt(uniqid(_l_));} while(0)
-
-#define minN(r,a,b,N) map2N(r,min,a,b,N)
-#define maxN(r,a,b,N) map2N(r,max,a,b,N)
-#define clampN(r,i,v,x,N) map3N(r,clamp,i,v,x,N)
-
-#define op2(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,2)
-#define op3(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,3)
-#define op4(r,e,a,p,b,i,s) opN(r,e,a,p,b,i,s,4)
+#define opI(r,e,a,p,b,i,s,I)((r)[I]e(a)[I]p((b)[I]i(s)))
+#define opsI(r,e,a,p,s,I)   ((r)[I]e(a)[I]p(s))
+#define setI(d,x,I)         (d)[I]=(x)
+#define dotI(a,b,I)         (a)[I]*(b)[I]
+#define lerpI(r,a,b,t,I)    lerp((r)[I],(a)[I],(b)[I],t)
+#define mapI(r,fn,a,I)      (r)[I]=fn((a)[I])
+#define map2I(r,fn,a,b,I)   (r)[I]=fn((a)[I], (b)[I])
+#define map3I(r,fn,a,b,c,I) (r)[I]=fn((a)[I], (b)[I], (c)[I])
 
 /* vector 2D */
-#define set2(d,x,y)     (d)[0] = x, (d)[1] = y
-#define zero2(d)        set2(d,0,0)
-#define dup2(d,f)       set2(d,f,f)
-#define cpy2(d, s)      (d)[0] = (s)[0], (d)[1] = (s)[1]
-#define add2(d,a,b)     op2(d,=,a,+,b,+,0)
-#define sub2(d,a,b)     op2(d,=,a,-,b,+,0)
-#define mul2(d,a,s)     op2(d,=,nil2,+,a,*,s)
-#define dot2(a,b)       ((a)[0]*(b)[0]+(a)[1]*(b)[1])
-#define len2(v)         math_sqrt(dot2(v,v))
-#define adds2(d,a,b,s)  op2(d,=,a,+,b,*,s)
-#define subs2(d,a,b,s)  op2(d,=,a,-,b,*,s)
-#define norm2(n,v)      mul2(n,v,rsqrt(dot2(v, v)))
-#define normeq2(v)      norm2(v,v)
-#define lerp2(r,a,b,t)  lerpN(r,a,b,t,2)
-#define cmp2(a,b,e)     cmpN(a,b,e,2)
-#define swzl2(r,f,a,b)  set2(r,(f)[a],(f)[b])
-#define min2(r,a,b)     minN(r,a,b,2)
-#define max2(r,a,b)     maxN(r,a,b,2)
-#define clamp2(r,i,v,x) clampN(r,i,v,x,2)
-#define map2(r,fn,a)    mapN(r,fn,a,2)
+#define op2(r,e,a,p,b,i,s)  opI(r,e,a,p,b,i,s,0), opI(r,e,a,p,b,i,s,1)
+#define ops2(r,e,a,p,s)     opsI(r,e,a,p,s,0), opsI(r,e,a,p,s,1)
+#define set2(d,x,y)         setI(d,x,0),setI(d,y,1)
+#define zero2(d)            set2(d,0,0)
+#define dup2(d,f)           set2(d,f,f)
+#define cpy2(d,s)           (d)[0]=(s)[0],(d)[1]=(s)[1]
+#define add2(d,a,b)         op2(d,=,a,+,b,+,0)
+#define sub2(d,a,b)         op2(d,=,a,-,b,+,0)
+#define mul2(d,a,s)         ops2(d,=,a,*,s)
+#define dot2(a,b)           dotI(a,b,0)+dotI(a,b,1)
+#define len2(v)             math_sqrt(dot2(v,v))
+#define adds2(d,a,b,s)      op2(d,=,a,+,b,*,s)
+#define subs2(d,a,b,s)      op2(d,=,a,-,b,*,s)
+#define norm2(n,v)          mul2(n,v,math_rsqrt(dot2(v, v)))
+#define normeq2(v)          norm2(v,v)
+#define lerp2(r,a,b,t)      lerpI(r,a,b,t,0),lerpI(r,a,b,t,1)
+#define cmp2(a,b,e)         cmpN(a,b,e,2)
+#define swzl2(r,f,a,b)      set2(r,(f)[a],(f)[b])
+#define min2(r,a,b)         map2I(r,min,a,b,0),map2I(r,min,a,b,1)
+#define max2(r,a,b)         map2I(r,max,a,b,0),map2I(r,max,a,b,1)
+#define clamp2(r,i,v,x)     map3I(r,clamp,i,v,x,0),map3I(r,clamp,i,v,x,1)
+#define map2(r,fn,a)        mapI(r,fn,a,0),mapI(r,fn,a,1)
 
 /* vector 3D */
-#define set3(v,x,y,z)   (v)[0]=(x),(v)[1]=(y),(v)[2]=(z)
-#define dup3(d,f)       set3(d,f,f,f)
-#define zero3(v)        set3(v,0,0,0)
-#define cpy3(d,s)       (d)[0]=(s)[0],(d)[1]=(s)[1],(d)[2]=(s)[2]
-#define add3(d,a,b)     op3(d,=,a,+,b,+,0)
-#define sub3(d,a,b)     op3(d,=,a,-,b,+,0)
-#define mul3(d,a,s)     op3(d,=,nil3,+,a,*,s)
-#define dot3(a,b)       ((a)[0]*(b)[0]+(a)[1]*(b)[1]+(a)[2]*(b)[2])
-#define len3(v)         math_sqrt(dot3(v,v))
-#define adds3(d,a,b,s)  op3(d,=,a,+,b,*,s)
-#define subs3(d,a,b,s)  op3(d,=,a,-,b,*,s)
-#define norm3(n,v)      mul3(n,v,math_rsqrt(dot3(v, v)))
-#define normeq3(v)      norm3(v,v)
-#define proj3(p,v,n)    mul3(p,n,dot3(v,n))
-#define projn3(p,v,to)  mul3(to,dot3(v,to)/Dot(to,to));
-#define rej3(p,a,b)     do {proj3(p,a,b); sub3(p,a,p);}while(0)
-#define rejn3(p,a,b)    do {projn3(p,a,b); sub3(p,a,p);}while(0)
-#define lerp3(r,a,b,t)  lerpN(r,a,b,t,3)
-#define cmp3(a,b,e)     cmpN(a,b,e,3)
-#define swzl3(r,f,a,b,c) set3(r,(f)[a],(f)[b],(f)[c])
-#define min3(r,a,b)     minN(r,a,b,3)
-#define max3(r,a,b)     maxN(r,a,b,3)
-#define map3(r,fn,a)    mapN(r,fn,a,3)
-#define clamp3(r,i,v,x) clampN(r,i,v,x,3)
-#define box3(r,a,b,c,cross) do {cross3(cross, a, b); (r) = dot3(n,cross);} while(0)
+#define op3(r,e,a,p,b,i,s)  op2(r,e,a,p,b,i,s), opI(r,e,a,p,b,i,s,2)
+#define ops3(r,e,a,p,s)     ops2(r,e,a,p,s), opsI(r,e,a,p,s,2)
+#define set3(d,x,y,z)       set2(d,x,y), setI(d,z,2)
+#define dup3(d,f)           set3(d,f,f,f)
+#define zero3(v)            set3(v,0,0,0)
+#define cpy3(d,s)           cpy2(d,s),(d)[2]=(s)[2]
+#define add3(d,a,b)         op3(d,=,a,+,b,+,0)
+#define sub3(d,a,b)         op3(d,=,a,-,b,+,0)
+#define mul3(d,a,s)         ops3(d,=,a,*,s)
+#define dot3(a,b)           dot2(a,b)+dotI(a,b,2)
+#define len3(v)             math_sqrt(dot3(v,v))
+#define adds3(d,a,b,s)      op3(d,=,a,+,b,*,s)
+#define subs3(d,a,b,s)      op3(d,=,a,-,b,*,s)
+#define norm3(n,v)          mul3(n,v,math_rsqrt(dot3(v, v)))
+#define normeq3(v)          norm3(v,v)
+#define proj3(p,v,n)        mul3(p,n,dot3(v,n))
+#define projn3(p,v,to)      mul3(p,to,dot3(v,to)/dot3(to,to));
+#define rej3(p,a,b)         do{proj3(p,a,b); sub3(p,a,p);}while(0)
+#define rejn3(p,a,b)        do{projn3(p,a,b); sub3(p,a,p);}while(0)
+#define lerp3(r,a,b,t)      lerp2(r,a,b,t),lerpI(r,a,b,t,2)
+#define cmp3(a,b,e)         cmpN(a,b,e,3)
+#define swzl3(r,f,a,b,c)    set3(r,(f)[a],(f)[b],(f)[c])
+#define min3(r,a,b)         min2(r,a,b),map2I(r,min,a,b,2)
+#define max3(r,a,b)         max2(r,a,b),map2I(r,max,a,b,2)
+#define map3(r,fn,a)        map2(r,fn,a),mapI(r,fn,a,2)
+#define clamp3(r,i,v,x)     clamp2(r,i,v,x), map3I(r,clamp,i,v,x,2)
+#define box3(r,a,b,c,cross) do{cross3(cross, a, b); (r) = dot3(n,cross);}while(0)
 #define cross3(d,a,b) do {\
   (d)[0] = ((a)[1]*(b)[2]) - ((a)[2]*(b)[1]),\
   (d)[1] = ((a)[2]*(b)[0]) - ((a)[0]*(b)[2]),\
@@ -643,30 +620,32 @@ static const int nil4[4];
 } while(0)
 
 /* vector 4D */
-#define set4(v,x,y,z,w) (v)[0]=(x),(v)[1]=(y),(v)[2]=(z),(v)[3] =(w)
-#define set4w(d,s,w)    cpy3(d,s), (d)[3]=w
-#define dup4(d,f)       set4(d,f,f,f,f)
-#define cpy4(d,s)       (d)[0]=(s)[0],(d)[1]=(s)[1],(d)[2]=(s)[2],(d)[3]=(s)[3]
-#define add4(d,a,b)     op4(d,=,a,+,b,+,0)
-#define sub4(d,a,b)     op4(d,=,a,-,b,+,0)
-#define mul4(d,a,s)     op4(d,=,nil4,+,a,*,s)
-#define dot4(a,b)       ((a)[0]*(b)[0]+(a)[1]*(b)[1]+(a)[2]*(b)[2]+(a)[3]*(b)[3])
-#define len4(v)         math_sqrt(dot4(v,v))
-#define adds4(d,a,b,s)  op4(d,=,a,+,b,*,s)
-#define subs4(d,a,b,s)  op4(d,=,a,-,b,*,s)
-#define norm4(n,v)      mul4(n,v,math_rsqrt(dot4(v, v)))
-#define normaleq4(v)    norm4(v,v)
-#define lerp4(r,a,b,t)  lerpN(r,a,b,t,4)
-#define cmp4(a,b,e)     cmpN(a,b,e,4)
-#define min4(r,a,b)     minN(r,a,b,4)
-#define max4(r,a,b)     maxN(r,a,b,4)
-#define map4(r,fn,a)    mapN(r,fn,a,4)
-#define clamp4(r,i,v,x) clampN(r,i,v,x,4)
-#define swzl4(r,f,a,b,c,e) set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
-#define qid(q)          set4(q,0,0,0,1)
-#define qconj(d,s)      do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
-#define qinv(d,s)       qconj(d,s)
-#define quat(q,n,x)     quatf(q,n,(x)[0],(x)[1],(x)[2])
+#define set4(v,x,y,z,w)     set3(v,x,y,z), setI(v,w,3)
+#define set4w(d,s,w)        cpy3(d,s),(d)[3]=w
+#define op4(r,e,a,p,b,i,s)  op3(r,e,a,p,b,i,s), opI(r,e,a,p,b,i,s,3)
+#define ops4(r,e,a,p,s)     ops3(r,e,a,p,s), opsI(r,e,a,p,s,3)
+#define dup4(d,f)           set4(d,f,f,f,f)
+#define cpy4(d,s)           cpy3(d,s),(d)[3]=(s)[3]
+#define add4(d,a,b)         op4(d,=,a,+,b,+,0)
+#define sub4(d,a,b)         op4(d,=,a,-,b,+,0)
+#define mul4(d,a,s)         ops4(d,=,a,*,s)
+#define dot4(a,b)           dot3(a,b)+dotI(a,b,3)
+#define len4(v)             math_sqrt(dot4(v,v))
+#define adds4(d,a,b,s)      op4(d,=,a,+,b,*,s)
+#define subs4(d,a,b,s)      op4(d,=,a,-,b,*,s)
+#define norm4(n,v)          mul4(n,v,math_rsqrt(dot4(v, v)))
+#define normaleq4(v)        norm4(v,v)
+#define lerp4(r,a,b,t)      lerp3(r,a,b,t), lerpI(r,a,b,t,3)
+#define cmp4(a,b,e)         cmpN(a,b,e,4)
+#define min4(r,a,b)         min3(r,a,b), map2I(r,min,a,b,3)
+#define max4(r,a,b)         max3(r,a,b), map2I(r,ma,a,b,3)
+#define map4(r,fn,a)        map3(r,fn,a), mapI(r,fn,a,3)
+#define clamp4(r,i,v,x)     clamp3(r,i,v,x), map3I(r,clamp,i,v,x,3)
+#define swzl4(r,f,a,b,c,e)  set4(r,(f)[a],(f)[b],(f)[c],(f)[e])
+#define qid(q)              set4(q,0,0,0,1)
+#define qconj(d,s)          do{mul3(d,s,-1.0f);(d)[3]=(s)[3];}while(0)
+#define qinv(d,s)           qconj(d,s)
+#define quat(q,n,x)         quatf(q,n,(x)[0],(x)[1],(x)[2])
 #define qmul(q,a,b)\
   (q)[0] = (a)[3]*(b)[0] + (a)[0]*(b)[3] + (a)[1]*b[2] - (a)[2]*(b)[1],\
   (q)[1] = (a)[3]*(b)[1] + (a)[1]*(b)[3] + (a)[2]*b[0] - (a)[0]*(b)[2],\

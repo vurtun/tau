@@ -296,7 +296,7 @@ sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct arena *a,
   arena_scope_push(&it->scp_base, a);
   it->base = arena_str(a, s, path);
 
-  DIR *dir = opendir(it->base.str);
+  DIR *dir = opendir(str_beg(it->base));
   if (!dir) {
     it->valid = 0;
     it->err = 1;
@@ -1047,10 +1047,10 @@ sys_mac_push(struct sys *s) {
   }
   unsigned long long tooltip_id = str_hash(s->tooltip.str);
   if (tooltip_id != os->tooltip) {
-    if (s->tooltip.str.len) {
+    if (str_len(s->tooltip.str)) {
       NSString *str = [[NSString alloc]
-        initWithBytes: (const void*)s->tooltip.str.str
-        length:(NSUInteger)s->tooltip.str.len encoding:NSUTF8StringEncoding];
+        initWithBytes: (const void*)str_beg(s->tooltip.str)
+        length:(NSUInteger)str_len(s->tooltip.str) encoding:NSUTF8StringEncoding];
       [os->view setToolTip: str];
     } else {
       [os->view setToolTip: nil];

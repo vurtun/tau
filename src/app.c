@@ -137,6 +137,7 @@ app_tab_add(struct app *app, int idx) {
   assert(tab_idx < cntof(app->views));
   assert(app->tab_cnt < cntof(app->tabs));
   assert(!(app->unused & (1u << idx)));
+
   app->tabs[app->tab_cnt] = castb(idx);
   return app->tab_cnt++;
 }
@@ -147,6 +148,7 @@ app_tab_rm(struct app *app, int tab_idx) {
   assert(tab_idx >= 0);
   assert(tab_idx < app->tab_cnt);
   assert(tab_idx < cntof(app->tabs));
+
   arr_rm(app->tabs, tab_idx, app->tab_cnt);
   app->tab_cnt--;
   app->sel_tab = castb(clamp(0, app->sel_tab, app->tab_cnt-1));
@@ -159,6 +161,7 @@ app_tab_close(struct app *app, int tab_idx) {
   assert(tab_idx < app->tab_cnt);
   assert(tab_idx < cntof(app->tabs));
   assert(!(app->unused & (1u << tab_idx)));
+
   app_view_del(app, app->tabs[tab_idx]);
   app_tab_rm(app, tab_idx);
 }
@@ -189,6 +192,7 @@ app_tab_open(struct app *app) {
   assert(app);
   assert(app->unused > 0);
   assert(app->tab_cnt < cntof(app->tabs));
+
   int view = app_view_new(app);
   app->sel_tab = castb(app_tab_add(app, view));
   return app->sel_tab;
@@ -251,8 +255,6 @@ app_init(struct app *app) {
 
 #ifdef DEBUG_MODE
   ut_str(&app->sys);
-  ut_set(&app->sys);
-  ut_tbl(&app->sys);
 #endif
 }
 static void
@@ -563,15 +565,6 @@ main(int argc, char **argv) {
   /* run */
   while (app.sys.running) {
     sys.pull(&app.sys);
-    for loop(i, app.tab_cnt) {
-      struct app_view *view = &app.views[app.tabs[i]];
-      switch (view->state) {
-      case APP_VIEW_STATE_FILE: break;
-      case APP_VIEW_STATE_DB:
-        dbs.update(view->db, &app.sys);
-        break;
-      }
-    }
     /* user interface */
     if (app.sys.style_mod) {
       gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
