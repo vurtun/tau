@@ -76,6 +76,7 @@ struct db_info_view {
   struct db_info_buf buf;
 
   /* ui */
+  struct str fnd_str;
   char fnd_buf[DB_MAX_FLTR_STR];
   struct gui_txt_ed fnd_ed;
   struct db_tree_tbl_state tbl;
@@ -190,6 +191,7 @@ enum db_tbl_ui_disp_state_col {
   DB_TBL_DISP_COL_PK,
   DB_TBL_DISP_COL_FK,
   DB_TBL_DISP_COL_NN,
+  DB_TBL_DISP_COL_FLTR,
   DB_TBL_DISP_COL_MAX,
 };
 struct db_tbl_ui_col_state {
@@ -217,8 +219,13 @@ enum db_tbl_view_dsp_state {
   DB_TBL_VIEW_DSP_LAYOUT,
   DB_TBL_VIEW_DSP_CNT
 };
+enum db_tbl_col_state {
+  DB_TBL_COL_STATE_LOCKED,
+  DB_TBL_COL_STATE_UNLOCKED,
+};
 struct db_tbl_col_lst {
-  int cnt;
+  enum db_tbl_col_state state;
+  int cnt, total;
   struct rng rng;
   struct db_tbl_col lst[DB_MAX_TBL_COLS];
   struct db_tbl_col_buf buf;

@@ -3309,7 +3309,7 @@ path_ext(struct str path) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define tbl__is_del(k) (((k) >> 63) != 0)
+#define tbl__is_del(k) (((k) >> 63llu) != 0)
 #define tbl__dist(h,n,i) (((i) + (n) - ((h) % n)) % (n))
 #define tbl__key(k) ((k) != 0u && !tbl__is_del(k))
 #define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
