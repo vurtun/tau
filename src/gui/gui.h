@@ -396,9 +396,17 @@ struct gui_grp {
 };
 
 /* Widget: Region */
+enum gui_reg_scrl {
+  GUI_REG_SCRL_DFLT   = 0,
+  GUI_REG_SCRL_VERT   = 0x01,
+  GUI_REG_SCRL_HORZ   = 0x02,
+  GUI_REG_SCRL_FULL   = GUI_REG_SCRL_VERT|GUI_REG_SCRL_HORZ,
+  GUI_REG_SCRL_NO
+};
 struct gui_reg {
   /* in */
   struct gui_box box;
+  unsigned scrl;
   /* out */
   struct gui_panel pan;
   int scrl_wheel;
@@ -772,6 +780,7 @@ enum gui_grid_flags {
   GUI_GRID_X    = 0x01,
   GUI_GRID_Y    = 0x02,
   GUI_GRID_XY   = GUI_GRID_X|GUI_GRID_Y,
+  GUI_GRID_NO
 };
 struct gui_grid {
   /* in */
@@ -1384,6 +1393,7 @@ struct gui_tbl_lst_elm_col_pan_api {
 struct gui_tbl_lst_elm_col_api {
   struct gui_tbl_lst_elm_col_pan_api pan;
   void (*slot)(struct gui_box *box, struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay);
+  void (*ico)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct gui_icon *icon, enum res_ico_id ico);
   void (*txt)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct str txt, const struct gui_align *align);
   void (*txt_ico)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct str txt, enum res_ico_id icon);
   void (*txtf)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const struct gui_align *align, const char *fmt, ...);

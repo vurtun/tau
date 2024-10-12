@@ -179,7 +179,7 @@ app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
       continue;
     }
     app->sel_tab = castb(app_tab_add(app, view));
-    struct db_view *db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, files[i]);
+    struct db_view *db = dbs.new(&app->gui, app->sys.mem.arena, files[i]);
     if (db) {
       app->views[view].db = db;
     } else {
@@ -266,7 +266,7 @@ app_shutdown(struct app *app) {
     assert(idx < APP_VIEW_CNT);
     struct app_view *view = &app->views[idx];
     if (view->db) {
-      dbs.del(view->db, &app->sys);
+      dbs.del(view->db);
     }
     app_view_del(app, idx);
     used = ~app->unused;
@@ -292,7 +292,7 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
 
   view->file_path = pck.ui(app->path_buf + view->path_buf_off, MAX_FILE_PATH, &app->fs, ctx, pan, parent);
   if (str_is_val(view->file_path)) {
-    view->db = dbs.new(&app->gui, app->sys.mem.arena, app->sys.mem.tmp, view->file_path);
+    view->db = dbs.new(&app->gui, app->sys.mem.arena, view->file_path);
     view->state = APP_VIEW_STATE_DB;
     if (view->db) {
       int new_view = app_view_new(app);

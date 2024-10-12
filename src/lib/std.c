@@ -2775,6 +2775,16 @@ str_fmtsn(char *buf, int n, const char *fmt, ...) {
   va_end(va);
   return strn(buf, ret);
 }
+static struct str
+str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  int left = max(0, cap - str_len(in));
+  char *dst = b + str_len(in);
+  int ret = fmtvsn(dst, left, fmt, va);
+  va_end(va);
+  return strn(b, str_len(in) + ret);
+}
 
 /* ---------------------------------------------------------------------------
  *                                Time

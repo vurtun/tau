@@ -3362,21 +3362,18 @@ gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
   assert(parent);
 
   edt->pan.box = edt->box;
-  gui_panel_begin(ctx, &edt->pan, parent);
-  {
-    struct gui_box *b = &edt->box;
-    if (ctx->pass == GUI_RENDER &&
-        edt->pan.state != GUI_HIDDEN) {
-      gui_edit_drw(ctx, &edt->pan);
-    }
-    /* content */
-    static const int pad[2] = {3, 3};
-    struct gui_panel content = {.focusable = 1};
-    content.box.x = gui_shrink(&b->x, pad[0]);
-    content.box.y = gui_shrink(&b->y, pad[1]);
-    gui_edit_field(ctx, edt, &content, &edt->pan, ed);
+  struct gui_box *b = &edt->box;
+  if (ctx->pass == GUI_RENDER) {
+    gui_edit_drw(ctx, &edt->pan);
   }
-  gui_panel_end(ctx, &edt->pan, parent);
+  static const int pad[2] = {3, 3};
+  struct gui_box content = {0};
+  content.x = gui_shrink(&b->x, pad[0]);
+  content.y = gui_shrink(&b->y, pad[1]);
+
+  edt->pan.focusable = 1;
+  edt->pan.box = content;
+  gui_edit_field(ctx, edt, &edt->pan, parent, ed);
   return ed->str;
 }
 static struct str
@@ -3394,6 +3391,8 @@ gui_edit_box(struct gui_ctx *ctx, struct gui_edit_box *box,
     if (ctx->prev_focused != id) {
       gui_txt_ed_init(edt, buf, cap, s);
     }
+  } else {
+    edt->str = s;
   }
   return gui_edit(ctx, box, parent, edt);
 }
@@ -3891,7 +3890,9 @@ gui_reg_begin(struct gui_ctx *ctx, struct gui_reg *d,
   d->pan.box = d->box;
   gui_panel_begin(ctx, &d->pan, parent);
   mcpy(d->off, off, sizeof(d->off));
-
+  if (d->scrl == GUI_REG_SCRL_DFLT) {
+    d->scrl = GUI_REG_SCRL_FULL;
+  }
   /* calculate clip area */
   struct gui_box *b = &d->pan.box;
   d->space.x = gui_min_max(b->x.min, b->x.max - ctx->cfg.scrl);
@@ -3947,71 +3948,74 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
       d->scrolled = 1;
     }
   }
-  /* setup vertical scrollbar */
-  d->vscrl.min_size = ctx->cfg.scrl;
-  d->vscrl.total = castd(pan->max[1] - pan->box.y.min);
-  d->vscrl.size = castd(pan->box.y.max - pan->box.y.min - ctx->cfg.scrl);
+  int top = pan->box.y.min + off_y;
+  int right = pan->box.x.max + ctx->cfg.scrl + off_x;
+  int bot = pan->box.y.max + ctx->cfg.scrl + off_y;
+  int left = pan->box.x.min + off_x;
 
-  /* handle keyboard list begin/end action */
-  if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_BEGIN)) {
-    d->off[1] = 0;
-  } else if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_END)) {
-    d->off[1] = d->vscrl.total - d->vscrl.size;
-  }
-  /* handle list page up/down action */
-  if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_PGUP)) {
-    d->off[1] = d->off[1] - d->vscrl.size;
-    d->off[1] = clamp(0, d->off[1], d->vscrl.total - d->vscrl.size);
-  }
-  if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_PGDN)) {
-    d->off[1] = d->off[1] + d->vscrl.size;
-    d->off[1] = clamp(0, d->off[1], d->vscrl.total - d->vscrl.size);
-  }
-  d->vscrl.off = d->off[1];
+  d->vscrl.box.x = gui_min_max(pan->box.x.max + off_x, right);
+  d->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
+  d->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
+  d->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
 
-  /* vertical scrollbar */
-  if (d->vscrl.total > d->vscrl.size + ctx->cfg.scrl) {
-    int top = pan->box.y.min + off_y;
-    int right = pan->box.x.max + ctx->cfg.scrl + off_x;
-
-    d->vscrl.box.x = gui_min_max(pan->box.x.max + off_x, right);
-    d->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
-
-    gui_vscrl(ctx, &d->vscrl, pan);
-    if (math_abs(d->off[1] - d->vscrl.off) >= 1.0f) {
-      d->off[1] = d->vscrl.off;
-      d->scrolled = 1;
+  if (d->scrl & GUI_REG_SCRL_VERT) {
+    /* setup vertical scrollbar */
+    d->vscrl.min_size = ctx->cfg.scrl;
+    d->vscrl.total = castd(pan->max[1] - pan->box.y.min);
+    d->vscrl.size = castd(pan->box.y.max - pan->box.y.min - ctx->cfg.scrl);
+    /* handle keyboard list begin/end action */
+    if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_BEGIN)) {
+      d->off[1] = 0;
+    } else if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_END)) {
+      d->off[1] = d->vscrl.total - d->vscrl.size;
     }
+    /* handle list page up/down action */
+    if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_PGUP)) {
+      d->off[1] = d->off[1] - d->vscrl.size;
+      d->off[1] = clamp(0, d->off[1], d->vscrl.total - d->vscrl.size);
+    }
+    if (pan->is_hot && bit_tst_clr(ctx->keys, GUI_KEY_SCRL_PGDN)) {
+      d->off[1] = d->off[1] + d->vscrl.size;
+      d->off[1] = clamp(0, d->off[1], d->vscrl.total - d->vscrl.size);
+    }
+    /* vertical scrollbar */
+    d->vscrl.off = d->off[1];
+    if (d->vscrl.total > d->vscrl.size + ctx->cfg.scrl) {
+      gui_vscrl(ctx, &d->vscrl, pan);
+      if (math_abs(d->off[1] - d->vscrl.off) >= 1.0f) {
+        d->off[1] = d->vscrl.off;
+        d->scrolled = 1;
+      }
+    } else {
+      d->off[1] = 0;
+    }
+    d->max_off[1] = d->vscrl.total - d->vscrl.size;
   } else {
     d->off[1] = 0;
   }
-  /* setup horizontal scrollbar */
-  d->hscrl.off = d->off[0];
-  d->hscrl.min_size = ctx->cfg.scrl;
-  d->hscrl.total = castd(pan->max[0] - pan->box.x.min);
-  d->hscrl.size = castd(pan->box.x.max - pan->box.x.min + ctx->cfg.scrl);
-
-  /* horizontal scrollbar */
-  if (d->hscrl.total > d->hscrl.size) {
-    int bot = pan->box.y.max + ctx->cfg.scrl + off_y;
-    int left = pan->box.x.min + off_x;
-
-    d->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
-    d->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
-
-    gui_hscrl(ctx, &d->hscrl, pan);
-    if (math_abs(d->off[0] - d->hscrl.off) >= 1.0f) {
-      d->off[0] = d->hscrl.off;
-      d->scrolled = 1;
+  if (d->scrl & GUI_REG_SCRL_HORZ) {
+    /* setup horizontal scrollbar */
+    d->hscrl.off = d->off[0];
+    d->hscrl.min_size = ctx->cfg.scrl;
+    d->hscrl.total = castd(pan->max[0] - pan->box.x.min);
+    d->hscrl.size = castd(pan->box.x.max - pan->box.x.min + ctx->cfg.scrl);
+    if (d->hscrl.total > d->hscrl.size) {
+      /* horizontal scrollbar */
+      gui_hscrl(ctx, &d->hscrl, pan);
+      if (math_abs(d->off[0] - d->hscrl.off) >= 1.0f) {
+        d->off[0] = d->hscrl.off;
+        d->scrolled = 1;
+      }
+    } else {
+      d->off[0] = 0;
     }
+    d->max_off[0] = d->hscrl.total - d->hscrl.size;
   } else {
     d->off[0] = 0;
   }
   if (off) {
     mcpy(off, d->off, sizeof(d->off));
   }
-  d->max_off[0] = d->hscrl.total - d->hscrl.size;
-  d->max_off[1] = d->vscrl.total - d->vscrl.size;
 }
 
 /* ---------------------------------------------------------------------------
@@ -4406,6 +4410,7 @@ gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,
       gui_lst_on_sel(ctx, sel, lay, is_sel);
     } else if (sel->mode == GUI_LST_SEL_SINGLE &&
                ctl->focus == GUI_LST_FOCUS_ON_HOV) {
+      ctx->sys->repaint = 1;
       is_sel = state.hov;
     }
   }
@@ -5472,6 +5477,18 @@ gui_tbl_lst_txt_ico(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
   gui_tbl_lst_col_txt_ico(ctx, tbl, lay, elm, &item, txt, icon);
 }
 static void
+gui_tbl_lst_col_ico(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
+                    struct gui_panel *elm, struct gui_icon *item,
+                    enum res_ico_id ico) {
+  assert(ctx);
+  assert(tbl);
+  assert(elm);
+  assert(item);
+
+  gui_tbl_lst_elm_col(&item->box, ctx, tbl, lay);
+  gui_icon(ctx, item, elm, ico);
+}
+static void
 gui_tbl_lst_txtf(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
                  struct gui_panel *elm, const struct gui_align *align,
                  const char *fmt, ...) {
@@ -5609,7 +5626,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   gui_panel_begin(ctx, &tab->pan, parent);
   if (tab->show_btn) {
     /* open list button */
-    gui_disable(ctx, tab->cnt >= cnt);
+    // gui_disable(ctx, tab->cnt >= cnt);
     tab->btn.box = tab->hdr;
     tab->btn.box.x = gui_min_ext(tab->off, ctx->cfg.scrl);
     gui_btn_begin(ctx, &tab->btn, &tab->pan);
@@ -5623,7 +5640,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
       gui_arrow(ctx, &arr, &tab->btn.pan, GUI_SOUTH);
     }
     gui_btn_end(ctx, &tab->btn, &tab->pan);
-    gui_enable(ctx, tab->cnt >= cnt);
+    //gui_enable(ctx, tab->cnt >= cnt);
     tab->hdr.x = gui_min_max(tab->btn.box.x.max, tab->hdr.x.max);
   }
 }
@@ -6816,6 +6833,7 @@ static const struct gui_api gui__api = {
             .txt_ico = gui_tbl_lst_col_txt_ico,
           },
           .slot = gui_tbl_lst_elm_col,
+          .ico = gui_tbl_lst_col_ico,
           .txt = gui_tbl_lst_txt,
           .txt_ico = gui_tbl_lst_txt_ico,
           .txtf = gui_tbl_lst_txtf,

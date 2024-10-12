@@ -5,17 +5,31 @@ struct gui_api;
 struct gui_ctx;
 struct gui_panel;
 
-#define DB_MAX_FILTER     64
-#define DB_TBL_VIEW_CNT   64
-#define DB_MAX_TBL_NAME   256
-#define DB_MAX_TBL_SQL    1024
-#define DB_MAX_ELM_CNT    256
-#define DB_MAX_FLTR_STR   32
-#define DB_MAX_FLTR_CNT   32
+#define DB_MAX_FILTER         64
+#define DB_TBL_VIEW_CNT       16
+#define DB_MAX_TBL_NAME       128
+#define DB_MAX_TBL_SQL        256
+#define DB_MAX_TBL_COLS       128
+#define DB_MAX_TBL_ROW_COLS   16
+#define DB_MAX_TBL_ROWS       128
+#define DB_MAX_TBL_ELM        (DB_MAX_TBL_ROW_COLS*DB_MAX_TBL_ROW_COLS)
+#define DB_MAX_TBL_COL_NAME   128
+#define DB_MAX_TBL_COL_TYPE   128
+#define DB_MAX_TBL_ELM_DATA   64
+#define DB_MAX_INFO_ELM_CNT   512
+#define DB_MAX_FLTR_STR       64
+#define DB_MAX_FLTR_CNT       32
+#define DB_MAX_FLTR_ELM       128
+#define DB_MAX_FLTR_ELM_STR   128
 
-#define DB_INFO_NAME_STR_BUF_SIZ (DB_MAX_ELM_CNT * DB_MAX_TBL_NAME)
-#define DB_INFO_SQL_STR_BUF_SIZ (DB_MAX_ELM_CNT * DB_MAX_TBL_SQL)
-#define DB_SQL_QRY_BUF_SIZ KB(16)
+#define DB_INFO_NAME_STR_BUF_SIZ    (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME)
+#define DB_INFO_SQL_STR_BUF_SIZ     (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL)
+#define DB_TBL_COL_NAME_STR_BUF_SIZ (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_NAME)
+#define DB_TBL_COL_TYPE_STR_BUF_SIZ (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_TYPE)
+#define DB_TBL_COL_STR_BUF_SIZ      (DB_TBL_COL_NAME_STR_BUF_SIZ + DB_TBL_COL_TYPE_STR_BUF_SIZ)
+#define DB_TBL_ELM_STR_BUF_SIZ      (DB_MAX_TBL_ELM*DB_MAX_TBL_ELM_DATA)
+#define DB_TBL_FLTR_STR_BUF_SIZ     (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR)
+#define DB_SQL_QRY_BUF_SIZ          KB(16)
 
 enum db_tree_col_sel {
   DB_TREE_COL_NAME,
@@ -27,14 +41,14 @@ struct db_tree_tbl_state {
   int state[GUI_TBL_CAP(DB_TREE_COL_MAX)];
   double off[2];
 };
-#define DB_TBL_MAP(TYPE)\
-  TYPE(TBL,       "table",    RES_ICO_TABLE)\
-  TYPE(VIEW,      "view",     RES_ICO_IMAGE)\
-  TYPE(IDX,       "index",    RES_ICO_TAG)\
-  TYPE(TRIGGER,   "trigger",  RES_ICO_BOLT)
+#define DB_TBL_MAP(TYPE)                                \
+  TYPE(TBL,       "table",    "Tables",   RES_ICO_TABLE)\
+  TYPE(VIEW,      "view",     "Views",    RES_ICO_IMAGE)\
+  TYPE(IDX,       "index",    "Indexs",   RES_ICO_TAG)  \
+  TYPE(TRIGGER,   "trigger",  "Triggers", RES_ICO_BOLT)
 
 enum db_tbl_type {
-#define DB_TBL_TYPE(a,b,c) DB_TBL_TYPE_##a,
+#define DB_TBL_TYPE(a,b,c,d) DB_TBL_TYPE_##a,
   DB_TBL_MAP(DB_TBL_TYPE)
 #undef DB_TBL_TYPE
   DB_TBL_TYPE_CNT
@@ -55,17 +69,17 @@ struct db_info_view {
   int tab_cnt[DB_TBL_TYPE_CNT];
   unsigned tab_act;
 
-  /* ui */
-  char *fnd_buf;
-  struct gui_txt_ed fnd_ed;
-  struct db_tree_tbl_state tbl;
-  struct tbl(long long, DB_MAX_ELM_CNT) sel;
-
   /* elms */
   int elm_cnt;
   struct rng elm_rng;
-  struct db_info_elm elms[DB_MAX_ELM_CNT];
+  struct db_info_elm elms[DB_MAX_INFO_ELM_CNT];
   struct db_info_buf buf;
+
+  /* ui */
+  char fnd_buf[DB_MAX_FLTR_STR];
+  struct gui_txt_ed fnd_ed;
+  struct db_tree_tbl_state tbl;
+  struct tbl(long long, DB_MAX_INFO_ELM_CNT) sel;
 };
 struct db_tbl_col_def {
   struct str title;
@@ -82,16 +96,10 @@ struct db_tbl_state {
   struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(DB_TBL_MAX)];
 };
-struct db_tbl_ui_state {
-  struct gui_tbl_sort sort;
-  int *state;
-  double off[2];
-};
 enum db_tbl_fltr_col {
   DB_TBL_FLTR_STATE,
   DB_TBL_FLTR_BUF,
   DB_TBL_FLTR_COL,
-  DB_TBL_FLTR_TYP,
   DB_TBL_FLTR_DEL,
   DB_TBL_FLTR_MAX
 };
@@ -100,20 +108,10 @@ enum db_tbl_fltr_col_sel {
   DB_TBL_FLTR_COL_TYPE,
   DB_TBL_FLTR_COL_MAX,
 };
-
-#if 0
-struct db_tbl_fltr_tm {
-  time_t min;
-  time_t max;
-
-  struct tm from;
-  struct tm to;
-
-  time_t from_val;
-  time_t to_val;
+enum db_tbl_fltr_state {
+  DB_TBL_FLTR_LST,
+  DB_TBL_FLTR_EDT
 };
-#endif
-
 enum db_tbl_fltr_elm_typ {
   DB_TBL_FLTR_ELM_TYP_STR,
   DB_TBL_FLTR_ELM_TYP_SEL,
@@ -122,33 +120,46 @@ enum db_tbl_fltr_elm_typ {
 struct db_tbl_fltr_elm {
   unsigned enabled: 1;
   unsigned type: 31;
-  int col;
-  char buf[DB_MAX_FLTR_STR];
-  struct str str;
+  char col_buf[DB_MAX_TBL_COL_NAME];
+  struct str col;
+  char fnd_buf[DB_MAX_FLTR_STR];
+  struct str fnd;
 };
-struct db_tbl_fltr_state {
+struct db_tbl_fltr_ui {
   int cnt;
   struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(DB_TBL_FLTR_MAX)];
   double off[2];
 };
+struct db_tbl_fltr_buf {
+  int cnt;
+  char mem[DB_TBL_FLTR_STR_BUF_SIZ];
+};
 struct db_tbl_fltr_view {
+  enum db_tbl_fltr_state state;
+
   unsigned unused;
   struct db_tbl_fltr_elm elms[DB_MAX_FLTR_CNT];
   unsigned char lst[DB_MAX_FLTR_CNT];
   unsigned char fltr_cnt;
+  char ini_col_buf[DB_MAX_TBL_COL_NAME];
+  struct str ini_col;
+
+  struct str fnd_str;
+  char fnd_buf[DB_MAX_FILTER];
+  long long rowid[DB_MAX_FLTR_ELM];
+  struct str data[DB_MAX_FLTR_ELM];
+  struct db_tbl_fltr_buf buf;
+  struct rng data_rng;
 
   /* ui */
-  struct db_tbl_fltr_state tbl;
-  struct db_tbl_fltr_state tbl_col;
+  struct db_tbl_fltr_ui tbl;
+  struct db_tbl_fltr_ui tbl_col;
   double off[2];
-
-  struct arena_scope scp;
-  struct str *data;
-
-  int sel_col;
   unsigned rev;
   struct rng elm_rng;
+  int sel_col;
+  int init;
 };
 struct db_tbl_blob_view {
   unsigned disabled : 1;
@@ -166,46 +177,82 @@ struct db_tbl_blob_view {
 enum db_tbl_view_state {
   TBL_VIEW_SELECT,
   TBL_VIEW_DISPLAY,
-  TBL_VIEW_FILTER,
-  TBL_VIEW_FILTER_LIST,
-  TBL_VIEW_BLOB_VIEW,
+};
+struct db_tbl_ui_state {
+  struct gui_tbl_sort sort;
+  int state[GUI_TBL_CAP(DB_MAX_TBL_COLS)];
+  double off[2];
+};
+enum db_tbl_ui_disp_state_col {
+  DB_TBL_DISP_COL_ACT,
+  DB_TBL_DISP_COL_NAME,
+  DB_TBL_DISP_COL_TYPE,
+  DB_TBL_DISP_COL_PK,
+  DB_TBL_DISP_COL_FK,
+  DB_TBL_DISP_COL_NN,
+  DB_TBL_DISP_COL_MAX,
+};
+struct db_tbl_ui_col_state {
+  int state[GUI_TBL_CAP(DB_TBL_DISP_COL_MAX)];
+  double off[2];
+};
+struct db_tbl_col_buf {
+  int cnt;
+  char mem[DB_TBL_COL_STR_BUF_SIZ];
 };
 struct db_tbl_col {
+  long long rowid;
   struct str name;
   struct str type;
-  struct str dflt;
 
-  unsigned not_null:1;
+  unsigned ico:28;
   unsigned pk:1;
   unsigned fk:1;
+  unsigned nn:1;
   unsigned blob:1;
+};
+enum db_tbl_view_dsp_state {
+  DB_TBL_VIEW_DSP_DATA,
+  DB_TBL_VIEW_DSP_FILTER,
+  DB_TBL_VIEW_DSP_LAYOUT,
+  DB_TBL_VIEW_DSP_CNT
+};
+struct db_tbl_col_lst {
+  int cnt;
+  struct rng rng;
+  struct db_tbl_col lst[DB_MAX_TBL_COLS];
+  struct db_tbl_col_buf buf;
+  struct tbl(long long, DB_MAX_TBL_COLS) sel;
+  struct db_tbl_ui_col_state ui;
+};
+struct db_tbl_row_buf {
+  int cnt;
+  char mem[DB_TBL_ELM_STR_BUF_SIZ];
+};
+struct db_tbl_row_lst {
+  struct rng rng;
+  struct rng cols;
+  long long rowids[DB_MAX_TBL_ROWS];
+  struct str lst[DB_MAX_TBL_ELM];
+  struct db_tbl_row_buf buf;
+  struct db_tbl_ui_state ui;
 };
 struct db_tbl_view {
   enum db_tbl_type kind;
   enum db_tbl_view_state state;
-
-  int init;
-  struct arena *tmp_mem;
-  struct arena mem;
-  struct arena_scope scp;
+  enum db_tbl_view_dsp_state disp;
 
   unsigned rev;
+  char name_buf[DB_MAX_TBL_NAME];
   struct str name;
+  long long rowid;
+
+  struct db_tbl_col_lst col;
+  struct db_tbl_row_lst row;
   struct db_tbl_fltr_view fltr;
   struct db_tbl_blob_view blob;
-  struct db_tbl_col *cols;
-  struct str *data;
-
-  /* ui */
-  int total;
-  int row_cnt;
-  int row_begin;
-  int row_end;
-  struct db_tbl_ui_state ui;
 };
 struct db_view {
-  struct arena mem;
-  struct arena *tmp_mem;
   sqlite3 *con;
   struct str path;
   char path_buf[MAX_FILE_PATH];
@@ -213,7 +260,7 @@ struct db_view {
   char sql_qry_buf[DB_SQL_QRY_BUF_SIZ];
 
   /* tbls */
-  unsigned long long unused;
+  unsigned unused;
   struct db_tbl_view tbls[DB_TBL_VIEW_CNT];
   unsigned char tabs[DB_TBL_VIEW_CNT];
   unsigned char show_tab_lst;
@@ -224,8 +271,8 @@ struct db_view {
 struct db_api {
   int version;
   int (*init)(void *mem, int siz);
-  struct db_view* (*new)(struct gui_ctx *ctx, struct arena *mem, struct arena *tmp_mem, struct str path);
-  void (*del)(struct db_view *db, struct sys *sys);
+  struct db_view* (*new)(struct gui_ctx *ctx, struct arena *mem, struct str path);
+  void (*del)(struct db_view *db);
   void (*ui)(struct db_view *db, struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent);
 };
 
