@@ -376,7 +376,6 @@ guid_hash64(const struct guid *g) {
  * ---------------------------------------------------------------------------
  */
 #define arrv(b) (b),cntof(b)
-#define arr(b) (b),dyn_cnt((b))
 #define arr_shfl(a,n,p) do {                              \
   for (int uniqid(i) = 0; uniqid(i) < (n); ++uniqid(i)) { \
     if ((p)[uniqid(i)] >= 0) {                            \
@@ -2928,9 +2927,6 @@ lck_rel(struct lck *lck) {
 // clang-format off
 #define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
 #define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
-#define arena_dyn(a, s, T, n) cast(T*, dyn__static(arena_alloc(a, s, dyn_req_siz(szof(T) * (n))), (n)))
-#define arena_set(a, s, n) arena_dyn(a, s, unsigned long long, n)
-#define arena_tbl(a, s, T, n) cast(T*, tbl__setup(arena_alloc(a, s, tbl__resv(szof(T), n)), 0, -(n)))
 #define arena_scope(a,s,sys)\
   (int uniqid(_i_) = (arena_scope_push(s,a), 0); uniqid(_i_) < 1;\
     uniqid(_i_) = (arena_scope_pop(s,a,sys), 1))
@@ -3125,139 +3121,6 @@ static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt =
 // clang-format on
 
 /* ---------------------------------------------------------------------------
- *                                  Array
- * ---------------------------------------------------------------------------
- */
-#define DYN_ALIGN 16
-struct dyn_hdr {
-  struct mem_blk *blk;
-  int cnt, cap;
-  char buf[];
-};
-// clang-format on
-#define dyn__hdr(b) ((struct dyn_hdr *)(void *)((char *)(b)-offsetof(struct dyn_hdr, buf)))
-#define dyn__fits(b, n) (dyn_cnt(b) + (n) <= dyn_cap(b))
-#define dyn_req_siz(type_size) (szof(struct dyn_hdr) + (type_size) + DYN_ALIGN)
-#define dyn_fix_siz(type,cnt) dyn_req_siz(sizeof(type) * cnt)
-#define dyn__add(b, s, x) (dyn_fit((b), (s), 1), (b)[dyn__hdr(b)->cnt++] = x)
-
-#define dyn_cnt(b) ((b) ? dyn__hdr(b)->cnt : 0)
-#define dyn_cap(b) ((b) ? abs(dyn__hdr(b)->cap) : 0)
-#define dyn_begin(b) ((b) + 0)
-#define dyn_empty(b) (dyn_cnt(b) == 0)
-#define dyn_any(b) (dyn_cnt(b) > 0)
-#define dyn_end(b) ((b) + dyn_cnt(b))
-#define dyn_fit(b, s, n) (dyn__fits((b), (n)) ? 0:((b) = dyn__grow((b), (s), dyn_cnt(b) + (n), szof(*(b)))))
-#define dyn_add(b, s, ...) dyn__add(b, s, (__VA_ARGS__))
-#define dyn_pop(b) ((b) ? dyn__hdr(b)->cnt = max(0, dyn__hdr(b)->cnt - 1): 0)
-#define dyn_clr(b) ((b) ? dyn__hdr(b)->cnt = 0 : 0)
-#define dyn_del(b, i) (dyn_cnt(b) ? (b)[i] = (b)[--dyn__hdr(b)->cnt] : 0);
-#define dyn_rm(a, i) (dyn_cnt(a) ? memmove(&((a)[i]), &((a)[i+1]),(size_t)((--(dyn__hdr(a)->cnt)) - i) * sizeof((a)[0])) :0)
-#define dyn_fmt(b, s, fmt, ...) ((b) = dyn__fmt((b), (s), (fmt), __VA_ARGS__))
-#define dyn_free(b,s) ((!(b))?0:(dyn__hdr(b)->cap <= 0) ? (b) = 0 : ((s)->mem.free((s),dyn__hdr(b)->blk), (b) = 0))
-#define dyn_str(b) str(dyn_begin(b), rngn(dyn_cnt(b)))
-#define dyn_sort(b,f) ((b) ? qsort(b, cast(size_t, dyn_cnt(b)), sizeof(b[0]), f), 0 : 0)
-#define dyn_asn_str(b,_sys,s) dyn_asn(b,_sys,(s).str,(s).len)
-#define dyn_val(b,i) assert(i < dyn_cnt(b))
-#define dyn_shfl(a,p) arr_shfl(arr(a),p)
-
-#define dyn_each(it,c) ((it) = dyn_begin(c); it != dyn_end(c); it++)
-#define dyn_loop(i,c) (int i = 0; i < dyn_cnt(c); ++i)
-#define dyn_eachr(it,c) (it = dyn_begin((c) + (r).lo; it < (c) + (r).hi; it += 1)
-#define dyn_loopr(i,c,r) (int i = (r).lo; i != (r).hi; i += 1)
-
-#define dyn_asn(b, s, x, n) do {                    \
-  dyn_clr(b);                                       \
-  dyn_fit(b, s, n);                                 \
-  mcpy(b, x, szof((b)[0]) * (n));                   \
-  dyn__hdr(b)->cnt = (n);                           \
-} while (0)
-
-#define dyn_put(b, s, i, x, n) do {                                       \
-  dyn_fit(b, s, n);                                                       \
-  assert((i) <= dyn_cnt(b));                                              \
-  assert((i) < dyn_cap(b));                                               \
-  memmove((b) + (i) + (n), (b) + (i), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - (i))); \
-  mcpy((b) + (i), (x), szof((b)[0]) * (n));                               \
-  dyn__hdr(b)->cnt += (n);                                                \
-} while (0)
-
-#define dyn_cut(b, i, n) do {                                             \
-  assert((i) < dyn_cnt(b));                                               \
-  assert((i) + (n) <= dyn_cnt(b));                                        \
-  memmove((b) + (i), b + (i) + (n), sizeof((b)[0]) * (size_t)max(0, dyn_cnt(b) - ((i) + (n)))); \
-  dyn__hdr(b)->cnt -= (n);                                                \
-} while (0)
-// clang-format off
-
-static void *
-dyn__grow(void *buf, struct sys *s, int new_len, int elem_size) {
-  struct dyn_hdr *hdr = 0;
-  int cap = dyn_cap(buf);
-  int new_cap = max(32, max(2 * cap + 1, new_len));
-  int new_size = offsetof(struct dyn_hdr, buf) + new_cap * elem_size;
-  assert(new_len <= new_cap);
-  if (!buf) {
-    /* allocate new array */
-    struct mem_blk *blk = s->mem.alloc(s, 0, new_size, SYS_MEM_GROWABLE, 0);
-    hdr = cast(struct dyn_hdr*, (void*)blk->base);
-    hdr->blk = blk;
-    hdr->cnt = 0;
-  } else if (dyn__hdr(buf)->cap < 0) {
-    /* static memory so allocate and copy to heap */
-    struct mem_blk *blk = s->mem.alloc(s, 0, new_size, SYS_MEM_GROWABLE, 0);
-    hdr = cast(struct dyn_hdr*, (void*)blk->base);
-    hdr->blk = blk;
-    hdr->cnt = dyn_cnt(buf);
-    mcpy(hdr->buf, dyn__hdr(buf)->buf, cap * elem_size);
-  } else {
-    /* grow array */
-    int n = dyn_cnt(buf);
-    hdr = dyn__hdr(buf);
-
-    struct mem_blk *blk = s->mem.alloc(s, hdr->blk, new_size, SYS_MEM_GROWABLE, 0);
-    hdr = cast(struct dyn_hdr*, (void*)blk->base);
-    hdr->blk = blk;
-    hdr->cnt = n;
-  }
-  hdr->cap = new_cap;
-  return hdr->buf;
-}
-static void *
-dyn__static(void *buf, int n) {
-  void *u = (char *)buf + DYN_ALIGN + sizeof(struct dyn_hdr) - 1;
-  void *a = align_down_ptr(u, DYN_ALIGN);
-  void *h = (char *)a - sizeof(struct dyn_hdr);
-
-  struct dyn_hdr *hdr = h;
-  hdr->cap = -n, hdr->cnt = 0;
-  return hdr->buf;
-}
-static char *
-dyn__fmt(char *buf, struct sys *s, const char *fmt, ...) {
-  assert(buf);
-  assert(fmt);
-
-  int cap, n;
-  va_list args;
-  va_start(args, fmt);
-  cap = dyn_cap(buf) - dyn_cnt(buf);
-  n = 1 + fmtvsn(dyn_end(buf), cap, fmt, args);
-  va_end(args);
-
-  if (n > cap) {
-    dyn_fit(buf, s, n + dyn_cnt(buf));
-    va_start(args, fmt);
-    int new_cap = dyn_cap(buf) - dyn_cnt(buf);
-    n = 1 + fmtvsn(dyn_end(buf), new_cap, fmt, args);
-    assert(n <= new_cap);
-    va_end(args);
-  }
-  dyn__hdr(buf)->cnt += n - 1;
-  return buf;
-}
-
-/* ---------------------------------------------------------------------------
  *                                  Path
  * ---------------------------------------------------------------------------
  */
@@ -3272,18 +3135,6 @@ path_norm(char *path) {
   if (ptr != path && ptr[-1] == '/') {
     ptr[-1] = 0;
   }
-}
-static dyn(char)
-path_push(dyn(char) path, struct sys *s, struct str src) {
-  char *p = dyn_end(path);
-  while (p != path && p[-1] == '/') {
-    dyn_pop(path);
-  }
-  if (str_at(src,0) == '/') {
-    src = str_rhs(src, 1);
-  }
-  dyn_fmt(path, s, "/%.*s", strf(src));
-  return path;
 }
 static struct str
 path_file(struct str path) {

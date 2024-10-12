@@ -643,16 +643,6 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       }
       gui.tbl.hdr.end(ctx, &tbl);
 
-#if 0
-      /* sorting */
-      if (tbl.resort && lst->elms) {
-        assert(tbl.sort.col < cntof(file_tbl_def));
-        assert(tbl.sort.order < cntof(file_tbl_def[tbl.sort.col].sort));
-        dyn_sort(lst->elms, file_tbl_def[tbl.sort.col].sort[tbl.sort.order]);
-        lst->tbl.sort = tbl.sort;
-      }
-#endif
-
       /* list */
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, lst->page.cnt);
