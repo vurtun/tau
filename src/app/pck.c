@@ -526,7 +526,12 @@ ui_file_lst_view_fnd(struct file_view *fs, struct file_list_view *lst,
   lst->fltr = ui_edit_search(ctx, &edt, pan, parent, &lst->fltr_ed,
                              lst->fltr_buf, cntof(lst->fltr_buf), lst->fltr);
   if (edt.mod) {
-    file_view_lst_cd(fs, &fs->lst, ctx->sys, fs->home);
+    struct file_view_lst_qry qry = {0};
+    qry.cmp = file_view_lst_elm_cmp_name_asc;
+    qry.fullpath = lst->nav_path;
+    qry.page = lst->page.idx;
+    qry.fltr = lst->fltr;
+    file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
   }
 }
 static void
