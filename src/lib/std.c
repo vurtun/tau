@@ -394,7 +394,7 @@ guid_hash64(const struct guid *g) {
 #define arr_eachv(it,a) arr_eachp(it,(a),(a)+cntof(a))
 #define arr_loopv(i,a) (int i = 0; i < cntof(a); ++i)
 #define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += 1)
-#define arr_rm(a,i,n) memmove(&(a)[i], &a[i+1], (size_t)(n - 1 - i) * sizeof((a)[0]))
+#define arr_rm(a,i,n) memmove(&(a)[i], &a[i+1], (size_t)(casti(n) - 1 - i) * sizeof((a)[0]))
 
 /* ---------------------------------------------------------------------------
  *                                Sequence

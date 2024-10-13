@@ -944,8 +944,8 @@ db_tab_close(struct db_view *db, int tab_idx) {
   assert(db->tab_cnt < cntof(db->tabs));
   assert(!(db->unused & (1llu << db->tabs[tab_idx])));
 
-  db_tbl_view_rm(db, tab_idx);
   db_tbl_view_del(db, db->tabs[tab_idx]);
+  db_tbl_view_rm(db, tab_idx);
   db->sel_tab = clamp(0, db->sel_tab, db->tab_cnt-1);
 }
 
@@ -1957,7 +1957,7 @@ ui_db_explr(struct db_view *db, struct gui_ctx *ctx,
       }
       if (del_tab) {
         /* close table view tab */
-        db_tab_close(db, del_tab);
+        db_tab_close(db, tab.sel.idx);
       }
       confine gui_disable_on_scope(&gui, ctx, db->unused == 0) {
         struct gui_btn add = {.box = hdr.pan.box};
