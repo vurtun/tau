@@ -64,6 +64,7 @@ mset(void *addr, int c, int n) {
 #define slc_beg(p,r) ((p)+(r).lo)
 #define slc_end(p,r) ((p)+(r).hi)
 #define slc_at(p,r,i) (slc_beg(p,r)[i])
+#define slc_ptr(p,r,i) ((p)+(r).lo+(i))
 
 #define rng_has_incl(a,b) ((a)->lo <= (b)->lo && (a)->hi >= (b)->hi)
 #define rng_has_inclv(a,v) ((v) >= (a)->lo && (v) <= (a)->hi)
@@ -2423,6 +2424,7 @@ fold_case(long *out, long c) {
 #define str_beg(s) slc_beg((s).ptr, (s).rng)
 #define str_end(s) slc_end((s).ptr, (s).rng)
 #define str_at(s,i) slc_at((s).ptr, (s).rng, i)
+#define str_ptr(s,i) slc_ptr((s).ptr, (s).rng, i)
 
 #define str_each(it,c) (const char *it = slc_beg((c).ptr, (c).rng); it < slc_end((c).ptr, (c).rng); it += 1)
 #define str_eachr(it,s,r) (const char *it = (s).str + (s).rng.lo + (r).lo; (it) != (s).str + (s).rng.hi - (r).hi; (it) += 1)
@@ -3153,6 +3155,69 @@ path_ext(struct str path) {
     }
   }
   return str_nil;
+}
+
+/* ---------------------------------------------------------------------------
+ *                              STRING-BUFFER
+ * ---------------------------------------------------------------------------
+ */
+// clang-format off
+#define str_buf_push(b,s) str_buf__push(&(b)->cnt, (b)->mem, cntof((b)->mem), s)
+#define str_buf_sqz(b,s,m) str_buf__sqz(&(b)->cnt, (b)->mem, cntof((b)->mem), s, m)
+#define str_buf_get(b,h) str_buf__get((b)->mem, (b)->cnt, h)
+#define str_buf_clr(b) str_buf__clr((b)->mem, &(b)->cnt)
+// clang-format on
+
+static unsigned
+str_buf__push(int *cnt, char *mem, int cap, struct str s) {
+  assert(cnt);
+  assert(*cnt >= 0);
+  assert(cap >= 0);
+  assert(mem);
+  assert(cap);
+
+  unsigned off = castu(*cnt) & 0xffff;
+  int lft = max(0, cap - *cnt);
+  char *dst = mem + *cnt;
+  struct str p = str_set(dst, lft, s);
+  int n = str_is_val(p) * str_len(p);
+  unsigned ret = (off << 16u)|(n & 0xffff);
+  *cnt += n;
+  return ret;
+}
+static unsigned
+str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
+  assert(cnt);
+  assert(*cnt >= 0);
+  assert(cap >= 0);
+  assert(mem);
+  assert(cap);
+
+  unsigned off = castu(*cnt) & 0xffff;
+  int lft = min(max_len, max(0, cap - *cnt));
+  char *dst = mem + *cnt;
+  struct str p = str_sqz(dst, lft, s);
+  *cnt += str_len(p);
+  unsigned ret = (off << 16u)|(str_len(p) & 0xffff);
+  return ret;
+}
+static struct str
+str_buf__get(char *mem, int cnt, unsigned hdl) {
+  assert(mem);
+  assert(cnt >= 0);
+  assert(casti(hdl & 0xffff) < cnt);
+  assert(casti((hdl >> 16u) & 0xffff) < cnt);
+
+  int off = (hdl >> 16u) & 0xffff;
+  int len = hdl & 0xffff;
+  return strn(mem + off, len);
+}
+static void
+str_buf__clr(char *mem, int *cnt) {
+  assert(mem);
+  assert(cnt);
+  assert(*cnt >= 0);
+  *cnt = 0;
 }
 
 /* ---------------------------------------------------------------------------

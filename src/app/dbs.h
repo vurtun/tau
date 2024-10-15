@@ -10,20 +10,21 @@ struct gui_panel;
 #define DB_MAX_TBL_NAME       128
 #define DB_MAX_TBL_SQL        256
 #define DB_MAX_TBL_COLS       128
-#define DB_MAX_TBL_ROW_COLS   16
+#define DB_MAX_TBL_ROW_COLS   8
 #define DB_MAX_TBL_ROWS       128
-#define DB_MAX_TBL_ELM        (DB_MAX_TBL_ROW_COLS*DB_MAX_TBL_ROW_COLS)
+#define DB_MAX_TBL_ELM        (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS)
 #define DB_MAX_TBL_COL_NAME   128
 #define DB_MAX_TBL_COL_TYPE   128
 #define DB_MAX_TBL_ELM_DATA   64
-#define DB_MAX_INFO_ELM_CNT   512
+#define DB_MAX_INFO_ELM_CNT   128
 #define DB_MAX_FLTR_STR       64
 #define DB_MAX_FLTR_CNT       32
 #define DB_MAX_FLTR_ELM       128
-#define DB_MAX_FLTR_ELM_STR   128
+#define DB_MAX_FLTR_ELM_STR   64
 
 #define DB_INFO_NAME_STR_BUF_SIZ    (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME)
 #define DB_INFO_SQL_STR_BUF_SIZ     (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL)
+#define DB_INFO_STR_BUF_SIZ         (DB_INFO_NAME_STR_BUF_SIZ + DB_INFO_SQL_STR_BUF_SIZ)
 #define DB_TBL_COL_NAME_STR_BUF_SIZ (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_NAME)
 #define DB_TBL_COL_TYPE_STR_BUF_SIZ (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_TYPE)
 #define DB_TBL_COL_STR_BUF_SIZ      (DB_TBL_COL_NAME_STR_BUF_SIZ + DB_TBL_COL_TYPE_STR_BUF_SIZ)
@@ -53,16 +54,10 @@ enum db_tbl_type {
 #undef DB_TBL_TYPE
   DB_TBL_TYPE_CNT
 };
-struct db_info_buf {
-  int name_cnt;
-  int sql_cnt;
-  char name[DB_INFO_NAME_STR_BUF_SIZ];
-  char sql[DB_INFO_SQL_STR_BUF_SIZ];
-};
 struct db_info_elm {
   long long rowid;
-  struct str name;
-  struct str sql;
+  unsigned name;
+  unsigned sql;
 };
 struct db_info_view {
   enum db_tbl_type sel_tab;
@@ -73,7 +68,7 @@ struct db_info_view {
   int elm_cnt;
   struct rng elm_rng;
   struct db_info_elm elms[DB_MAX_INFO_ELM_CNT];
-  struct db_info_buf buf;
+  struct str_buf(DB_INFO_STR_BUF_SIZ) buf;
 
   /* ui */
   struct str fnd_str;
@@ -94,7 +89,6 @@ enum db_tbl_hdr_col {
 };
 struct db_tbl_state {
   int cnt;
-  struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(DB_TBL_MAX)];
 };
 enum db_tbl_fltr_col {
@@ -128,13 +122,8 @@ struct db_tbl_fltr_elm {
 };
 struct db_tbl_fltr_ui {
   int cnt;
-  struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(DB_TBL_FLTR_MAX)];
   double off[2];
-};
-struct db_tbl_fltr_buf {
-  int cnt;
-  char mem[DB_TBL_FLTR_STR_BUF_SIZ];
 };
 struct db_tbl_fltr_view {
   enum db_tbl_fltr_state state;
@@ -149,8 +138,8 @@ struct db_tbl_fltr_view {
   struct str fnd_str;
   char fnd_buf[DB_MAX_FILTER];
   long long rowid[DB_MAX_FLTR_ELM];
-  struct str data[DB_MAX_FLTR_ELM];
-  struct db_tbl_fltr_buf buf;
+  unsigned data[DB_MAX_FLTR_ELM];
+  struct str_buf(DB_TBL_FLTR_STR_BUF_SIZ) buf;
   struct rng data_rng;
 
   /* ui */
@@ -180,7 +169,6 @@ enum db_tbl_view_state {
   TBL_VIEW_DISPLAY,
 };
 struct db_tbl_ui_state {
-  struct gui_tbl_sort sort;
   int state[GUI_TBL_CAP(DB_MAX_TBL_COLS)];
   double off[2];
 };
@@ -198,15 +186,10 @@ struct db_tbl_ui_col_state {
   int state[GUI_TBL_CAP(DB_TBL_DISP_COL_MAX)];
   double off[2];
 };
-struct db_tbl_col_buf {
-  int cnt;
-  char mem[DB_TBL_COL_STR_BUF_SIZ];
-};
 struct db_tbl_col {
   long long rowid;
-  struct str name;
-  struct str type;
-
+  unsigned name;
+  unsigned type;
   unsigned ico:28;
   unsigned pk:1;
   unsigned fk:1;
@@ -228,20 +211,16 @@ struct db_tbl_col_lst {
   int cnt, total;
   struct rng rng;
   struct db_tbl_col lst[DB_MAX_TBL_COLS];
-  struct db_tbl_col_buf buf;
+  struct str_buf(DB_TBL_COL_STR_BUF_SIZ) buf;
   struct tbl(long long, DB_MAX_TBL_COLS) sel;
   struct db_tbl_ui_col_state ui;
-};
-struct db_tbl_row_buf {
-  int cnt;
-  char mem[DB_TBL_ELM_STR_BUF_SIZ];
 };
 struct db_tbl_row_lst {
   struct rng rng;
   struct rng cols;
   long long rowids[DB_MAX_TBL_ROWS];
-  struct str lst[DB_MAX_TBL_ELM];
-  struct db_tbl_row_buf buf;
+  unsigned lst[DB_MAX_TBL_ELM];
+  struct str_buf(DB_TBL_ELM_STR_BUF_SIZ) buf;
   struct db_tbl_ui_state ui;
 };
 struct db_tbl_view {

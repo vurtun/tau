@@ -119,21 +119,12 @@ db_tbl_view_fltr_view_clr(struct db_tbl_fltr_view *fltr) {
   }
   fltr->fltr_cnt = 0;
 }
-static struct str
-db__tbl_view_fltr_push_str(struct db_tbl_fltr_view *fltr, struct str s) {
-  assert(fltr);
-  int cap = cntof(fltr->buf.mem) - fltr->buf.cnt;
-  char *dst = fltr->buf.mem + fltr->buf.cnt;
-  struct str n = str_set(dst, cap, s);
-  fltr->buf.cnt += str_is_val(n) * str_len(n);
-  return n;
-}
 static void
 db_tbl_view_fltr_open(struct db_tbl_view *tbl, struct str col) {
+  mset(&tbl->fltr.data_rng, szof(tbl->fltr.data_rng), 0);
   tbl->disp = DB_TBL_VIEW_DSP_FILTER;
   tbl->fltr.state = DB_TBL_FLTR_EDT;
   tbl->fltr.ini_col = str_set(tbl->fltr.ini_col_buf, cntof(tbl->fltr.ini_col_buf), col);
-  mset(&tbl->fltr.data_rng, szof(tbl->fltr.data_rng), 0);
   tbl->fltr.data_rng.total = tbl->row.rng.total;
   tbl->fltr.fnd_str = str_nil;
   tbl->fltr.init = 1;
@@ -157,10 +148,10 @@ db_tbl_view_fltr_view_qry(struct db_view *db, struct db_tbl_view *tbl,
   assert(hi < tbl->fltr.data_rng.total);
   assert((hi - lo) < cntof(tbl->fltr.data));
 
-  tbl->fltr.buf.cnt = 0;
-  tbl->fltr.data_rng.lo = lo;
-  tbl->fltr.data_rng.hi = hi;
-  tbl->fltr.data_rng.cnt = 0;
+  str_buf_clr(&fltr->buf);
+  fltr->data_rng.lo = lo;
+  fltr->data_rng.hi = hi;
+  fltr->data_rng.cnt = 0;
 
   struct str sql;
   sqlite3_stmt *stmt = 0;
@@ -190,10 +181,13 @@ db_tbl_view_fltr_view_qry(struct db_view *db, struct db_tbl_view *tbl,
   }
   sqlite3_prepare_v2(db->con, str_beg(sql), -1, &stmt, 0);
   while (sqlite3_step(stmt) == SQLITE_ROW) {
-    fltr->rowid[fltr->data_rng.cnt] = sqlite3_column_int64(stmt, 0);
+    long long rowid = sqlite3_column_int64(stmt, 0);
     const char *dat = (const char*)sqlite3_column_text(stmt, 1);
     int len = sqlite3_column_bytes(stmt, 1);
-    fltr->data[fltr->data_rng.cnt] = db__tbl_view_fltr_push_str(fltr, strn(dat,len));
+    struct str elm = strn(dat,len);
+
+    fltr->rowid[fltr->data_rng.cnt] = rowid;
+    fltr->data[fltr->data_rng.cnt] = str_buf_sqz(&fltr->buf, elm, DB_MAX_FLTR_ELM_STR);
     fltr->data_rng.cnt++;
   }
   sqlite3_finalize(stmt);
@@ -243,15 +237,6 @@ db__tbl_view_col_ico(struct str type) {
     return RES_ICO_FONT;
   }
 }
-static struct str
-db__tbl_view_col_push_str(struct db_tbl_view *tbl, struct str s) {
-  assert(tbl);
-  int cap = cntof(tbl->col.buf.mem) - tbl->col.buf.cnt;
-  char *dst = tbl->col.buf.mem + tbl->col.buf.cnt;
-  struct str n = str_set(dst, cap, s);
-  tbl->col.buf.cnt += str_is_val(n) * str_len(n);
-  return n;
-}
 static void
 db_tbl_view__qry_cols(struct db_view *db, struct db_tbl_view *tbl, int lo, int hi) {
   assert(db);
@@ -267,7 +252,7 @@ db_tbl_view__qry_cols(struct db_view *db, struct db_tbl_view *tbl, int lo, int h
   tbl->row.rng.hi = 0;
   tbl->row.rng.cnt = 0;
 
-  tbl->col.buf.cnt = 0;
+  str_buf_clr(&tbl->col.buf);
   tbl->col.rng.lo = lo;
   tbl->col.rng.hi = hi;
   tbl->col.rng.cnt = 0;
@@ -296,13 +281,13 @@ db_tbl_view__qry_cols(struct db_view *db, struct db_tbl_view *tbl, int lo, int h
 
     struct db_tbl_col *col = &tbl->col.lst[tbl->col.rng.cnt++];
     col->rowid = col_rowid;
-    col->name = db__tbl_view_col_push_str(tbl, name);
-    col->type = db__tbl_view_col_push_str(tbl, type);
+    col->name = str_buf_push(&tbl->col.buf, name);
+    col->type = str_buf_sqz(&tbl->col.buf, type, DB_MAX_TBL_COL_TYPE);
     col->ico = db__tbl_view_col_ico(type);
     col->pk = !strcmp(col_key, "1");
     col->nn = !strcmp(col_nn, "1");
-    col->blob = !str_len(col->type) || col_type[0] == 0;
-    col->blob = col->blob || str_eq(col->type, strv("BLOB"));
+    col->blob = !str_len(type) || col_type[0] == 0;
+    col->blob = col->blob || str_eq(type, strv("BLOB"));
     if (col->pk && col->blob) {
       tbl->blob.disabled = 1;
     }
@@ -319,7 +304,8 @@ db_tbl_view__qry_cols(struct db_view *db, struct db_tbl_view *tbl, int lo, int h
     struct str from_str = strn(from, from_len);
     for loop(i, tbl->col.rng.cnt) {
       struct db_tbl_col *col = &tbl->col.lst[i];
-      if (str_eq(col->name, from_str)) {
+      struct str col_name = str_buf_get(&tbl->col.buf, col->name);
+      if (str_eq(col_name, from_str)) {
         col->fk = 1;
         break;
       }
@@ -336,7 +322,7 @@ db_tbl_view_qry_col_sel(struct db_view *db, struct db_tbl_view *tbl) {
   tbl->row.rng.hi = 0;
   tbl->row.rng.cnt = 0;
 
-  tbl->col.buf.cnt = 0;
+  str_buf_clr(&tbl->col.buf);
   tbl->col.rng.lo = 0;
   tbl->col.rng.hi = tbl->col.sel.cnt;
   tbl->col.rng.cnt = 0;
@@ -369,13 +355,13 @@ db_tbl_view_qry_col_sel(struct db_view *db, struct db_tbl_view *tbl) {
 
     struct db_tbl_col *col = &tbl->col.lst[tbl->col.rng.cnt++];
     col->rowid = col_rowid;
-    col->name = db__tbl_view_col_push_str(tbl, name);
-    col->type = db__tbl_view_col_push_str(tbl, type);
+    col->name = str_buf_push(&tbl->col.buf, name);
+    col->type = str_buf_sqz(&tbl->col.buf, type, DB_MAX_TBL_COL_TYPE);
     col->ico = db__tbl_view_col_ico(type);
     col->pk = !strcmp(col_key, "1");
     col->nn = !strcmp(col_nn, "1");
-    col->blob = !str_len(col->type) || col_type[0] == 0;
-    col->blob = col->blob || str_eq(col->type, strv("BLOB"));
+    col->blob = !str_len(type) || col_type[0] == 0;
+    col->blob = col->blob || str_eq(type, strv("BLOB"));
     if (col->pk && col->blob) {
       tbl->blob.disabled = 1;
     }
@@ -392,7 +378,8 @@ db_tbl_view_qry_col_sel(struct db_view *db, struct db_tbl_view *tbl) {
     struct str from_str = strn(from, from_len);
     for loop(i, tbl->col.rng.cnt) {
       struct db_tbl_col *col = &tbl->col.lst[i];
-      if (str_eq(col->name, from_str)) {
+      struct str col_name = str_buf_get(&tbl->col.buf, col->name);
+      if (str_eq(col_name, from_str)) {
         col->fk = 1;
         break;
       }
@@ -422,15 +409,6 @@ db_tbl_view__qry_row_cols(struct db_view *db, struct db_tbl_view *tbl, int lo) {
   }
   tbl->row.cols.lo = lo;
   tbl->row.cols.hi = hi;
-}
-static struct str
-db__tbl_view_row_push_str(struct db_tbl_view *tbl, struct str s) {
-  assert(tbl);
-  int cap = cntof(tbl->row.buf.mem) - tbl->row.buf.cnt;
-  char *dst = tbl->row.buf.mem + tbl->row.buf.cnt;
-  struct str n = str_set(dst, cap, s);
-  tbl->row.buf.cnt += str_is_val(n) * str_len(n);
-  return n;
 }
 static struct str
 db_tbl_view__qry_fltr_sql(struct db_view *db, struct db_tbl_view *tbl, struct str sql) {
@@ -474,14 +452,16 @@ db_tbl_view__qry_rows(struct db_view *db, struct db_tbl_view *tbl, int lo, int h
   tbl->row.rng.lo = lo;
   tbl->row.rng.hi = hi;
   tbl->row.rng.cnt = 0;
+  str_buf_clr(&tbl->row.buf);
 
   /* setup sql query string */
   sqlite3_stmt *stmt = 0;
   struct str sql = str_set(db->sql_qry_buf, cntof(db->sql_qry_buf), strv("SELECT rowid, "));
   for loopr(i, tbl->row.cols) {
     struct db_tbl_col* col = &tbl->col.lst[i - tbl->col.rng.lo];
+    struct str col_name = str_buf_get(&tbl->col.buf, col->name);
     sql = str_add_fmt(db->sql_qry_buf, cntof(db->sql_qry_buf), sql,
-        "%.*s, ", strf(col->name));
+        "%.*s, ", strf(col_name));
   }
   sql.rng = rng_lhs(&sql.rng, sql.rng.cnt-2);
   sql = db_tbl_view__qry_fltr_sql(db, tbl, sql);
@@ -498,8 +478,11 @@ db_tbl_view__qry_rows(struct db_view *db, struct db_tbl_view *tbl, int lo, int h
     for loop(i, tbl->row.cols.cnt) {
       const char *dat = (const char*)sqlite3_column_text(stmt, i+1);
       int len = sqlite3_column_bytes(stmt, i+1);
+      struct str data = strn(dat, len);
+
       assert(elm_idx < cntof(tbl->row.lst));
-      tbl->row.lst[elm_idx++] = db__tbl_view_row_push_str(tbl, strn(dat, len));
+      tbl->row.lst[elm_idx] = str_buf_sqz(&tbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
+      elm_idx++;
     }
   }
   sqlite3_finalize(stmt);
@@ -676,24 +659,18 @@ db_info_elm_add(struct db_info_view *info, long long rowid, struct str name,
   assert(info);
   assert(info->elm_cnt < cntof(info->elms));
 
-  int nam_cap = cntof(info->buf.name) - info->buf.name_cnt;
-  int sql_cap = cntof(info->buf.sql) - info->buf.sql_cnt;
-
-  char *nam_dst = info->buf.name + info->buf.name_cnt;
-  char *sql_dst = info->buf.sql + info->buf.sql_cnt;
-
   struct db_info_elm *elm = db_info_elm_new(info);
-  elm->name = str_set(nam_dst, nam_cap, name);
-  elm->sql = str_set(sql_dst, sql_cap, sql);
+  elm->name = str_buf_push(&info->buf, name);
+  elm->sql = str_buf_sqz(&info->buf, sql, DB_MAX_TBL_SQL);
   elm->rowid = rowid;
 
-  for str_loop(i, elm->sql) {
-    if(sql_dst[i] == '\n' || sql_dst[i] == '\r') {
-      sql_dst[i] = ' ';
+  struct str elm_sql = str_buf_get(&info->buf, elm->sql);
+  for str_loop(i, elm_sql) {
+    char *at = (char*)str_ptr(elm_sql, i);
+    if (*at == '\n' || *at == '\r') {
+      *at = ' ';
     }
   }
-  info->buf.name_cnt += str_is_val(elm->name) * str_len(elm->name);
-  info->buf.sql_cnt += str_is_val(elm->sql) * str_len(elm->sql);
 }
 static void
 db_info_qry_elm(struct db_view *db, struct db_info_view *info, int lo, int hi) {
@@ -724,10 +701,9 @@ db_info_qry_elm(struct db_view *db, struct db_info_view *info, int lo, int hi) {
   int col_cnt = sqlite3_column_count(stmt);
   assert(col_cnt == 2);
 
-  info->elm_cnt = 0;
-  info->buf.sql_cnt = 0;
-  info->buf.name_cnt = 0;
+  str_buf_clr(&info->buf);
   info->elm_rng = rng(lo, hi, info->tab_cnt[info->sel_tab]);
+  info->elm_cnt = 0;
 
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     long long rowid = sqlite3_column_int64(stmt, 0);
@@ -736,9 +712,9 @@ db_info_qry_elm(struct db_view *db, struct db_info_view *info, int lo, int hi) {
 
     int tbl_name_len = sqlite3_column_bytes(stmt, 1);
     int tbl_sql_len = sqlite3_column_bytes(stmt, 2);
-
     struct str str_name = strn(tbl_name, tbl_name_len);
     struct str str_sql = strn(tbl_sql, tbl_sql_len);
+
     db_info_elm_add(info, rowid, str_name, str_sql);
   }
   sqlite3_finalize(stmt);
@@ -768,7 +744,9 @@ db_info_sel_elms(struct db_view *db, struct db_info_view *info,
   } else if (sel->sel_cnt + info->sel.cnt < cntof(info->sel.keys)) {
     /* multi-selection */
     sqlite3_stmt *stmt = 0;
-    struct str sql = str_fmtsn(db->sql_qry_buf, cntof(db->sql_qry_buf), "SELECT rowid FROM sqlite_master LIMIT %d, %d;", sel->begin_idx, sel->end_idx - sel->begin_idx);
+    struct str sql = str_fmtsn(db->sql_qry_buf, cntof(db->sql_qry_buf),
+      "SELECT rowid FROM sqlite_master LIMIT %d, %d;",
+      sel->begin_idx, sel->end_idx - sel->begin_idx);
     int rc = sqlite3_prepare_v2(db->con, str_beg(sql), -1, &stmt, 0);
     assert(rc == SQLITE_OK);
     while (sqlite3_step(stmt) == SQLITE_ROW && info->sel.cnt < cntof(info->sel.keys)) {
@@ -1101,7 +1079,7 @@ ui_tbl_lst_elm_col_tog(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *tbl_
   return 0;
 }
 /* ---------------------------------------------------------------------------
- *                                  FILTER
+ *                                  Filter
  * ---------------------------------------------------------------------------
  */
 static void
@@ -1146,7 +1124,7 @@ ui_db_tbl_fltr_lst_view(struct db_view *db, struct db_tbl_view *view,
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_tbl tbl = {.box = pan->box};
-    gui.tbl.begin(ctx, &tbl, pan, fltr->tbl.off, &fltr->tbl.sort);
+    gui.tbl.begin(ctx, &tbl, pan, fltr->tbl.off, 0);
     {
       /* header */
       int tbl_cols[GUI_TBL_COL(DB_TBL_FLTR_MAX)];
@@ -1253,7 +1231,9 @@ ui_db_tbl_fltr_view(struct db_view *db, struct db_tbl_view *view,
       gui.lst.reg.elm.begin(ctx, &reg, &elm, id, 0);
       {
         struct gui_panel lbl = {.box = elm.box};
-        gui.txt.lbl(ctx, &lbl, &elm, fltr->data[i-reg.lst.begin], 0);
+        unsigned hdl = fltr->data[i - reg.lst.begin];
+        struct str dat = str_buf_get(&fltr->buf, hdl);
+        gui.txt.lbl(ctx, &lbl, &elm, dat, 0);
       }
       gui.lst.reg.elm.end(ctx, &reg, &elm);
     }
@@ -1281,7 +1261,7 @@ ui_db_tbl_view_dsp_fltr(struct db_view *db, struct db_tbl_view *view,
 }
 
 /* ---------------------------------------------------------------------------
- *                                  TABLE
+ *                                  Table
  * ---------------------------------------------------------------------------
  */
 static enum res_ico_id
@@ -1299,8 +1279,8 @@ ui_db_tbl_lst_elm_ico(enum db_tbl_type type) {
   return RES_ICO_DATABASE;
 }
 static void
-ui_db_tbl_view_hdr_key_slot(struct db_tbl_col *col, struct gui_ctx *ctx,
-                           struct gui_btn *slot) {
+ui_db_tbl_view_hdr_key_slot(struct db_tbl_view *view, struct db_tbl_col *col,
+                            struct gui_ctx *ctx, struct gui_btn *slot) {
   assert(col);
   assert(ctx);
   assert(slot);
@@ -1309,7 +1289,8 @@ ui_db_tbl_view_hdr_key_slot(struct db_tbl_col *col, struct gui_ctx *ctx,
   unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
   confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], fk_col) {
     struct gui_btn hdr = {.box = slot->pan.box};
-    ui_btn_ico_txt(ctx, &hdr, &slot->pan, col->name, RES_ICO_KEY);
+    struct str col_name = str_buf_get(&view->col.buf, col->name);
+    ui_btn_ico_txt(ctx, &hdr, &slot->pan, col_name, RES_ICO_KEY);
   }
 }
 static void
@@ -1325,16 +1306,18 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_view *view, struct db_tbl_col *col,
   int dis = col->blob || (view->fltr.fltr_cnt >= cntof(view->fltr.lst));
   confine gui_disable_on_scope(&gui, ctx, dis) {
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
-      db_tbl_view_fltr_open(view, col->name);
+      struct str col_name = str_buf_get(&view->col.buf, col->name);
+      db_tbl_view_fltr_open(view, col_name);
     }
   }
   /* header label with foreign key icon */
   struct gui_cfg_stk stk[1] = {0};
   unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
   confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], fk_col) {
+    struct str col_name = str_buf_get(&view->col.buf, col->name);
     struct gui_btn hdr = {.box = slot->pan.box};
     hdr.box.x = gui.bnd.min_max(slot->pan.box.x.min, fltr.box.x.min);
-    ui_btn_ico_txt(ctx, &hdr, &slot->pan, col->name, RES_ICO_LINK);
+    ui_btn_ico_txt(ctx, &hdr, &slot->pan, col_name, RES_ICO_LINK);
   }
 }
 static void
@@ -1359,13 +1342,15 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_view *view, struct db_tbl_col *col,
   int dis = col->blob || (view->fltr.fltr_cnt >= cntof(view->fltr.lst));
   confine gui_disable_on_scope(&gui, ctx, dis) {
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
-      db_tbl_view_fltr_open(view, col->name);
+      struct str col_name = str_buf_get(&view->col.buf, col->name);
+      db_tbl_view_fltr_open(view, col_name);
     }
   }
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
+  struct str col_name = str_buf_get(&view->col.buf, col->name);
   struct gui_btn hdr = {.box = slot->pan.box};
   hdr.box.x = gui.bnd.min_max(slot->pan.box.x.min, fltr.box.x.min);
-  gui.btn.txt(ctx, &hdr, &slot->pan, col->name, &align);
+  gui.btn.txt(ctx, &hdr, &slot->pan, col_name, &align);
 }
 static void
 ui_db_tbl_view_dsp_data(struct db_view *db, struct db_tbl_view *view,
@@ -1380,7 +1365,7 @@ ui_db_tbl_view_dsp_data(struct db_view *db, struct db_tbl_view *view,
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_tbl tbl = {.box = pan->box};
-    gui.tbl.begin(ctx, &tbl, pan, view->row.ui.off, &view->row.ui.sort);
+    gui.tbl.begin(ctx, &tbl, pan, view->row.ui.off, 0);
     {
       /* header */
       int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_COLS)];
@@ -1415,11 +1400,12 @@ ui_db_tbl_view_dsp_data(struct db_view *db, struct db_tbl_view *view,
           slot.pan.box.x = gui.bnd.min_max(slot.pan.box.x.min, nxt.box.x.min);
         }
         if (col->pk) {
-          ui_db_tbl_view_hdr_key_slot(col, ctx, &slot);
+          ui_db_tbl_view_hdr_key_slot(view, col, ctx, &slot);
         } else if (col->fk) {
           ui_db_tbl_view_hdr_lnk_slot(view, col, ctx, &slot);
         } else if (col->blob) {
-          ui_db_tbl_view_hdr_blob_slot(ctx, col->name, &slot);
+          struct str col_name = str_buf_get(&view->col.buf, col->name);
+          ui_db_tbl_view_hdr_blob_slot(ctx, col_name, &slot);
         } else {
           ui_db_tbl_view_hdr_slot(view, col, ctx, &slot);
         }
@@ -1446,8 +1432,9 @@ ui_db_tbl_view_dsp_data(struct db_view *db, struct db_tbl_view *view,
         unsigned long long id = hash_lld(view->row.rowids[i-tbl.lst.begin]);
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, id, 0);
         for loop(j, view->row.cols.cnt) {
-          struct str elm = view->row.lst[idx++];
-          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_lay, &item, elm, 0);
+          unsigned elm = view->row.lst[idx++];
+          struct str dat = str_buf_get(&view->row.buf, elm);
+          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_lay, &item, dat, 0);
         }
         gui.tbl.lst.end(ctx, &tbl);
       }
@@ -1508,6 +1495,9 @@ ui_db_tbl_view_dsp_layout(struct db_view *db, struct db_tbl_view *view,
       for gui_tbl_lst_loop(i,gui,&tbl) {
         struct gui_panel item = {0};
         struct db_tbl_col *col = &view->col.lst[i];
+        struct str col_name = str_buf_get(&view->col.buf, col->name);
+        struct str col_type = str_buf_get(&view->col.buf, col->type);
+
         unsigned long long k = hash_lld(col->rowid);
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, k, 0);
         {
@@ -1522,8 +1512,8 @@ ui_db_tbl_view_dsp_layout(struct db_view *db, struct db_tbl_view *view,
               }
             }
           }
-          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, col->name, col->ico);
-          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, col->type, 0);
+          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, col_name, col->ico);
+          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, col_type, 0);
           if (col->pk) {
             struct gui_icon icon;
             gui.tbl.lst.elm.col.ico(ctx, &tbl, tbl_cols, &item, &icon, RES_ICO_KEY);
@@ -1546,7 +1536,7 @@ ui_db_tbl_view_dsp_layout(struct db_view *db, struct db_tbl_view *view,
             struct gui_icon icon;
             gui.tbl.lst.elm.col.ico(ctx, &tbl, tbl_cols, &item, &icon, RES_ICO_SEARCH);
             if (icon.clk) {
-              db_tbl_view_fltr_open(view, col->name);
+              db_tbl_view_fltr_open(view, col_name);
             }
           } else {
             gui_tbl_lst_elm_col(&item.box, ctx, &tbl, tbl_cols);
@@ -1638,7 +1628,7 @@ ui_db_tbl_view_dsp(struct db_view *db, struct db_tbl_view *tbl,
 }
 
 /* ---------------------------------------------------------------------------
- *                                  INFO
+ *                                  Info
  * ---------------------------------------------------------------------------
  */
 static void
@@ -1691,12 +1681,15 @@ ui_db_view_info_tbl(struct db_view *db, struct db_info_view *info,
       for gui_tbl_lst_loop(i,gui,&tbl) {
         struct gui_panel item = {0};
         struct db_info_elm *elm = &info->elms[i-tbl.lst.begin];
+        struct str elm_name = str_buf_get(&info->buf, elm->name);
+        struct str elm_sql = str_buf_get(&info->buf, elm->sql);
+
         int is_sel = tbl_has(&info->sel, hash_lld(elm->rowid));
-        gui.tbl.lst.elm.begin(ctx, &tbl, &item, str_hash(elm->name), is_sel);
+        gui.tbl.lst.elm.begin(ctx, &tbl, &item, hash_lld(elm->rowid), is_sel);
         {
-          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, elm->name, types[info->sel_tab].ico);
+          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, elm_name, types[info->sel_tab].ico);
           gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, types[info->sel_tab].type, 0);
-          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, elm->sql, 0);
+          gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, elm_sql, 0);
         }
         gui.tbl.lst.elm.end(ctx, &tbl, &item);
       }
@@ -1761,7 +1754,7 @@ ui_db_view_info(struct db_view *db, struct db_info_view *info,
   gui.pan.end(ctx, pan, parent);
 }
 /* ---------------------------------------------------------------------------
- *                                DATABASE
+ *                                Database
  * ---------------------------------------------------------------------------
  */
 static void
