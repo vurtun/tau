@@ -19,8 +19,8 @@ debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonlit
 debug: CFLAGS += -Wc++-compat -Wno-unused-function -Wsign-conversion
 debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough -Wno-vla
 debug: CFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
-debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE
-debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier
+debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE -DDEBUG
+debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier -DSQLITE_DEBUG
 debug: OBJCFLAGS = -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
 debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-double-promotion -Wno-float-equal
 debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
@@ -28,7 +28,7 @@ debug: OBJCFLAGS += -Wno-unused-function -Wimplicit-int-conversion -Wimplicit-fa
 debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations -Wno-vla
 debug: OBJCFLAGS += -DDEBUG_MODE -std=c99 -pedantic -Wno-deprecated-declarations
 debug: OBJCFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
-debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier
+debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier -DDEBUG -DSQLITE_DEBUG
 debug: CC = clang
 debug: $(BIN)
 

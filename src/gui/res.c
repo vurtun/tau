@@ -780,7 +780,6 @@ static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
           int in_rune) {
 
-  assert(r);
   assert(ret);
   assert(fnt);
 

@@ -337,7 +337,7 @@ static void
 file_view_lst_qry(struct file_list_view *lst, struct sys *s, struct arena *tmp,
                   const struct file_view_lst_qry *qry) {
   assert(s);
-  assert(fs);
+  assert(tmp);
   assert(qry);
   assert(lst);
 
@@ -518,10 +518,12 @@ static void
 ui_file_lst_view_fnd(struct file_view *fs, struct file_list_view *lst,
                      struct gui_ctx *ctx, struct gui_panel *pan,
                      struct gui_panel *parent) {
+  assert(fs);
   assert(lst);
   assert(ctx);
   assert(pan);
   assert(parent);
+
   struct gui_edit_box edt = {.box = pan->box};
   lst->fltr = ui_edit_search(ctx, &edt, pan, parent, &lst->fltr_ed,
                              lst->fltr_buf, cntof(lst->fltr_buf), lst->fltr);
@@ -752,7 +754,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     struct gui_btn nxt = {.box = hdr.pan.box};
     nxt.box.x = gui.bnd.min_ext(tab->off, ctx->cfg.scrl);
     if (gui__scrl_btn(ctx, &nxt, &tab->pan, GUI_EAST)) {
-      assert(lst->page.idx < pst->page_cnt);
+      assert(lst->page.idx < lst->page_cnt);
       /* query next page  */
       struct file_view_lst_qry qry = {0};
       qry.cmp = file_view_lst_elm_cmp_name_asc;

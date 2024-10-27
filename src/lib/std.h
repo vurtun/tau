@@ -12,7 +12,7 @@
 #define cntof(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define ptr(p,v) cast(p,cast(uintptr_t,v))
 
-#define cast(t, p) ((t)(p))
+#define cast(t,p) ((t)(p))
 #define castc(p) cast(char,p)
 #define castb(p) cast(unsigned char,p)
 #define casts(p) cast(short,p)

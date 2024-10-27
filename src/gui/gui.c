@@ -404,8 +404,8 @@ gui_drw_line_style(struct gui_ctx *ctx, int line_size) {
 static void
 gui_drw_box(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
     !gui_intersect(&ctx->clip.box, x0,y0,x1,y1)) {
     return;
@@ -418,8 +418,8 @@ gui_drw_box(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
 static void
 gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
@@ -432,22 +432,22 @@ gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
 static void
 gui_drw_hln(struct gui_ctx *ctx, int y, int x0, int x1) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   gui_drw_ln(ctx, x0, y, x1, y);
 }
 static void
 gui_drw_vln(struct gui_ctx *ctx, int x, int y0, int y1) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   gui_drw_ln(ctx, x, y0, x, y1);
 }
 static void
 gui_drw_sbox(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
@@ -459,8 +459,8 @@ gui_drw_sbox(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
 static void
 gui_drw_circle(struct gui_ctx *ctx, int x, int y, int r) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
@@ -472,8 +472,8 @@ gui_drw_circle(struct gui_ctx *ctx, int x, int y, int r) {
 static void
 gui_drw_tri(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
@@ -491,8 +491,8 @@ gui_drw_tri(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2)
 static void
 gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *g) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
     !gui_intersect(&ctx->clip.box, g->x0,g->y0,g->x1,g->y1)) {
     return;
@@ -512,8 +512,8 @@ gui_drw_rune(struct gui_ctx *ctx, int x, int y, int rune) {
 static void
 gui_drw_ico(struct gui_ctx *ctx, int x, int y, enum res_ico_id icon) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
 
   int rune = casti(icon);
   gui_drw_rune(ctx, x, y, rune) ;
@@ -521,8 +521,8 @@ gui_drw_ico(struct gui_ctx *ctx, int x, int y, enum res_ico_id icon) {
 static void
 gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
@@ -543,8 +543,8 @@ static void
 gui_drw_sprite(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh,
                int sx, int sy, int sw, int sh) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
     !gui_intersect(&ctx->clip.box, dx,dy,dx+dw,dy+dh)) {
     return;
@@ -558,8 +558,8 @@ gui_drw_sprite(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh,
 static void
 gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
 
   int img_siz[2];
   ctx->sys->gfx.tex.info(img_siz, ctx->sys, tex);
@@ -568,8 +568,8 @@ gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
 static void
 gui_drw_blit(struct gui_ctx *ctx, int tex, int x, int y) {
   assert(ctx);
-  assert(ctx->vtx_mem);
-  assert(ctx->idx_mem);
+  assert(ctx->vtx_buf);
+  assert(ctx->idx_buf);
 
   int img_siz[2];
   ctx->sys->gfx.tex.info(img_siz, ctx->sys, tex);
@@ -2596,7 +2596,7 @@ gui_txt_ed_undo_repl(struct gui_txt_ed *edt, int where,
 static int
 gui_txt_ed_ext(const struct gui_txt_ed *edt, int line_begin, int char_idx,
                struct res *r) {
-  assert(buf);
+  assert(edt);
   assert(r);
 
   int ext[2];
@@ -2612,8 +2612,9 @@ struct gui_txt_row {
 static void
 gui_txt_ed_lay_row(struct gui_txt_row *row, const struct gui_txt_ed *edt,
                    int line_begin, int row_h, struct res *r) {
-  assert(buf);
+  assert(edt);
   assert(row);
+  assert(r);
 
   struct str begin = utf_at(0, edt->str, line_begin);
   struct str txt = strp(str_beg(begin), str_end(edt->str));
@@ -2640,8 +2641,8 @@ gui_txt_ed_lay_row(struct gui_txt_row *row, const struct gui_txt_ed *edt,
 static int
 gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int x, int y, int row_h,
                      struct res *r) {
-  assert(buf);
   assert(r);
+  assert(edt);
 
   int i = 0;
   int base_y = 0;
@@ -2855,8 +2856,6 @@ gui_txt_ed_cut(struct gui_txt_ed *edt) {
 static int
 gui_txt_ed_paste(struct gui_txt_ed *edt, struct str txt) {
   assert(edt);
-  assert(buf);
-
   /* if there's a selection, the paste should delete it */
   gui_txt_ed_clamp(edt);
   gui_txt_ed_del_sel(edt);
@@ -2881,8 +2880,6 @@ gui_txt_ed_sel_all(struct gui_txt_ed *edt) {
 static void
 gui_txt_ed_txt(struct gui_txt_ed *edt, struct str txt) {
   assert(edt);
-  assert(buf);
-
   unsigned rune = 0;
   for utf_loop(&rune, it, _, txt) {
     if (rune == 127 || rune == '\n') {
@@ -3116,7 +3113,7 @@ static int
 gui_calc_edit_off(int *cur_ext, struct res *ret, const struct gui_txt_ed *edt,
                   const int *txt_ext, int width) {
   assert(edt);
-  assert(slc);
+  assert(ret);
   assert(cur_ext);
   assert(txt_ext);
 

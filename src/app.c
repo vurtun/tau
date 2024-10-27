@@ -39,7 +39,7 @@ struct app_view {
   struct str file_path;
   int path_buf_off;
 };
-#define APP_VIEW_CNT 32
+#define APP_VIEW_CNT 4
 #define APP_VIEW_PATH_BUF (MAX_FILE_PATH * APP_VIEW_CNT)
 struct app {
   struct sys sys;
@@ -134,7 +134,7 @@ static int
 app_tab_add(struct app *app, int idx) {
   assert(app);
   assert(idx >= 0);
-  assert(tab_idx < cntof(app->views));
+  assert(idx < cntof(app->views));
   assert(app->tab_cnt < cntof(app->tabs));
   assert(!(app->unused & (1u << idx)));
 
@@ -168,7 +168,6 @@ app_tab_close(struct app *app, int tab_idx) {
 static void
 app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   assert(app);
-  assert(sys);
   assert(files);
   assert(file_cnt >= 0);
   /* open each database in new tab */
@@ -252,7 +251,6 @@ app_init(struct app *app) {
   app->unused = ~0u;
   app->tabs[app->tab_cnt++] = castb(app_view_new(app));
   app_view_setup(app, app->tabs[0]);
-
 #ifdef DEBUG_MODE
   ut_str(&app->sys);
 #endif
@@ -416,7 +414,6 @@ ui_app_view_tab_slot(struct app *app, struct app_view *view,
   assert(ico);
   assert(slot);
   assert(view);
-  assert(title);
 
   int ret = 0;
   gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, hash_ptr(view));

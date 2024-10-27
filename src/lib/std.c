@@ -59,6 +59,7 @@ mset(void *addr, int c, int n) {
 #define intvl(b,n) rng(b,n,n)
 #define rngn(n) rng(0,(n),(n))
 #define rng_inv (struct rng){-1,-1,-1,-1}
+#define rng_nil (struct rng){0}
 
 #define slc(b,e) rng((b),(e),(e)-(b))
 #define slc_beg(p,r) ((p)+(r).lo)
@@ -3166,6 +3167,8 @@ path_ext(struct str path) {
 #define str_buf_sqz(b,s,m) str_buf__sqz(&(b)->cnt, (b)->mem, cntof((b)->mem), s, m)
 #define str_buf_get(b,h) str_buf__get((b)->mem, (b)->cnt, h)
 #define str_buf_clr(b) str_buf__clr((b)->mem, &(b)->cnt)
+#define str_buf_off(hdl) casti(((hdl) >> 16u) & 0xffff)
+#define str_buf_len(hdl) casti((hdl) & 0xffff)
 // clang-format on
 
 static unsigned
@@ -3205,11 +3208,12 @@ static struct str
 str_buf__get(char *mem, int cnt, unsigned hdl) {
   assert(mem);
   assert(cnt >= 0);
-  assert(casti(hdl & 0xffff) < cnt);
-  assert(casti((hdl >> 16u) & 0xffff) < cnt);
+  assert(str_buf_len(hdl) < cnt);
+  assert(str_buf_off(hdl) < cnt);
+  assert(str_buf_len(hdl) + str_buf_off(hdl) <= cnt);
 
-  int off = (hdl >> 16u) & 0xffff;
-  int len = hdl & 0xffff;
+  int off = str_buf_off(hdl);
+  int len = str_buf_len(hdl);
   return strn(mem + off, len);
 }
 static void
@@ -3235,12 +3239,15 @@ str_buf__clr(char *mem, int *cnt) {
 #define tbl_del(t, k) tbl__del((t)->keys, cntof((t)->keys), &(t)->cnt, k)
 #define tbl_clr(t) tbl__clr((t)->keys, &(t)->cnt, cntof((t)->keys))
 #define tbl_loop(n,i,t) tbl__loop(n,i,(t)->keys,cntof((t)->keys))
-#define tbl_put(t, k, v) do {assert(szof(*(v)) == szof((t)->vals[0])); tbl__put((t)->keys, (t)->vals, &(t)->cnt, cntof((t)->keys), k, v, szof((t)->vals[0]));} while(0)
 #define tbl_val(t,i) ((i) < cntof((t)->keys))
 #define tbl_inval(t,i) (!tbl_val(t,i))
 #define tbl_get(t,i) (tbl_val(t,i) ? ((t)->vals + (i)): 0)
 #define tbl_unref(t,i,d) (tbl_val(t,i) ? (t)->vals[i] : (d))
 #define tbl_has(t,k) tbl_val(t,tbl_fnd(t,k))
+#define tbl_put(t, k, v) do {\
+  assert(szof(*(v)) == szof((t)->vals[0]));\
+  tbl__put((t)->keys,(t)->vals,&(t)->cnt,cntof((t)->keys),k,v,szof((t)->vals[0]));\
+} while(0)
 // clang-format on
 
 static inline unsigned long long

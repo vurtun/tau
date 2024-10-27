@@ -7,14 +7,14 @@ struct gui_panel;
 
 #define DB_MAX_FILTER         64
 #define DB_TBL_VIEW_CNT       16
-#define DB_MAX_TBL_NAME       128
-#define DB_MAX_TBL_SQL        256
+#define DB_MAX_TBL_NAME       64
+#define DB_MAX_TBL_SQL        64
 #define DB_MAX_TBL_COLS       128
 #define DB_MAX_TBL_ROW_COLS   8
 #define DB_MAX_TBL_ROWS       128
 #define DB_MAX_TBL_ELM        (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS)
-#define DB_MAX_TBL_COL_NAME   128
-#define DB_MAX_TBL_COL_TYPE   128
+#define DB_MAX_TBL_COL_NAME   64
+#define DB_MAX_TBL_COL_TYPE   64
 #define DB_MAX_TBL_ELM_DATA   64
 #define DB_MAX_INFO_ELM_CNT   128
 #define DB_MAX_FLTR_STR       64
@@ -31,6 +31,7 @@ struct gui_panel;
 #define DB_TBL_ELM_STR_BUF_SIZ      (DB_MAX_TBL_ELM*DB_MAX_TBL_ELM_DATA)
 #define DB_TBL_FLTR_STR_BUF_SIZ     (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR)
 #define DB_SQL_QRY_BUF_SIZ          KB(16)
+#define DB_SQL_QRY_NAME_BUF_SIZ     128
 
 enum db_tree_col_sel {
   DB_TREE_COL_NAME,
@@ -80,7 +81,6 @@ struct db_info_view {
 struct db_tbl_col_def {
   struct str title;
   struct gui_split_lay_slot ui;
-  sort_f sort[2];
 };
 enum db_tbl_hdr_col {
   DB_TBL_NAME,
@@ -115,10 +115,11 @@ enum db_tbl_fltr_elm_typ {
 struct db_tbl_fltr_elm {
   unsigned enabled: 1;
   unsigned type: 31;
-  char col_buf[DB_MAX_TBL_COL_NAME];
-  struct str col;
+  long long col;
   char fnd_buf[DB_MAX_FLTR_STR];
   struct str fnd;
+  char col_buf[DB_MAX_TBL_COL_NAME];
+  struct str col_name;
 };
 struct db_tbl_fltr_ui {
   int cnt;
@@ -131,9 +132,8 @@ struct db_tbl_fltr_view {
   unsigned unused;
   struct db_tbl_fltr_elm elms[DB_MAX_FLTR_CNT];
   unsigned char lst[DB_MAX_FLTR_CNT];
-  unsigned char fltr_cnt;
-  char ini_col_buf[DB_MAX_TBL_COL_NAME];
-  struct str ini_col;
+  unsigned char cnt;
+  long long ini_col;
 
   struct str fnd_str;
   char fnd_buf[DB_MAX_FILTER];
@@ -190,11 +190,12 @@ struct db_tbl_col {
   long long rowid;
   unsigned name;
   unsigned type;
-  unsigned ico:28;
+  unsigned ico:27;
   unsigned pk:1;
   unsigned fk:1;
   unsigned nn:1;
   unsigned blob:1;
+  unsigned qry_name:1;
 };
 enum db_tbl_view_dsp_state {
   DB_TBL_VIEW_DSP_DATA,
@@ -228,10 +229,10 @@ struct db_tbl_view {
   enum db_tbl_view_state state;
   enum db_tbl_view_dsp_state disp;
 
-  unsigned rev;
-  char name_buf[DB_MAX_TBL_NAME];
-  struct str name;
   long long rowid;
+  char title_buf[DB_MAX_TBL_NAME];
+  struct str title;
+  unsigned qry_name:1;
 
   struct db_tbl_col_lst col;
   struct db_tbl_row_lst row;
