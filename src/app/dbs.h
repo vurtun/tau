@@ -5,7 +5,7 @@ struct gui_api;
 struct gui_ctx;
 struct gui_panel;
 
-#define DB_MAX_FILTER         64
+#define DB_MAX_FILTER         32
 #define DB_TBL_VIEW_CNT       16
 #define DB_MAX_TBL_NAME       64
 #define DB_MAX_TBL_SQL        64
@@ -17,8 +17,8 @@ struct gui_panel;
 #define DB_MAX_TBL_COL_TYPE   64
 #define DB_MAX_TBL_ELM_DATA   64
 #define DB_MAX_INFO_ELM_CNT   128
-#define DB_MAX_FLTR_STR       64
-#define DB_MAX_FLTR_CNT       32
+#define DB_MAX_FLTR_STR       32
+#define DB_MAX_FLTR_CNT       8
 #define DB_MAX_FLTR_ELM       128
 #define DB_MAX_FLTR_ELM_STR   64
 

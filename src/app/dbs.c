@@ -1063,6 +1063,7 @@ static struct str
 ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
             struct gui_panel *pan, struct gui_panel *parent,
             struct gui_txt_ed *ed, char *buf, int cap, struct str s) {
+
   assert(ed);
   assert(buf);
   assert(ctx);
