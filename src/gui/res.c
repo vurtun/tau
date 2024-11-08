@@ -636,17 +636,14 @@ res_run_cache_fnd(struct res_run_cache *c, unsigned long long h) {
   return ret;
 }
 static void
-res_run_cache_init(struct res_run_cache *c, struct sys *s,
-                   const struct res_args *args) {
-  assert(ispow2(args->hash_cnt));
-  c->hcnt = args->hash_cnt;
-  c->hmsk = c->hcnt - 1;
-  c->run_cnt = args->run_cnt;
-  c->htbl = arena_arr(s->mem.arena, s, int, c->hcnt);
-  c->runs = arena_arr(s->mem.arena, s, struct res_fnt_run, c->run_cnt);
-  for loop(i, args->run_cnt) {
+res_run_cache_init(struct res_run_cache *c) {
+  assert(ispow2(cntof(c->htbl)));
+  c->hcnt = cntof(c->htbl);
+  c->hmsk = cntof(c->htbl) - 1;
+  c->run_cnt = cntof(c->runs);
+  for arr_loopv(i, c->runs) {
     struct res_fnt_run *run = res__run_cache_get(c, i);
-    run->nxt = ((i + 1) < args->run_cnt) ? run->nxt = i + 1 : 0;
+    run->nxt = ((i + 1) < c->run_cnt) ? run->nxt = i + 1 : 0;
   }
 }
 
@@ -854,8 +851,7 @@ res_lay_begin(struct res_fnt_run_it *it, struct res *r, struct str txt) {
  * ---------------------------------------------------------------------------
  */
 static void
-res_init(struct res *r, const struct res_args *args) {
-  struct sys *s = args->sys;
+res_init(struct res *r, struct sys *s) {
   static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f,
     22.0f, 24.0f, 26.0f, 28.0f};
   float pnt_siz = math_floor(s->fnt_pnt_size * s->dpi_scale);
@@ -888,7 +884,7 @@ res_init(struct res *r, const struct res_args *args) {
     r->fnt.txt_height = math_ceili(r->fnt_pnt_size);
     r->fnt.ico_height = math_ceili(r->fnt_pnt_size);
   }
-  res_run_cache_init(&r->run_cache, s, args);
+  res_run_cache_init(&r->run_cache);
 }
 static void
 res_shutdown(struct res *r) {

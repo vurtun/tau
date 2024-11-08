@@ -3211,7 +3211,7 @@ gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
   struct gui_clip clip = {0};
   gui_clip_begin(&clip, ctx, gui_unbox(&pan->box));
   {
-    box->active = pan->id == ctx->focused;
+    box->active = (pan->id == ctx->focused);
     if (box->active && gui_txt_ed_has_sel(edt)) {
       gui_edit_field_drw_txt_sel(ctx, pan, edt, cur_off, txt_ext);
     } else {
@@ -4338,11 +4338,20 @@ gui_lst_sel_elm_input(struct gui_lst_elm_state *st, struct gui_ctx *ctx,
                       struct gui_lst_sel *sel, const struct gui_lst_lay *lay,
                       const struct gui_lst_ctl *ctl, struct sys *s,
                       struct gui_panel *item, int is_sel) {
+  assert(s);
+  assert(st);
+  assert(ctx);
+  assert(sel);
+  assert(lay);
+  assert(ctl);
+  assert(item);
+
   /* mouse item selection */
   gui_input(&st->in, ctx, item, GUI_BTN_LEFT);
   st->hov = (sel->on == GUI_LST_SEL_ON_HOV) && st->in.is_hot;
   st->down = ctl->has_focus && ctx->lst_state.cur_idx == lay->idx - 1 &&
             bit_tst_clr(ctx->keys, GUI_KEY_LST_SEL);
+
   st->clk = 0;
   if (sel->on == GUI_LST_SEL_ON_CLK) {
     int ctrl = (s->keymod & SYS_KEYMOD_CTRL);
@@ -4363,6 +4372,10 @@ gui_lst_sel_elm_input(struct gui_lst_elm_state *st, struct gui_ctx *ctx,
 static void
 gui_lst_on_sel(struct gui_ctx *ctx, struct gui_lst_sel *sel,
                const struct gui_lst_lay *lay, int is_sel) {
+  assert(ctx);
+  assert(sel);
+  assert(lay);
+
   struct sys *s = ctx->sys;
   switch (sel->bhv) {
     case GUI_LST_SEL_BHV_TOGGLE: {

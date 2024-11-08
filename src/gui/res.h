@@ -2,6 +2,8 @@
 
 #define RES_GLYPH_SLOTS 256
 #define RES_IMG_SLOT_CNT 64
+#define RES_CACHE_RUN_CNT KB(2)
+#define RES_CACHE_HASH_CNT (RES_CACHE_RUN_CNT*2)
 
 enum res_ico_id {
   RES_ICO_FOLDER,
@@ -119,9 +121,9 @@ struct res_fnt_tbl_stats {
 struct res_run_cache {
   struct res_fnt_tbl_stats stats;
   int run_cnt;
+  struct res_fnt_run runs[RES_CACHE_RUN_CNT];
   int hcnt, hmsk;
-  struct res_fnt_run *runs;
-  int *htbl;
+  int htbl[RES_CACHE_HASH_CNT];
 #ifdef DEBUG_MODE
   int last_lru_cnt;
 #endif
@@ -150,17 +152,12 @@ struct res_run_api {
 struct res_ico_api {
   void (*ext)(int *ret, const struct res *res, enum res_ico_id ico);
 };
-struct res_args {
-  int hash_cnt;
-  int run_cnt;
-  struct sys *sys;
-};
 struct res_api {
   int version;
   struct res_fnt_api fnt;
   struct res_run_api run;
   struct res_ico_api ico;
-  void (*init)(struct res *res, const struct res_args *args);
+  void (*init)(struct res *res, struct sys *sys);
   void (*shutdown)(struct res *r);
 };
 static void res_api(void *export, void *import);

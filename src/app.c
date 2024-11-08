@@ -221,13 +221,7 @@ app_init(struct app *app) {
   app->sys.win.h = 600;
   app->sys.gfx.clear_color = col_black;
   sys.init(&app->sys);
-  {
-    struct res_args args = {0};
-    args.sys = &app->sys;
-    args.run_cnt = KB(2);
-    args.hash_cnt = KB(4);
-    res.init(&app->res, &args);
-  }
+  res.init(&app->res, &app->sys);
   {
     struct gui_args args = {0};
     args.scale = app->sys.dpi_scale;
@@ -475,7 +469,6 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
         app_tab_swap(app, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
-        /* close database view tab */
         app_tab_close(app, app->sel_tab);
       }
       if (app->unused) {

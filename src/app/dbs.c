@@ -100,7 +100,7 @@ db_tbl_fltr_new(struct db_tbl_fltr_state *fltr) {
   assert(fltr->unused > 0);
 
   int idx = cpu_bit_ffs32(fltr->unused);
-  fltr->unused &= ~(1llu << idx);
+  fltr->unused &= ~(1u << idx);
   mset(fltr->elms + idx, 0, szof(fltr->elms[0]));
   return idx;
 }
@@ -574,7 +574,7 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   sql = str_add_fmt(vdb->sql_qry_buf, cntof(vdb->sql_qry_buf), sql, "LIMIT %d,%d", lo, hi-lo);
 
   /* query table rows */
-  int row_idx = 0, elm_idx = 0;
+  int elm_idx = 0;
   int rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
   assert(rc == SQLITE_OK);
   while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -1041,6 +1041,7 @@ db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
   assert(ctx);
   assert(sdb);
   assert(vdb);
+
   assert(sdb->unused > 0);
   assert(sdb->tab_cnt < cntof(sdb->tabs));
   for tbl_loop(n, i, &vdb->info.sel) {
