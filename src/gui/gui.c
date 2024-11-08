@@ -280,6 +280,8 @@ static void
 gui__lay_init(struct gui_ctx *ctx, struct gui_lay *lay,
               enum gui_lay_type type, int cnt, int item,
               int row_gap, int col_gap) {
+  assert(ctx);
+  assert(lay);
   lay->gap[0] = (col_gap < 0) ? ctx->cfg.gap[0] : col_gap;
   lay->gap[1] = (row_gap < 0) ? ctx->cfg.gap[1] : row_gap;
   lay->item = item < 0 ? ctx->cfg.item : item;
@@ -290,6 +292,11 @@ static void
 gui__hlay(struct gui_ctx *ctx, struct gui_lay *lay, int *items,
           const int *def, int cnt, int row_h, int row_gap, int col_gap,
           const int *con, struct gui_lay_sol *sol) {
+  assert(ctx);
+  assert(lay);
+  assert(def);
+  assert(items);
+
   gui__lay_init(ctx, lay, GUI_LAY_ROW, cnt, row_h, row_gap, col_gap);
   gui_solve(items, lay->box.x.ext, def, cnt, col_gap, con, sol);
 }
@@ -297,21 +304,31 @@ static void
 gui__vlay(struct gui_ctx *ctx, struct gui_lay *lay, int *items,
           const int *def, int cnt, int col_w, int row_gap, int col_gap,
           const int *con, struct gui_lay_sol *sol) {
+
+  assert(ctx);
+  assert(lay);
+  assert(items);
+  assert(def);
+
   gui__lay_init(ctx, lay, GUI_LAY_COL, cnt, col_w, row_gap, col_gap);
   gui_solve(items, lay->box.y.ext, def, cnt, col_gap, con, sol);
 }
 static struct gui_box
 gui_hlay_cut(struct gui_lay *lay, int row_h) {
+  assert(lay);
   lay->idx = lay->cnt;
   return gui_cut_top(&lay->box, row_h, lay->gap[1]);
 }
 static struct gui_box
 gui_vlay_cut(struct gui_lay *lay, int col_w) {
+  assert(lay);
   lay->idx = lay->cnt;
   return gui_cut_lhs(&lay->box, col_w, lay->gap[0]);
 }
 static struct gui_box
 gui_hlay_item(struct gui_lay *lay, const int *items) {
+  assert(lay);
+  assert(items);
   if (lay->idx >= lay->cnt) {
     lay->sub = gui_cut_top(&lay->box, lay->item, lay->gap[1]);
     lay->idx = 0;
@@ -320,6 +337,8 @@ gui_hlay_item(struct gui_lay *lay, const int *items) {
 }
 static struct gui_box
 gui_vlay_item(struct gui_lay *lay, const int *items) {
+  assert(lay);
+  assert(items);
   if (lay->idx >= lay->cnt) {
     lay->sub = gui_cut_lhs(&lay->box, lay->item, lay->gap[0]);
     lay->idx = 0;
@@ -328,6 +347,8 @@ gui_vlay_item(struct gui_lay *lay, const int *items) {
 }
 static struct gui_box
 gui_lay_item(struct gui_lay *lay, const int *items) {
+  assert(lay);
+  assert(items);
   switch (lay->type) {
   case GUI_LAY_ROW:
     return gui_hlay_item(lay, items);
@@ -5835,6 +5856,7 @@ gui_tab_hdr_item_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(ctx);
   assert(tab);
   assert(hdr);
+
   struct gui_panel slot = {0};
   gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, id, txt);
 }
@@ -5844,6 +5866,7 @@ gui_tab_hdr_item(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(ctx);
   assert(tab);
   assert(hdr);
+
   struct gui_panel slot = {0};
   gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, str_hash(txt), txt);
 }

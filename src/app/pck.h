@@ -1,11 +1,9 @@
 #define PCK_VERISON 1
 
-#define FILE_LIST_ELM_CNT         256
+#define FILE_LIST_ELM_CNT         128
 #define FILE_LIST_ELM_BUF_CNT     (FILE_LIST_ELM_CNT*2)
 #define FILE_LIST_STR_BUF_SIZ     (FILE_LIST_ELM_BUF_CNT*MAX_FILE_NAME)
-#define FILE_LIST_MAX_FILTER      64
-#define FILE_TREE_ELM_CNT         256
-#define FILE_TREE_STR_BUF_SIZ     (FILE_TREE_ELM_CNT*MAX_FILE_NAME)
+#define FILE_LIST_MAX_FILTER      32
 #define FILE_SPLIT_MAX            2
 
 struct gui_api;

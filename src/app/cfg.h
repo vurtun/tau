@@ -86,8 +86,8 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 };
 // clang-format on
 
-#define CFG_DB_MAX_MEMORY       MB(1)
-#define CFG_GUI_VTX_MEMORY      KB(256)
-#define CFG_GUI_IDX_MEMORY      KB(256)
+#define CFG_DB_MAX_MEMORY       KB(512)
+#define CFG_GUI_VTX_MEMORY      KB(128)
+#define CFG_GUI_IDX_MEMORY      KB(128)
 #define CFG_GUI_MAX_MEMORY      (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY)
 

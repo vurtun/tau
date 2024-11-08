@@ -25,9 +25,9 @@ npow2(int x) {
  */
 static inline void
 mcpy(void* restrict dst, void const *restrict src, int n) {
-  assert(dst);
-  assert(src);
   assert(n >= 0);
+  assert(dst != 0 || !n);
+  assert(src != 0 || !n);
 
   unsigned char *restrict d = dst;
   const unsigned char *restrict s = src;
@@ -656,185 +656,185 @@ enum {
 static int
 is_space(long c) {
   switch (c) {
-    default: return 0;
-    case 0x0020:
-    case 0x0009:
-    case 0x000a:
-    case 0x000b:
-    case 0x000c:
-    case 0x000d:
-    case 0x00A0:
-    case 0x1680:
-    case 0x2000:
-    case 0x2001:
-    case 0x2002:
-    case 0x2003:
-    case 0x2004:
-    case 0x2005:
-    case 0x2006:
-    case 0x2007:
-    case 0x2008:
-    case 0x2009:
-    case 0x200A:
-    case 0x202F:
-    case 0x205F:
-    case 0x3000:
-      return 1;
+  default: return 0;
+  case 0x0020:
+  case 0x0009:
+  case 0x000a:
+  case 0x000b:
+  case 0x000c:
+  case 0x000d:
+  case 0x00A0:
+  case 0x1680:
+  case 0x2000:
+  case 0x2001:
+  case 0x2002:
+  case 0x2003:
+  case 0x2004:
+  case 0x2005:
+  case 0x2006:
+  case 0x2007:
+  case 0x2008:
+  case 0x2009:
+  case 0x200A:
+  case 0x202F:
+  case 0x205F:
+  case 0x3000:
+    return 1;
   }
 }
 static int
 is_quote(long c) {
   switch (c) {
-    default: return 0;
-    case '\"':
-    case '`':
-    case '\'':
-    case 0x00AB:
-    case 0x00BB:
-    case 0x2018:
-    case 0x2019:
-    case 0x201A:
-    case 0x201C:
-    case 0x201D:
-    case 0x201E:
-    case 0x2039:
-    case 0x203A:
-      return 1;
+  default: return 0;
+  case '\"':
+  case '`':
+  case '\'':
+  case 0x00AB:
+  case 0x00BB:
+  case 0x2018:
+  case 0x2019:
+  case 0x201A:
+  case 0x201C:
+  case 0x201D:
+  case 0x201E:
+  case 0x2039:
+  case 0x203A:
+    return 1;
   }
 }
 static int
 is_punct(long c) {
   switch (c) {
-    default: return is_quote(c);
-    case ',':
-    case '.':
-    case ';':
-    case '(':
-    case ')':
-    case '{':
-    case '}':
-    case '[':
-    case ']':
-    case '<':
-    case '>':
-    case '|':
-    case '/':
-    case '?':
-    case '#':
-    case '~':
-    case '@':
-    case '=':
-    case '+':
-    case '-':
-    case '_':
-    case '*':
-    case '&':
-    case '^':
-    case '%':
-    case '$':
-    case '!':
-    case '\\':
-    case ':':
-    case 0x0964:
-    case 0x0589:
-    case 0x3002:
-    case 0x06D4:
-    case 0x2CF9:
-    case 0x0701:
-    case 0x1362:
-    case 0x166E:
-    case 0x1803:
-    case 0x2FCE:
-    case 0xA4FF:
-    case 0xA60E:
-    case 0xA6F3:
-    case 0x083D:
-    case 0x1B5F:
-    case 0x060C:
-    case 0x3001:
-    case 0x055D:
-    case 0x07F8:
-    case 0x1363:
-    case 0x1808:
-    case 0xA4FE:
-    case 0xA60D:
-    case 0xA6F5:
-    case 0x1B5E:
-    case 0x2047:
-    case 0x2048:
-    case 0x2049:
-    case 0x203D:
-    case 0x2757:
-    case 0x203C:
-    case 0x2E18:
-    case 0x00BF:
-    case 0x061F:
-    case 0x055E:
-    case 0x0706:
-    case 0x1367:
-    case 0x2CFA:
-    case 0x2CFB:
-    case 0xA60F:
-    case 0xA6F7:
-    case 0x11143:
-    case 0xAAF1:
-    case 0x00A1:
-    case 0x07F9:
-    case 0x1944:
-    case 0x00B7:
-    case 0x1039F:
-    case 0x103D0:
-    case 0x12470:
-    case 0x1361:
-    case 0x1091:
-    case 0x0830:
-    case 0x058A:
-    case 0x1806:
-    case 0x0387:
-    case 0x061B:
-    case 0x1364:
-    case 0x2024:
-    case 0x1365:
-    case 0xA6F6:
-    case 0x1B5D:
-    case 0x2026:
-    case 0xFE19:
-    case 0x0EAF:
-    case 0x00AB:
-    case 0x2039:
-    case 0x00BB:
-    case 0x203A:
-    case 0x00AF:
-    case 0x00B2:
-    case 0x00B3:
-    case 0x00B4:
-    case 0x00B5:
-    case 0x00B6:
-    case 0x00B8:
-    case 0x00B9:
-    case 0x00BA:
-    case 0x2010:
-    case 0x2013:
-    case 0x2014:
-    case 0x2015:
-    case 0x2016:
-    case 0x2020:
-    case 0x2021:
-    case 0x2022:
-    case 0x2025:
-    case 0x2030:
-    case 0x2031:
-    case 0x2032:
-    case 0x2033:
-    case 0x2034:
-    case 0x2035:
-    case 0x203E:
-    case 0x2041:
-    case 0x2043:
-    case 0x2044:
-    case 0x204F:
-    case 0x2057:
-      return 1;
+  default: return is_quote(c);
+  case ',':
+  case '.':
+  case ';':
+  case '(':
+  case ')':
+  case '{':
+  case '}':
+  case '[':
+  case ']':
+  case '<':
+  case '>':
+  case '|':
+  case '/':
+  case '?':
+  case '#':
+  case '~':
+  case '@':
+  case '=':
+  case '+':
+  case '-':
+  case '_':
+  case '*':
+  case '&':
+  case '^':
+  case '%':
+  case '$':
+  case '!':
+  case '\\':
+  case ':':
+  case 0x0964:
+  case 0x0589:
+  case 0x3002:
+  case 0x06D4:
+  case 0x2CF9:
+  case 0x0701:
+  case 0x1362:
+  case 0x166E:
+  case 0x1803:
+  case 0x2FCE:
+  case 0xA4FF:
+  case 0xA60E:
+  case 0xA6F3:
+  case 0x083D:
+  case 0x1B5F:
+  case 0x060C:
+  case 0x3001:
+  case 0x055D:
+  case 0x07F8:
+  case 0x1363:
+  case 0x1808:
+  case 0xA4FE:
+  case 0xA60D:
+  case 0xA6F5:
+  case 0x1B5E:
+  case 0x2047:
+  case 0x2048:
+  case 0x2049:
+  case 0x203D:
+  case 0x2757:
+  case 0x203C:
+  case 0x2E18:
+  case 0x00BF:
+  case 0x061F:
+  case 0x055E:
+  case 0x0706:
+  case 0x1367:
+  case 0x2CFA:
+  case 0x2CFB:
+  case 0xA60F:
+  case 0xA6F7:
+  case 0x11143:
+  case 0xAAF1:
+  case 0x00A1:
+  case 0x07F9:
+  case 0x1944:
+  case 0x00B7:
+  case 0x1039F:
+  case 0x103D0:
+  case 0x12470:
+  case 0x1361:
+  case 0x1091:
+  case 0x0830:
+  case 0x058A:
+  case 0x1806:
+  case 0x0387:
+  case 0x061B:
+  case 0x1364:
+  case 0x2024:
+  case 0x1365:
+  case 0xA6F6:
+  case 0x1B5D:
+  case 0x2026:
+  case 0xFE19:
+  case 0x0EAF:
+  case 0x00AB:
+  case 0x2039:
+  case 0x00BB:
+  case 0x203A:
+  case 0x00AF:
+  case 0x00B2:
+  case 0x00B3:
+  case 0x00B4:
+  case 0x00B5:
+  case 0x00B6:
+  case 0x00B8:
+  case 0x00B9:
+  case 0x00BA:
+  case 0x2010:
+  case 0x2013:
+  case 0x2014:
+  case 0x2015:
+  case 0x2016:
+  case 0x2020:
+  case 0x2021:
+  case 0x2022:
+  case 0x2025:
+  case 0x2030:
+  case 0x2031:
+  case 0x2032:
+  case 0x2033:
+  case 0x2034:
+  case 0x2035:
+  case 0x203E:
+  case 0x2041:
+  case 0x2043:
+  case 0x2044:
+  case 0x204F:
+  case 0x2057:
+    return 1;
   }
 }
 static int
@@ -3159,7 +3159,7 @@ path_ext(struct str path) {
 }
 
 /* ---------------------------------------------------------------------------
- *                              STRING-BUFFER
+ *                              String-Buffer
  * ---------------------------------------------------------------------------
  */
 // clang-format off
@@ -3175,6 +3175,8 @@ static unsigned
 str_buf__push(int *cnt, char *mem, int cap, struct str s) {
   assert(cnt);
   assert(*cnt >= 0);
+  assert(*cnt <= 0xffff);
+  assert(*cnt <= cap);
   assert(cap >= 0);
   assert(mem);
   assert(cap);
@@ -3191,8 +3193,12 @@ str_buf__push(int *cnt, char *mem, int cap, struct str s) {
 static unsigned
 str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
   assert(cnt);
+  assert(cap <= 0x10000);
   assert(*cnt >= 0);
+  assert(*cnt <= 0x10000);
+  assert(*cnt <= cap);
   assert(cap >= 0);
+  assert(*cnt <= cap);
   assert(mem);
   assert(cap);
 
@@ -3208,8 +3214,8 @@ static struct str
 str_buf__get(char *mem, int cnt, unsigned hdl) {
   assert(mem);
   assert(cnt >= 0);
-  assert(str_buf_len(hdl) < cnt);
-  assert(str_buf_off(hdl) < cnt);
+  assert(str_buf_len(hdl) <= cnt);
+  assert(str_buf_off(hdl) <= cnt);
   assert(str_buf_len(hdl) + str_buf_off(hdl) <= cnt);
 
   int off = str_buf_off(hdl);
@@ -3477,28 +3483,22 @@ sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
  *                                  Search
  * ---------------------------------------------------------------------------
  */
-static int
-sorted_search(const void *vals, int cnt, int siz, void *val,
-              int(*cmp_less)(const void *a, const void *b)) {
+static force_inline int
+bin_search(const void *a, int cnt, int siz, void *val,
+           int(*cmp_less)(const void*, const void*)) {
+  assert(a);
   assert(val);
-  assert(vals);
   assert(cmp_less);
 
-  int nleft = cnt;
-  const unsigned char *base = vals;
-  for (;;) {
-    int half = nleft >> 1;
-    if (half <= 0) {
-      break;
-    }
+  int half, nleft = cnt;
+  const unsigned char *base = a;
+  while ((half = (nleft >> 1)) > 0) {
     const unsigned char *mid = base + half * siz;
     base = cmp_less(mid, val) ? mid : base;
     nleft -= half;
   }
-  if (nleft == 1) {
-    base += cmp_less(base, val) ? siz : 0;
-  }
-  return casti((base - cast(const unsigned char*, vals)))/siz;
+  base += (nleft == 1 && cmp_less(base,val)) ? siz : 0;
+  return casti((base - cast(const unsigned char*,a)))/siz;
 }
 
 /* ---------------------------------------------------------------------------
