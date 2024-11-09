@@ -276,7 +276,7 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *s,
   mset(elm,0,szof(elm[0]));
 
   struct sys_file_info info = {0};
-  if (!s->file.info(s, &info, ospath, s->mem.tmp)) {
+  if (!s->file.info(s, &info, ospath)) {
     elm->sys_type = SYS_FILE_DEF;
     elm->file_type = 0;
     elm->name = name;
@@ -334,10 +334,9 @@ file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
   return ret;
 }
 static void
-file_view_lst_qry(struct file_list_view *lst, struct sys *s, struct arena *tmp,
+file_view_lst_qry(struct file_list_view *lst, struct sys *s,
                   const struct file_view_lst_qry *qry) {
   assert(s);
-  assert(tmp);
   assert(qry);
   assert(lst);
 
@@ -353,11 +352,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s, struct arena *tmp,
 
   /* iterate directory */
   struct sys_dir_iter it = {0};
-  for sys_dir_lst_each(s, &it, tmp, qry->fullpath) {
-    if (str_eq(it.name, strv(".")) ||
-        str_eq(it.name, strv(".."))) {
-      continue;
-    }
+  for sys_dir_lst_each(s, &it, qry->fullpath) {
     lst->page.total++;
     /* apply filter */
     struct file_elm elm = {0};
@@ -431,7 +426,7 @@ file_view_lst_cd(struct file_view *fs, struct file_list_view *lst,
     qry.fltr = lst->fltr;
     qry.fullpath = lst->nav_path;
     qry.cmp = file_view_lst_elm_cmp_name_asc;
-    file_view_lst_qry(lst, s, s->mem.tmp, &qry);
+    file_view_lst_qry(lst, s, &qry);
   }
 }
 static void
@@ -533,7 +528,7 @@ ui_file_lst_view_fnd(struct file_view *fs, struct file_list_view *lst,
     qry.fullpath = lst->nav_path;
     qry.page = lst->page.idx;
     qry.fltr = lst->fltr;
-    file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
+    file_view_lst_qry(lst, ctx->sys, &qry);
   }
 }
 static void
@@ -733,7 +728,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
       qry.fullpath = lst->nav_path;
       qry.page = lst->page.idx - 1;
       qry.fltr = lst->fltr;
-      file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
+      file_view_lst_qry(lst, ctx->sys, &qry);
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
@@ -761,7 +756,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
       qry.fullpath = lst->nav_path;
       qry.page = lst->page.idx + 1;
       qry.fltr = lst->fltr;
-      file_view_lst_qry(lst, ctx->sys, ctx->sys->mem.tmp, &qry);
+      file_view_lst_qry(lst, ctx->sys, &qry);
     }
     tab->off = nxt.box.x.max;
   }

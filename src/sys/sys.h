@@ -74,30 +74,12 @@ struct sys_mouse {
   };
 };
 
-/* memory */
-enum sys_mem_blk_flags {
-  SYS_MEM_GROWABLE  = 0x1,
-  SYS_MEM_CHK_UFLW  = 0x2,
-  SYS_MEM_CHK_OFLW  = 0x4,
-  SYS_MEM_CHK_FIT   = 0x8,
-};
-struct sys_mem_stats {
-  int blk_cnt;
-  int total;
-  int used;
-};
-
 /* directory */
 struct sys_dir_iter {
   char valid, err;
-  struct str fullpath;
-  struct str base;
   struct str name;
-
   char isdir;
   void *handle;
-  struct arena_scope scp;
-  struct arena_scope scp_base;
 };
 
 /* cursor */
@@ -172,14 +154,6 @@ struct sys_tooltip {
 struct sys_mem_api {
   long page_siz;
   long phy_siz;
-
-  struct arena *arena;
-  struct arena *tmp;
-
-  struct mem_blk*(*alloc)(struct sys *s, struct mem_blk* opt_old, int siz, unsigned flags, unsigned long long tag);
-  void (*free)(struct sys *s, struct mem_blk *blk);
-  void (*free_tag)(struct sys *s, unsigned long long tag);
-  void (*info)(struct sys *s, struct sys_mem_stats *stats);
 };
 enum sys_file_type {
   SYS_FILE_DEF,
@@ -195,18 +169,18 @@ struct sys_file_info {
   enum sys_file_type type;
 };
 struct sys_file_api {
-  int (*info)(struct sys*, struct sys_file_info *info, struct str path, struct arena *tmp);
+  int (*info)(struct sys*, struct sys_file_info *info, struct str path);
 };
 struct sys_dir_api {
-  #define sys_dir_lst_each(s, i, a, p)\
-    ((s)->dir.lst((s), (i), (a), (p)); (i)->valid; (s)->dir.nxt((s), (i), (a)))
-  void (*lst)(struct sys *s, struct sys_dir_iter *it, struct arena *a, struct str path);
-  void (*nxt)(struct sys *s, struct sys_dir_iter *it, struct arena *a);
-  int (*exists)(struct sys *s, struct str path, struct arena *tmp);
+  #define sys_dir_lst_each(s, i, p)\
+    ((s)->dir.lst((s), (i), (p)); (i)->valid; (s)->dir.nxt((s), (i)))
+  void (*lst)(struct sys *s, struct sys_dir_iter *it, struct str path);
+  void (*nxt)(struct sys *s, struct sys_dir_iter *it);
+  int (*exists)(struct sys *s, struct str path);
 };
 struct sys_clip_api {
-  void (*set)(struct str s, struct arena *a);
-  struct str (*get)(struct arena *a);
+  void (*set)(struct sys *s, struct str val);
+  struct str (*get)(struct sys *s);
 };
 struct sys_time_api {
   unsigned long long (*timestamp)(void);

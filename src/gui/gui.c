@@ -2944,7 +2944,7 @@ gui_txt_ed_clip(struct gui_txt_ed *edt, struct sys *s) {
   int idx1 = max(edt->sel[1], edt->sel[0]);
   int sel0 = utf_at_idx(edt->str, idx0);
   int sel1 = utf_at_idx(edt->str, idx1);
-  s->clipboard.set(strn(edt->buf + sel0, sel1 - sel0), s->mem.tmp);
+  s->clipboard.set(s, strn(edt->buf + sel0, sel1 - sel0));
 }
 static int
 gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
@@ -3115,12 +3115,8 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_PASTE)) {
-    struct sys *s = ctx->sys;
-    struct arena_scope scp;
-    confine arena_scope(s->mem.tmp, &scp, s) {
-      struct str p = s->clipboard.get(s->mem.tmp);
-      gui_txt_ed_paste(edt, p);
-    }
+    struct str p = ctx->sys->clipboard.get(ctx->sys);
+    gui_txt_ed_paste(edt, p);
     mod = 1;
   }
   return mod;

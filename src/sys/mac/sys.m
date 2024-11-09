@@ -177,6 +177,35 @@ sys__rnd_gen128(uintptr_t hdl, void *dst) {
  *                                File
  * ---------------------------------------------------------------------------
  */
+struct sys_file_path {
+  char *ospath;
+  char buf[MAX_FILE_PATH];
+};
+static int
+sys__file_path_push(struct sys_file_path *p, struct str path) {
+  assert(p);
+  if (str_len(path) + 1 < MAX_FILE_PATH) {
+    mcpy(p->buf, str_beg(path), str_len(path));
+    p->buf[str_len(path)] = 0;
+    p->ospath = p->buf;
+  } else {
+    p->ospath = calloc(1, castsz(str_len(path) + 1));
+    if (!p->ospath) {
+      return 0;
+    }
+    mcpy(p->ospath, str_beg(path), str_len(path));
+    p->ospath[str_len(path)] = 0;
+  }
+  return 1;
+}
+static void
+sys__file_path_pop(struct sys_file_path *p) {
+  assert(p);
+  if (p->ospath != p->buf) {
+    free(p->ospath);
+  }
+  mset(p, 0, szof(*p));
+}
 static unsigned
 sys__file_perm(mode_t perm) {
   unsigned mod = 0;
@@ -192,24 +221,25 @@ sys__file_perm(mode_t perm) {
   return mod;
 }
 static int
-sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
-              struct arena *tmp) {
+sys_file_info(struct sys *s, struct sys_file_info *info, struct str path) {
+  assert(s);
+  unused(s);
   assert(info);
-  assert(tmp);
 
-  int res = 0;
   struct stat stats;
-  struct arena_scope scp;
-  confine arena_scope(tmp, &scp, s) {
-    char *fullpath = arena_cstr(tmp, s, path);
-    res = stat(fullpath, &stats);
+  struct sys_file_path fp;
+  if (!sys__file_path_push(&fp, path)) {
+    return 0;
   }
+  int res = stat(fp.ospath, &stats);
+  sys__file_path_pop(&fp);
   if (res < 0) {
     return 0;
   }
   info->siz = castsz(stats.st_size);
   info->mtime = stats.st_mtime;
   info->perm = sys__file_perm(stats.st_mode);
+
   if (S_ISDIR(stats.st_mode)) {
     info->type = SYS_FILE_DIR;
   } else if (S_ISLNK(stats.st_mode)) {
@@ -228,215 +258,76 @@ sys_file_info(struct sys *s, struct sys_file_info *info, struct str path,
  *                                  Directory
  * ---------------------------------------------------------------------------
  */
-static void
-sys__dir_free(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
-  assert(s);
-  assert(a);
-  assert(it);
-
-  arena_scope_pop(&it->scp_base, a, s);
-  if (!it->valid) return;
-  it->valid = 0;
-  it->err = 0;
-  closedir(it->handle);
-}
 static int
-sys__dir_excl(struct sys_dir_iter *it) {
-  int is_base = !str_cmp(it->name, str0("."));
-  int is_prev = !str_cmp(it->name, str0(".."));
-  return it->valid && (is_base || is_prev);
-}
-static int
-sys_dir_exists(struct sys *s, struct str path, struct arena *tmp) {
+sys_dir_exists(struct sys *s, struct str path) {
   assert(s);
-  assert(tmp);
-
-  struct arena_scope scp;
-  arena_scope_push(&scp, tmp);
-
+  struct sys_file_path fp;
+  if (!sys__file_path_push(&fp, path)) {
+    return 0;
+  }
   struct stat stats;
-  char *fullpath = arena_cstr(tmp, s, path);
-  int res = stat(fullpath, &stats);
-  arena_scope_pop(&scp, tmp, s);
+  int res = stat(fp.ospath, &stats);
+  sys__file_path_pop(&fp);
   if (res < 0 || !S_ISDIR(stats.st_mode)) {
     return 0;
   }
   return 1;
 }
 static void
-sys_dir_nxt(struct sys *s, struct sys_dir_iter *it, struct arena *a) {
+sys__dir_free(struct sys *s, struct sys_dir_iter *it) {
   assert(s);
-  assert(a);
   assert(it);
   if (!it->valid) {
     return;
   }
-  arena_scope_pop(&it->scp, a, s);
-  arena_scope_push(&it->scp, a);
+  it->valid = 0;
+  it->err = 0;
+  closedir(it->handle);
+}
+static int
+sys__dir_excl(struct sys_dir_iter *it) {
+  int is_base = !str_cmp(it->name, strv("."));
+  int is_prev = !str_cmp(it->name, strv(".."));
+  return it->valid && (is_base || is_prev);
+}
+static void
+sys_dir_nxt(struct sys *s, struct sys_dir_iter *it) {
+  assert(s);
+  assert(it);
+  if (!it->valid) {
+    return;
+  }
   do {
     struct dirent *ent = readdir(it->handle);
     if (!ent) {
-      arena_scope_pop(&it->scp, a, s);
-      sys__dir_free(s, it, a);
+      sys__dir_free(s, it);
       return;
     }
-    it->fullpath = arena_fmt(a, s, "%.*s/%s", strf(it->base), ent->d_name);
     it->name = str0(ent->d_name);
     it->isdir = ent->d_type & DT_DIR;
   } while (sys__dir_excl(it));
 }
 static void
-sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct arena *a,
-            struct str path) {
+sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct str path) {
   assert(s);
-  assert(a);
   assert(it);
-
+  struct sys_file_path fp;
+  if (!sys__file_path_push(&fp, path)) {
+    it->valid = 0;
+    it->err = 1;
+    return;
+  }
   mset(it, 0, szof(*it));
-  arena_scope_push(&it->scp_base, a);
-  it->base = arena_str(a, s, path);
-
-  DIR *dir = opendir(str_beg(it->base));
+  DIR *dir = opendir(fp.ospath);
+  sys__file_path_pop(&fp);
   if (!dir) {
     it->valid = 0;
     it->err = 1;
+    return;
   }
   it->handle = dir;
   it->valid = 1;
-
-  arena_scope_push(&it->scp, a);
-  sys_dir_nxt(s, it, a);
-}
-
-/* ---------------------------------------------------------------------------
- *                              Memory
- * ---------------------------------------------------------------------------
- */
-static struct mem_blk*
-sys_mac_mem_alloc(struct sys *s, struct mem_blk* opt_old, int siz,
-                  unsigned flags, unsigned long long tags) {
-  assert(s);
-  assert(s->platform);
-  compiler_assert(szof(struct sys_mem_blk) == 64);
-  struct sys_mac *os = cast(struct sys_mac*, s->platform);
-
-  int page_size = casti(s->mem.page_siz);
-  int total = siz + szof(struct sys_mem_blk);
-  int base_off = szof(struct sys_mem_blk);
-  int prot_off = 0;
-
-  if(flags & SYS_MEM_CHK_UFLW) {
-    total = siz + 2 * page_size;
-    base_off =  2 * page_size;
-    prot_off = page_size;
-  } else if(flags & SYS_MEM_CHK_OFLW) {
-    int size_rnd = align_up(siz, page_size);
-    total = size_rnd + 2*page_size;
-    base_off = page_size + size_rnd - siz;
-    prot_off = page_size + size_rnd;
-  }
-  struct sys_mem_blk *blk = 0;
-  if (flags & SYS_MEM_GROWABLE) {
-    if (opt_old){
-      assert(opt_old->flags == flags);
-      assert(total > opt_old->size);
-
-      struct sys_mem_blk *sys_blk = 0;
-      sys_blk = containerof(opt_old, struct sys_mem_blk, blk);
-
-      lck_acq(&os->mem_lck);
-      lst_del(&sys_blk->hook);
-      lck_rel(&os->mem_lck);
-    }
-    if (flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
-      size_t msiz = castsz(total);
-      blk = mmap(0, msiz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-      blk->blk.base = (unsigned char*)blk + base_off;
-      if(flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
-        int e = mprotect((unsigned char*)blk + prot_off, castsz(page_size), PROT_NONE);
-        assert(e == 0);
-      }
-      mcpy(blk->blk.base, opt_old->base, opt_old->size - szof(struct sys_mem_blk));
-      munmap(opt_old, castsz(opt_old->size));
-    } else {
-      blk = realloc(opt_old, castsz(total));
-      if (!opt_old) {
-        mset(blk, 0, total);
-      }
-      blk->blk.base = (unsigned char*)blk + base_off;
-    }
-  } else {
-    size_t mapsiz = castsz(total);
-    blk = mmap(0, mapsiz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-    blk->blk.base = (unsigned char*)blk + base_off;
-    if(flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
-      int e = mprotect((unsigned char*)blk + prot_off, castsz(page_size), PROT_NONE);
-      assert(e == 0);
-    }
-  }
-  lst_init(&blk->hook);
-
-  blk->blk.size = total;
-  blk->blk.flags = flags;
-  blk->tags = tags;
-
-  lck_acq(&os->mem_lck);
-  lst_add(&os->mem_blks, &blk->hook);
-  lck_rel(&os->mem_lck);
-  return &blk->blk;
-}
-static void
-sys_mac_mem_free(struct sys *s, struct mem_blk *mem_blk) {
-  assert(s);
-  assert(s->platform);
-  struct sys_mac *os = cast(struct sys_mac*, s->platform);
-
-  struct sys_mem_blk *blk = containerof(mem_blk, struct sys_mem_blk, blk);
-  lck_acq(&os->mem_lck);
-  lst_del(&blk->hook);
-  lck_rel(&os->mem_lck);
-
-  if (mem_blk->flags & (SYS_MEM_CHK_UFLW|SYS_MEM_CHK_OFLW)) {
-    munmap(blk, castsz(mem_blk->size));
-  } else if (mem_blk->flags & SYS_MEM_GROWABLE) {
-    free(blk);
-  } else {
-    munmap(blk, castsz(mem_blk->size));
-  }
-}
-static void
-sys_mac_mem_stats(struct sys *s, struct sys_mem_stats *stats) {
-  assert(s);
-  assert(s->platform);
-  struct sys_mac *os = cast(struct sys_mac*, s->platform);
-
-  mset(stats, 0, szof(*stats));
-  lck_acq(&os->mem_lck);
-  {
-    struct lst_elm *elm = 0;
-    for lst_each(elm, &os->mem_blks) {
-      struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
-      stats->total += blk->blk.size;
-      stats->used += blk->blk.used;
-    }
-  }
-  lck_rel(&os->mem_lck);
-}
-static void
-sys_mac_mem_free_tag(struct sys *s, unsigned long long tag) {
-  assert(s);
-  assert(s->platform);
-  struct sys_mac *os = cast(struct sys_mac*, s->platform);
-
-  lck_acq(&os->mem_lck);
-  struct lst_elm *elm = 0;
-  for lst_each(elm, &os->mem_blks) {
-    struct sys_mem_blk *blk = lst_get(elm, struct sys_mem_blk, hook);
-    if (blk->tags == tag) {
-      sys_mac_mem_free(s, &blk->blk);
-    }
-  }
-  lck_rel(&os->mem_lck);
+  sys_dir_nxt(s, it);
 }
 
 /* ---------------------------------------------------------------------------
@@ -870,15 +761,8 @@ sys_mac_init(struct sys *s) {
   cpu_info(&s->cpu);
 
   /* memory */
-  s->mem.alloc = sys_mac_mem_alloc;
-  s->mem.free = sys_mac_mem_free;
-  s->mem.info = sys_mac_mem_stats;
-  s->mem.free_tag = sys_mac_mem_free_tag;
-  s->mem.arena = &os->mem;
-  s->mem.tmp = &os->tmp;
   s->mem.page_siz = sysconf(_SC_PAGE_SIZE);
   s->mem.phy_siz = sysconf(_SC_PHYS_PAGES) * s->mem.page_siz;
-  lst_init(&os->mem_blks);
 
   /* api */
   s->dir.lst = sys_dir_lst;

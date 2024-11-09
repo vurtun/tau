@@ -305,6 +305,7 @@ db_tbl_new(struct db_state *sdb) {
   int idx = cpu_bit_ffs32(sdb->unused);
   sdb->unused &= ~(1u << idx);
   mset(sdb->tbls + idx, 0, szof(sdb->tbls[0]));
+  sdb->tbls[idx].fltr.unused = ~0u;
   return idx;
 }
 static enum res_ico_id
@@ -1971,6 +1972,7 @@ ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 static void
 ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
            struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent) {
+
   assert(sdb);
   assert(vdb);
   assert(ctx);
@@ -2159,7 +2161,6 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
         db_tab_resort(sdb, tab.sort.dst, tab.sort.src);
       }
       if (del_tab) {
-        /* close table view tab */
         db_tab_close(sdb, tab.sel.idx);
       }
       confine gui_disable_on_scope(&gui, ctx, sdb->unused == 0) {

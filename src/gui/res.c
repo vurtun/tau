@@ -146,19 +146,19 @@ res__decode_85(unsigned char* dst, const unsigned char* src) {
 /* clang-format on */
 
 static void *
-res_unpack(int *data_siz, const char *src, struct sys *s,
-           struct arena *a, struct arena *tmp) {
+res_unpack(int *data_siz, const char *src) {
   unsigned char *data = 0;
   {
     const int com_size = (((int)strlen(src) + 4) / 5) * 4;
-    unsigned char *com_buf = arena_alloc(tmp, s, com_size);
+    unsigned char *com_buf = calloc(1, com_size);
     res__decode_85(com_buf, cast(const unsigned char *, src));
     {
       unsigned un_siz = res__decompress_len(com_buf);
-      data = arena_alloc(a, s, cast(int, un_siz));
+      data = calloc(1, castsz(un_siz));
       res__decompress(data, com_buf, un_siz);
       *data_siz = cast(int, un_siz);
     }
+    free(com_buf);
   }
   return data;
 }
@@ -443,12 +443,12 @@ static const char res__ico_fnt[] =
   "SNC;$NbE->l4Qn*u@q0#ndPM']XMuu@LJ>Pq<^l8FqT'%[cn^$^F$hW;%###";
 
 static void *
-res_default_fnt(int *data_siz, struct sys *s, struct arena *a, struct arena *tmp) {
-  return res_unpack(data_siz, res__default_fnt, s, a, tmp);
+res_default_fnt(int *data_siz) {
+  return res_unpack(data_siz, res__default_fnt);
 }
 static void *
-res_ico_fnt(int *data_siz, struct sys *s, struct arena *a, struct arena *tmp) {
-  return res_unpack(data_siz, res__ico_fnt, s, a, tmp);
+res_ico_fnt(int *data_siz) {
+  return res_unpack(data_siz, res__ico_fnt);
 }
 // clang-format on
 
@@ -463,15 +463,12 @@ struct res__bake_cfg {
   float ico_ttf_pnt_siz;
 };
 static int
-res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg,
-              struct sys *s, struct arena *tmp) {
+res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *s) {
   int w = 256;
   int h = 512;
 
 retry:;
-  struct arena_scope scp;
-  arena_scope_push(&scp, tmp);
-  unsigned char *img = arena_alloc(tmp, s, w * h);
+  unsigned char *img = calloc(castsz(w), castsz(h));
   {
     fnt_pack_context pc;
     fnt_PackBegin(&pc, img, w, h, 0, 1, 0);
@@ -482,12 +479,12 @@ retry:;
 
     if (!ok0 || !ok1 || !ok2) {
       w *= 2, h *= 2;
-      arena_scope_pop(&scp, tmp, s);
+      free(img);
       goto retry;
     }
   }
   fnt->texid = s->gfx.tex.load(s, GFX_PIX_FMT_R8, img, w, h);
-  arena_scope_pop(&scp, tmp, s);
+  free(img);
   return 0;
 }
 
@@ -867,22 +864,24 @@ res_init(struct res *r, struct sys *s) {
     }
   }
   r->sys = s;
-  struct arena_scope scp;
-  confine arena_scope(s->mem.tmp, &scp, s) {
+  {
     int fnt_siz = 0;
-    void *txt_ttf_mem = res_default_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);
-    void *ico_ttf_mem = res_ico_fnt(&fnt_siz, s, s->mem.tmp, s->mem.tmp);
+    void *txt_ttf_mem = res_default_fnt(&fnt_siz);
+    void *ico_ttf_mem = res_ico_fnt(&fnt_siz);
     {
       struct res__bake_cfg cfg = {0};
       cfg.txt_ttf_fnt = txt_ttf_mem;
       cfg.txt_ttf_pnt_siz = r->fnt_pnt_size;
       cfg.ico_ttf_fnt = ico_ttf_mem;
       cfg.ico_ttf_pnt_siz = r->fnt_pnt_size;
-      res__bake_fnt(&r->fnt, &cfg, s, s->mem.tmp);
+      res__bake_fnt(&r->fnt, &cfg, s);
     }
     r->fnt.space_adv = math_roundi(r->fnt.glyphs[' '].xadvance);
     r->fnt.txt_height = math_ceili(r->fnt_pnt_size);
     r->fnt.ico_height = math_ceili(r->fnt_pnt_size);
+
+    free(txt_ttf_mem);
+    free(ico_ttf_mem);
   }
   res_run_cache_init(&r->run_cache);
 }

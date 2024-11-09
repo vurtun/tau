@@ -2744,7 +2744,6 @@ str_put(char *b, int cap, struct str in, int pos, struct str s) {
     mcpy(b + pos, str_beg(s), str_len(s));
     return strn(b, str_len(in) + str_len(s));
   }
-  int nn = 0;
   unsigned rune = 0;
   int n = cap - str_len(s);
   for utf_loop(&rune, it, _, s) {
@@ -2752,7 +2751,6 @@ str_put(char *b, int cap, struct str in, int pos, struct str s) {
     if (cnt >= -n) {
       break;
     }
-    nn = cnt;
   }
   memmove(b + pos + str_len(s), b + pos, cast(size_t, str_len(in) - pos));
   mcpy(b + pos, str_beg(s), str_len(s));
@@ -2919,209 +2917,6 @@ static inline void
 lck_rel(struct lck *lck) {
   atom_add(&lck->serving, 1);
 }
-
-/* ---------------------------------------------------------------------------
- *                                  Arena
- * ---------------------------------------------------------------------------
- */
-#define ARENA_ALIGNMENT 8
-#define ARENA_BLOCK_SIZE KB(64)
-
-// clang-format off
-#define arena_obj(a, s, T) cast(T*, arena_alloc(a, s, szof(T)))
-#define arena_arr(a, s, T, n) cast(T*, arena_alloc(a, s, szof(T) * n))
-#define arena_scope(a,s,sys)\
-  (int uniqid(_i_) = (arena_scope_push(s,a), 0); uniqid(_i_) < 1;\
-    uniqid(_i_) = (arena_scope_pop(s,a,sys), 1))
-// clang-format on
-
-static int
-arena_align_off(struct arena *a, int align) {
-  intptr_t ret = (intptr_t)a->blk->base + a->blk->used;
-  int msk = align - 1;
-  int off = 0;
-  if(ret & msk) {
-    off = casti((align - (ret & msk)));
-  }
-  return off;
-}
-static int
-arena_size_for(struct arena *a, int size_init) {
-  int off = arena_align_off(a, ARENA_ALIGNMENT);
-  return size_init + off;
-}
-static void*
-arena_alloc(struct arena *a, struct sys *s, int size_init) {
-  assert(a);
-  assert(s);
-
-  int siz = 0;
-  void *ret = 0;
-  if (a->blk) {
-    siz = arena_size_for(a, size_init);
-  }
-  if (!a->blk || ((a->blk->used + siz) > a->blk->size)) {
-    siz = size_init; /* allocate new block */
-    int blksiz = max(!a->blksiz ? ARENA_BLOCK_SIZE : a->blksiz, siz);
-    struct mem_blk *blk = s->mem.alloc(s, 0, blksiz, 0, 0);
-    blk->prv = a->blk;
-    a->blk = blk;
-  }
-  assert((a->blk->used + siz) <= a->blk->size);
-  int align_off = arena_align_off(a, ARENA_ALIGNMENT);
-  int off = a->blk->used + align_off;
-  ret = a->blk->base + off;
-  a->blk->used += siz;
-
-  assert(siz >= size_init);
-  assert(a->blk->used <= a->blk->size);
-  mset(ret, 0, size_init);
-  return ret;
-}
-static void *
-arena_cpy(struct arena *a, struct sys *s, const void *src, int siz) {
-  assert(a);
-  assert(s);
-  assert(src);
-  assert(siz > 0);
-
-  void *dst = arena_alloc(a, s, siz);
-  mcpy(dst, src, siz);
-  return dst;
-}
-static struct str
-arena_fmt(struct arena *a, struct sys *s, const char *fmt, ...) {
-  assert(a);
-  assert(s);
-  assert(fmt);
-
-  va_list args;
-  va_start(args, fmt);
-  int n = fmtvsn(0, 0, fmt, args);
-  va_end(args);
-
-  char *ret = arena_alloc(a, s, n + 1);
-  va_start(args, fmt);
-  fmtvsn(ret, n + 1, fmt, args);
-  va_end(args);
-  return strn(ret, n);
-}
-static char *
-arena_cstr_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
-  assert(a);
-  assert(s);
-  if (!str_len(cs) || !r.cnt) {
-    return 0;
-  }
-  char *ret = arena_alloc(a, s, r.cnt + 1);
-  mcpy(ret, str_beg(cs), str_len(cs));
-  ret[r.cnt] = 0;
-  return ret;
-}
-static inline char *
-arena_cstr(struct arena *a, struct sys *s, struct str cs) {
-  assert(a);
-  assert(s);
-  return arena_cstr_rng(a, s, cs, rngn(str_len(cs)));
-}
-static inline struct str
-arena_str(struct arena *a, struct sys *s, struct str cs) {
-  assert(a);
-  assert(s);
-  char *ret = arena_cstr(a, s, cs);
-  return strn(ret, str_len(cs));
-}
-static inline struct str
-arena_str_rng(struct arena *a, struct sys *s, struct str cs, struct rng r) {
-  assert(a);
-  assert(s);
-  char *ret = arena_cstr_rng(a, s, cs, r);
-  return strn(ret, r.cnt);
-}
-static void
-arena_free_last_blk(struct arena *a, struct sys *s) {
-  assert(a);
-  assert(s);
-
-  struct mem_blk *blk = a->blk;
-  a->blk = blk->prv;
-  s->mem.free(s, blk);
-}
-static void
-arena_reset(struct arena *a, struct sys *s) {
-  assert(a);
-  assert(s);
-  while (a->blk) {
-    if (a->blk->prv == 0) {
-      a->blk->used = 0;
-      break;
-    }
-    arena_free_last_blk(a, s);
-  }
-}
-static void
-arena_free(struct arena *a, struct sys *s) {
-  assert(a);
-  assert(s);
-  while (a->blk) {
-    int is_last = (a->blk->prv == 0);
-    arena_free_last_blk(a, s);
-    if(is_last) {
-      break;
-    }
-  }
-}
-static int
-arena_scope_push(struct arena_scope *s, struct arena *a) {
-  assert(a);
-  assert(s);
-
-  s->blk = a->blk;
-  s->used = a->blk ? a->blk->used : 0;
-  a->tmp_cnt++;
-  return 1;
-}
-static int
-arena_scope_pop(struct arena_scope *s, struct arena *a, struct sys *_sys) {
-  assert(s);
-  assert(a);
-  assert(_sys);
-  while (a->blk != s->blk) {
-    arena_free_last_blk(a, _sys);
-  }
-  if (a->blk) {
-    assert(a->blk->used >= s->used);
-    a->blk->used = s->used;
-  }
-  assert(a->tmp_cnt > 0);
-  a->tmp_cnt--;
-  return 1;
-}
-
-/* ---------------------------------------------------------------------------
- *                                  List
- * ---------------------------------------------------------------------------
- */
-// clang-format off
-#define lst_init(e) (e)->prv = (e), (e)->nxt = (e)
-#define lst_get(ptr,type,mem) containerof(ptr,type,mem)
-static void lst__add(struct lst_elm *e, struct lst_elm *p, struct lst_elm *n)\
-  {(e)->nxt = (n); (e)->prv = (p); (p)->nxt = (e); (n)->prv = (e);}
-#define lst_add(lst,e) lst__add(e, lst, (lst)->nxt)
-#define lst_add_tail(lst,e) lst__add(e, (lst)->prv, lst)
-static void lst__del(struct lst_elm *p, struct lst_elm *n) {n->prv = p, p->nxt = n;}
-#define lst_del(n) lst__del((n)->prv, (n)->nxt)
-#define lst_empty(lst) ((lst)->nxt == (lst))
-#define lst_any(lst) (!lst_empty(lst))
-#define lst_first(lst) ((lst)->nxt)
-#define lst_last(lst) ((lst)->prv)
-#define lst_each(e,l) ((e) = (l)->nxt; (e) != (l); (e) = (e)->nxt)
-#define lst_each_safe(a,b,l)\
-  ((a) = (l)->nxt, (b) = (a)->nxt; (a) != (l); (a) = (b), (b) = (a)->nxt)
-#define lst_each_rev(e,l) ((e) = (l)->prv; (e) != (l); (e) = (e)->prv)
-#define lst_each_rev_safe(e,l)\
- ((a) = (l)->prv, (b) = (a)->prv; (a) != (l); (a) = (b), (b) = (a)->prv)
-// clang-format on
 
 /* ---------------------------------------------------------------------------
  *                                  Path
@@ -3521,26 +3316,4 @@ bin_search(const void *a, int cnt, int siz, void *val,
 #define cmd_arg_opt_flt(argv,x) cmd_arg_flt(cmd_arg_opt_str(argv,x))
 #define cmd_arg_end }}
 // clang-format on
-
-/* ---------------------------------------------------------------------------
- *                                  Image
- * ---------------------------------------------------------------------------
- */
-#define img_w(img) (img)[-2]
-#define img_h(img) (img)[-1]
-#define img_pix(img, x, y) \
-  (img)[castu((y)) * img_w(img) + castu((x))]
-
-static unsigned *
-img_mk(unsigned *img, int w, int h) {
-  img += 2;
-  img_w(img) = castu(w);
-  img_h(img) = castu(h);
-  return img;
-}
-static unsigned *
-img_new(struct arena *a, struct sys *s, int w, int h) {
-  unsigned *img = arena_alloc(a, s, szof(unsigned) * (w * h + 2));
-  return img_mk(img, w, h);
-}
 
