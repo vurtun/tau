@@ -378,6 +378,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s,
       lst->page.txt.cnt = 0;
       lst->page.txt.cur = !lst->page.txt.cur;
       file_view_lst_partition(lst->page.elms, qry->cmp);
+
       for loop(i, lst->page.cnt) {
         int off = lst->page.cur * FILE_LIST_ELM_CNT + i;
         struct file_elm *cur = &lst->page.elms[off];
@@ -620,15 +621,16 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui.tbl.lst.elm.end(ctx, tbl, elm);
   gui.tooltip(ctx, elm, fi->name);
 }
-static void
-ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
-                 struct gui_ctx *ctx, struct gui_panel *pan,
-                 struct gui_panel *parent) {
+static struct str
+ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
+                 struct file_list_view *lst, struct gui_ctx *ctx,
+                 struct gui_panel *pan, struct gui_panel *parent) {
   assert(lst);
   assert(ctx);
   assert(pan);
   assert(parent);
 
+  struct str ret = str_inv;
   int chdir = 0, dir = 0;
   gui.pan.begin(ctx, pan, parent);
   {
@@ -684,19 +686,23 @@ ui_file_view_tbl(struct file_view *fs, struct file_list_view *lst,
       lst->fltr = str_nil;
       file_view_lst_cd(fs, &fs->lst, ctx->sys, file_path);
       ctx->lst_state.cur_idx = -1;
+    } else {
+      ret = str_fmtsn(filepath, n, "%.*s/%.*s", strf(fs->lst.nav_path), strf(fi->name));
     }
   }
+  return ret;
 }
-static void
-ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
-                 struct gui_ctx *ctx, struct gui_panel *pan,
-                 struct gui_panel *parent) {
+static struct str
+ui_file_sel_view(char *filepath, int n, struct file_view *fs,
+                 struct file_list_view *lst, struct gui_ctx *ctx,
+                 struct gui_panel *pan, struct gui_panel *parent) {
   assert(fs);
   assert(lst);
   assert(ctx);
   assert(pan);
   assert(parent);
 
+  struct str ret = str_inv;
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel fnd = {.box = pan->box};
@@ -706,9 +712,10 @@ ui_file_sel_view(struct file_view *fs, struct file_list_view *lst,
     int gap = ctx->cfg.pan_gap[0];
     struct gui_panel tbl = {.box = pan->box};
     tbl.box.y = gui.bnd.min_max(fnd.box.y.max + gap, pan->box.y.max);
-    ui_file_view_tbl(fs, lst, ctx, &tbl, pan);
+    ret = ui_file_view_tbl(filepath, n, fs, lst, ctx, &tbl, pan);
   }
   gui.pan.end(ctx, pan, parent);
+  return ret;
 }
 static void
 ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
@@ -785,7 +792,7 @@ ui_file_sel(char *filepath, int n, struct file_view *fs, struct gui_ctx *ctx,
       {
         struct gui_panel bdy = {.box = tab.bdy};
         ui_file_view_page(&fs->lst, ctx, &tab);
-        ui_file_sel_view(fs, &fs->lst, ctx, &bdy, &tab.pan);
+        ret = ui_file_sel_view(filepath, n, fs, &fs->lst, ctx, &bdy, &tab.pan);
       }
       gui.tab.end(ctx, &tab, pan);
 

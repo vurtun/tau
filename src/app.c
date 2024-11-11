@@ -214,11 +214,13 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
 static void
 app_init(struct app *app) {
   assert(app);
+
   app->sys.win.title = "Tau";
   app->sys.win.x = -1;
   app->sys.win.y = -1;
   app->sys.win.w = 800;
   app->sys.win.h = 600;
+
   app->sys.gfx.clear_color = col_black;
   sys.init(&app->sys);
   res.init(&app->res, &app->sys);

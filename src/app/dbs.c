@@ -958,10 +958,12 @@ db_tab_resort(struct db_state *sdb, int dst_idx, int src_idx) {
   assert(sdb);
   assert(dst_idx >= 0);
   assert(src_idx >= 0);
+
   assert(dst_idx < sdb->tab_cnt);
   assert(src_idx < sdb->tab_cnt);
   assert(dst_idx < cntof(sdb->tabs));
   assert(src_idx < cntof(sdb->tabs));
+
   assert(!(sdb->unused & (1u << sdb->tabs[dst_idx])));
   assert(!(sdb->unused & (1u << sdb->tabs[src_idx])));
   iswap(sdb->tabs[dst_idx], sdb->tabs[src_idx]);
@@ -1821,16 +1823,17 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
  * ---------------------------------------------------------------------------
  */
 static void
-ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb,
+ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
                     struct db_info_state *sinfo, struct db_info_view *vinfo,
                     struct gui_ctx *ctx, struct gui_panel *pan,
                     struct gui_panel *parent) {
   assert(sdb);
   assert(vdb);
-  assert(ctx);
-  assert(pan);
   assert(sinfo);
   assert(vinfo);
+
+  assert(ctx);
+  assert(pan);
   assert(parent);
 
   const struct {struct str type; enum res_ico_id ico;} types[] = {
@@ -1838,6 +1841,8 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb,
       DB_TBL_MAP(DB_INFO)
     #undef DB_INFO
   };
+  int open_tbl = 0;
+  int open_tbl_idx = -1;
   gui.pan.begin(ctx, pan, parent);
   {
     int gap = ctx->cfg.gap[1];
@@ -1887,6 +1892,14 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb,
           gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, elm_sql, 0);
         }
         gui.tbl.lst.elm.end(ctx, &tbl, &item);
+
+        /* input handling */
+        struct gui_input in = {0};
+        gui.pan.input(&in, ctx, &item, GUI_BTN_LEFT);
+        if (in.mouse.btn.left.doubled) {
+          open_tbl_idx = i - tbl.lst.begin;
+          open_tbl = 1;
+        }
       }
       gui.tbl.lst.end(ctx, &tbl);
       if (tbl.lst.sel.mod) {
@@ -1896,9 +1909,17 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb,
     gui.tbl.end(ctx, &tbl, pan, sinfo->tbl.off);
   }
   gui.pan.end(ctx, pan, parent);
+
+  if (open_tbl) {
+    assert(open_tbl_idx >= 0);
+    assert(open_tbl_idx < cntof(vinfo->elms));
+    struct db_info_elm *elm = &vinfo->elms[open_tbl_idx];
+    db_tab_open_tbl_id(sdb, vdb, ctx, view, elm->rowid);
+    tbl_clr(&vinfo->sel);
+  }
 }
 static void
-ui_db_view_info(struct db_state *sdb, struct db_view *vdb,
+ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
                 struct db_info_state *sinfo, struct db_info_view *vinfo,
                 struct gui_ctx *ctx, struct gui_panel *pan,
                 struct gui_panel *parent) {
@@ -1937,7 +1958,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb,
       gui.tab.hdr.end(ctx, &tab, &hdr);
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};
-      ui_db_view_info_tbl(sdb, vdb, sinfo, vinfo, ctx, &bdy, &tab.pan);
+      ui_db_view_info_tbl(sdb, vdb, view, sinfo, vinfo, ctx, &bdy, &tab.pan);
     }
     gui.tab.end(ctx, &tab, pan);
     if (tab.sel.mod) {
@@ -1993,7 +2014,7 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
     case TBL_VIEW_SELECT: {
       struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
       struct gui_panel overview = {.box = lay};
-      ui_db_view_info(sdb, vdb, &sdb->info, &vdb->info, ctx, &overview, pan);
+      ui_db_view_info(sdb, vdb, view, &sdb->info, &vdb->info, ctx, &overview, pan);
       /* open table */
       int dis = !sdb->unused || !vdb->info.sel.cnt;
       confine gui_disable_on_scope(&gui, ctx, dis) {
