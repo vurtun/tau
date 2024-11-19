@@ -348,7 +348,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s,
   int pidx = (qry->page >= lst->page.idx) ? 0 : lst->page.cnt-1;
   struct file_elm piv = lst->page.elms[pidx];
   piv.name = str_set(lbl, cntof(lbl), piv.name);
-  lst->page.cur = qry->page < lst->page.idx;
+  lst->page.cur = (qry->page < lst->page.idx);
 
   /* iterate directory */
   struct sys_dir_iter it = {0};
@@ -368,8 +368,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *s,
     }
     /* add file element */
     int idx = (qry->page < lst->page.idx) ?
-      cntof(lst->page.elms) - ++lst->page.cnt :
-      lst->page.cnt++;
+      cntof(lst->page.elms) - ++lst->page.cnt : lst->page.cnt++;
     int at = lst->page.cur * FILE_LIST_ELM_CNT + idx;
     lst->page.elms[at] = elm;
 

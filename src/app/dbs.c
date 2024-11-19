@@ -50,6 +50,7 @@ db_tbl_name_acq(struct db_name_lck *lck, struct db_state *sdb,
     sqlite3_bind_int64(lck->stmt, 1, tbl->rowid);
     int ret = sqlite3_step(lck->stmt);
     assert(ret == SQLITE_ROW);
+
     const char *tbl_name = (const char*)sqlite3_column_text(lck->stmt, 0);
     int tbl_name_len = sqlite3_column_bytes(lck->stmt, 0);
     lck->name = strn(tbl_name, tbl_name_len);
@@ -77,6 +78,7 @@ db_tbl_col_name_acq(struct db_name_lck *lck, struct db_state *sdb,
     sqlite3_bind_int64(lck->stmt, 2, col_id);
     int ret = sqlite3_step(lck->stmt);
     assert(ret == SQLITE_ROW);
+
     const char *col_name = (const char*)sqlite3_column_text(lck->stmt, 0);
     int col_name_len = sqlite3_column_bytes(lck->stmt, 0);
     lck->name = strn(col_name, col_name_len);
@@ -672,6 +674,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   assert(rc == SQLITE_OK);
   rc = sqlite3_step(stmt);
   assert(rc == SQLITE_ROW);
+
   tbl->col.rng.total = sqlite3_column_int(stmt, 0);
   tbl->col.cnt = min(tbl->col.rng.total, DB_MAX_TBL_COLS);
   tbl->row.cols.cnt = min(tbl->col.rng.total, DB_MAX_TBL_ROW_COLS);
@@ -720,6 +723,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
     rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     assert(rc == SQLITE_OK);
+
     rc = sqlite3_step(stmt);
     assert(rc == SQLITE_ROW);
     tbl->row.rng.total = sqlite3_column_int(stmt, 0);
@@ -1410,9 +1414,9 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
 
     struct gui_lst_reg reg = {.box = lay};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, fltr->off);
-    if (view->id != stbl->rowid ||
-        reg.lst.begin != fltr->data_rng.lo || fltr->init ||
-        reg.lst.end != fltr->data_rng.hi || edt.mod) {
+    if (view->id != stbl->rowid || edt.mod || fltr->init ||
+        reg.lst.begin != fltr->data_rng.lo ||
+        reg.lst.end != fltr->data_rng.hi) {
       db_tbl_fltr_view_qry(sdb, vdb, stbl, vtbl, fltr, view, reg.lst.begin, reg.lst.end);
       fltr->init = 0;
     }
@@ -1872,15 +1876,15 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
   assert(pan);
   assert(parent);
 
-  const struct {struct str type; enum res_ico_id ico;} types[] = {
-    #define DB_INFO(a,b,c,d) {.type = strv(b), .ico = d},
-      DB_TBL_MAP(DB_INFO)
-    #undef DB_INFO
-  };
   int open_tbl = 0;
   int open_tbl_idx = -1;
   gui.pan.begin(ctx, pan, parent);
   {
+    const struct {struct str type; enum res_ico_id ico;} types[] = {
+      #define DB_INFO(a,b,c,d) {.type = strv(b), .ico = d},
+        DB_TBL_MAP(DB_INFO)
+      #undef DB_INFO
+    };
     int gap = ctx->cfg.gap[1];
     struct gui_box lay = pan->box;
     struct gui_panel fltr = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
@@ -2049,9 +2053,11 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
     struct gui_box lay = pan->box;
     switch (tbl->state) {
     case TBL_VIEW_SELECT: {
+
       struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
       struct gui_panel overview = {.box = lay};
       ui_db_view_info(sdb, vdb, view, &sdb->info, &vdb->info, ctx, &overview, pan);
+
       /* open table */
       int dis = !sdb->unused || !vdb->info.sel.cnt;
       confine gui_disable_on_scope(&gui, ctx, dis) {

@@ -1002,6 +1002,8 @@ gui_cfg_pushi(struct gui_cfg_stk *stk, void *ptr, int val) {
 }
 static int
 gui_cfg_pushi_on(struct gui_cfg_stk *stk, void *ptr, int val, int cond) {
+  assert(stk);
+  assert(ptr);
   if (cond) {
     gui_cfg_pushi(stk, ptr, val);
     return 1;
@@ -1071,6 +1073,7 @@ gui_input_end(struct gui_ctx *ctx, struct sys_mouse *mouse) {
 }
 static void
 gui_input_eat(struct gui_ctx *ctx) {
+  assert(ctx);
   for loop(i, GUI_MOUSE_BTN_CNT) {
     mset(&ctx->btn, 0, sizeof(ctx->btn));
   }
@@ -1078,6 +1081,9 @@ gui_input_eat(struct gui_ctx *ctx) {
 }
 static void
 gui_sys_dnd_begin(struct gui_ctx *ctx, struct sys *s) {
+  assert(s);
+  assert(ctx);
+
   ctx->dnd_act = 1;
   ctx->dnd_set = 1;
   ctx->dnd_clr = 1;
@@ -1192,6 +1198,7 @@ gui_begin(struct gui_ctx *ctx) {
 }
 static void
 gui_dnd_clr(struct gui_ctx *ctx) {
+  assert(ctx);
   mset(&ctx->dnd_paq, 0, sizeof(ctx->dnd_paq));
   ctx->dnd_act = 0;
   ctx->dnd_set = 0;
@@ -1382,6 +1389,9 @@ gui_txt_fit(struct res_txt_bnd *bnd, int space, struct gui_ctx *ctx,
 static void
 gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
                 struct str txt, int uln_pos, int uln_cnt) {
+  assert(ctx);
+  assert(pan);
+
   int n = str_len(txt);
   uln_pos = clamp(0, uln_pos, n);
   uln_cnt = min(uln_cnt, max(0, n - uln_pos));
@@ -1420,6 +1430,7 @@ gui_align_txt(struct gui_box *b, const struct gui_align *align, int *ext) {
 static void
 gui_txt_drw(struct gui_ctx *ctx, struct gui_panel *pan, struct str txt,
             int uln_pos, int uln_cnt) {
+
   assert(ctx);
   assert(pan);
   switch (pan->state) {
@@ -1441,6 +1452,7 @@ static void
 gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent, struct str txt,
             const struct gui_align *align, int uln_pos, int uln_cnt) {
+
   assert(ctx);
   assert(pan);
   assert(parent);
@@ -1471,6 +1483,7 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
 static void
 gui_txt(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
         struct str txt, const struct gui_align *align) {
+
   assert(ctx);
   assert(pan);
   assert(parent);
@@ -1479,6 +1492,7 @@ gui_txt(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_txtvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
           const struct gui_align *align, const char *fmt, va_list args) {
+
   assert(ctx);
   assert(fmt);
   assert(pan);
@@ -1493,6 +1507,7 @@ gui_txtvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_txtf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
          const struct gui_align *align, const char *fmt, ...) {
+
   assert(ctx);
   assert(fmt);
   assert(pan);
@@ -1505,6 +1520,7 @@ gui_txtf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_lbl(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
         struct gui_box_cut *cut, struct str txt) {
+
   assert(ctx);
   assert(cut);
   assert(pan);
@@ -1517,6 +1533,7 @@ gui_lbl(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
           struct gui_box_cut *cut, const char *fmt, va_list args) {
+
   assert(ctx);
   assert(fmt);
   assert(pan);
@@ -1531,6 +1548,7 @@ gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_lblf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
          struct gui_box_cut *cut, const char *fmt, ...) {
+
   assert(ctx);
   assert(fmt);
   assert(pan);
@@ -1544,6 +1562,7 @@ gui_lblf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static void
 gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
        const char *fmt, struct tm *tm) {
+
   assert(tm);
   assert(fmt);
   assert(ctx);
@@ -2203,6 +2222,7 @@ gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
 static int
 gui_sep(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
         enum gui_orient dir, int *val) {
+
   assert(val);
   assert(ctx);
   assert(parent);
@@ -3947,7 +3967,8 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent,
   struct sys *s = ctx->sys;
   struct gui_panel *pan = &d->pan;
   gui_panel_end(ctx, pan, parent);
-  if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
+  if (ctx->pass == GUI_RENDER &&
+      pan->state != GUI_HIDDEN) {
     gui_clip_end(ctx, &d->clip_rect);
   }
   int off_x = math_floori(d->off[0]);
@@ -4744,6 +4765,7 @@ gui_lst_end(struct gui_ctx *ctx, struct gui_lst *lst) {
     lst->lay.idx = s->cur_idx;
     unsigned long *tmp = lst->sel.bitset;
     lst->sel.bitset = 0;
+
     gui_lst_elm_begin(ctx, lst, &elm, &elm, 0xdeadbeefdeadbeef, 0);
     gui_lst_elm_end(ctx, lst, &elm, &elm);
     lst->sel.bitset = tmp;

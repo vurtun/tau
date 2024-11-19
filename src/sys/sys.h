@@ -201,11 +201,18 @@ struct sys_rnd_api {
 
 /* platform */
 #define SYS_MAX_INPUT 256
+enum sys_op {
+  SYS_SETUP,
+  SYS_RUN,
+  SYS_QUIT,
+};
 struct sys {
-  int quit;
-  int running;
-  unsigned seq;
   int version;
+  unsigned seq;
+  enum sys_op op;
+
+  int argc;
+  char **argv;
 
   struct cpu_info cpu;
   enum sys_cur_style cursor;
@@ -221,8 +228,9 @@ struct sys {
   float dpi_scale;
 
   /* modules */
-  void *platform;
   void *ren;
+  void *platform;
+  void *app;
 
   /* api */
   struct sys_mem_api mem;
@@ -254,12 +262,4 @@ struct sys {
   int txt_len;
   char txt[SYS_MAX_INPUT];
 };
-struct sys_api {
-  int version;
-  int(*init)(struct sys *s);
-  int(*pull)(struct sys *s);
-  void(*push)(struct sys *s);
-  void(*shutdown)(struct sys *s);
-};
-extern void sys_api(void *export, void *import);
 

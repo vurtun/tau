@@ -10,6 +10,18 @@ npow2(int x) {
   v++;
   return casti(v);
 }
+static int
+flt_valid(float a) {
+  if (isnan(a)) {
+    return 0;
+  }
+  if (isinf(a)) {
+    return 0;
+  }
+  return 1;
+}
+
+
 /* ---------------------------------------------------------------------------
  *                                Foreach
  * ---------------------------------------------------------------------------
@@ -2511,31 +2523,6 @@ str_split_cut(struct str *s, struct str delim) {
     return ret;
   }
 }
-static int
-str_fzy(struct str s, struct str p) {
-  const char *pat = str_beg(p);
-  const char *str = str_beg(s);
-
-  int run = 1;
-  int score = 0;
-  int remain = 0;
-  for (; str < str_end(s) && pat < str_end(p); str++) {
-    // clang-format off
-    while (*str == ' ' && str < str_end(s)) {str++;}
-    while (*pat == ' ' && pat < str_end(p)) {pat++;}
-    // clang-format on
-    if (to_lower(*str) == to_lower(*pat)) {
-      score += run;
-      run++; pat++;
-    } else {
-      score--; run = 1;
-    }
-  }
-  remain = casti(str_end(s) - str);
-  int val = score + remain + casti(str_beg(s) - str);
-  int left = casti(str_end(p) - pat);
-  return casti(val * left - remain);
-}
 static void
 ut_str(struct sys *s) {
   unused(s);
@@ -2736,6 +2723,7 @@ str_rm(char *b, struct str in, int cnt) {
 }
 static struct str
 str_put(char *b, int cap, struct str in, int pos, struct str s) {
+  assert(b);
   if (pos >= str_len(in)) {
     return str_add(b, cap, in, s);
   }
@@ -2768,6 +2756,7 @@ str_del(char *b, struct str in, int pos, int len) {
 }
 static struct str
 str_fmtsn(char *buf, int n, const char *fmt, ...) {
+  assert(buf);
   int ret;
   va_list va;
   va_start(va, fmt);
@@ -2777,6 +2766,7 @@ str_fmtsn(char *buf, int n, const char *fmt, ...) {
 }
 static struct str
 str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
+  assert(b);
   va_list va;
   va_start(va, fmt);
   int left = max(0, cap - str_len(in));
@@ -3066,6 +3056,10 @@ static inline long long
 tbl__store(unsigned long long *keys, void *vals, int *cnt,
            unsigned long long i, unsigned long long h,
            void* val, int val_siz) {
+
+  assert(cnt);
+  assert(keys);
+
   keys[i] = h;
   if (vals) {
     unsigned long long off = (unsigned long long)val_siz * i;
@@ -3077,6 +3071,10 @@ tbl__store(unsigned long long *keys, void *vals, int *cnt,
 static long long
 tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
          unsigned long long key, void *v, int val_siz) {
+
+  assert(keys);
+  assert(cnt);
+
   unsigned long long h = tbl__hash(key);
   unsigned long long n = castull(cap);
   unsigned long long i = h % n, b = i, dist = 0;
@@ -3281,6 +3279,7 @@ sort_radix32(unsigned *restrict out, const void *a, int siz, int n, int off,
 static force_inline int
 bin_search(const void *a, int cnt, int siz, void *val,
            int(*cmp_less)(const void*, const void*)) {
+
   assert(a);
   assert(val);
   assert(cmp_less);

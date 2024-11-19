@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <time.h>
 
 /* sys */
@@ -27,6 +28,7 @@
 #include "app/cfg.h"
 #include "app/pck.h"
 #include "app/dbs.h"
+#include "app.h"
 
 #define APP_VIEW_CNT 8
 #define APP_VIEW_PATH_BUF (MAX_FILE_PATH * APP_VIEW_CNT)
@@ -43,7 +45,6 @@ struct app_view {
   int path_buf_off;
 };
 struct app {
-  struct sys sys;
   struct res res;
   struct gui_ctx gui;
   struct file_view fs;
@@ -63,7 +64,6 @@ struct app {
   char gui_mem[CFG_GUI_MAX_MEMORY];
 };
 
-static struct sys_api sys;
 static struct res_api res;
 static struct gui_api gui;
 static struct pck_api pck;
@@ -212,27 +212,18 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
   iswap(app->tabs[dst_idx], app->tabs[src_idx]);
 }
 static void
-app_init(struct app *app) {
+app_init(struct app *app, struct sys *s) {
   assert(app);
-
-  app->sys.win.title = "Tau";
-  app->sys.win.x = -1;
-  app->sys.win.y = -1;
-  app->sys.win.w = 800;
-  app->sys.win.h = 600;
-
-  app->sys.gfx.clear_color = col_black;
-  sys.init(&app->sys);
-  res.init(&app->res, &app->sys);
+  res.init(&app->res, s);
   {
     struct gui_args args = {0};
-    args.scale = app->sys.dpi_scale;
-    if (app->sys.has_style){
+    args.scale = s->dpi_scale;
+    if (s->has_style){
       args.scm = GUI_COL_SCHEME_SYS;
     } else {
       args.scm = GUI_COL_SCHEME_DARK;
     }
-    app->gui.sys = &app->sys;
+    app->gui.sys = s;
     app->gui.res = &app->res;
     app->gui.vtx_buf = app->gui_mem;
     app->gui.idx_buf = app->gui_mem + CFG_GUI_VTX_MEMORY;
@@ -240,7 +231,7 @@ app_init(struct app *app) {
     app->gui.idx_buf_siz = CFG_GUI_IDX_MEMORY;
     gui.init(&app->gui, &args);
   }
-  if (pck.init(&app->fs, &app->sys, &app->gui) < 0) {
+  if (pck.init(&app->fs, s, &app->gui) < 0) {
 
   }
   dbs.init(app->db_mem, szof(app->db_mem));
@@ -249,12 +240,13 @@ app_init(struct app *app) {
   app->unused = ~0u;
   app->tabs[app->tab_cnt++] = castb(app_view_new(app));
   app_view_setup(app, app->tabs[0]);
+
 #ifdef DEBUG_MODE
-  ut_str(&app->sys);
+  ut_str(s);
 #endif
 }
 static void
-app_shutdown(struct app *app) {
+app_shutdown(struct app *app, struct sys *s) {
   assert(app);
   unsigned used = ~app->unused;
   while (used) {
@@ -267,9 +259,8 @@ app_shutdown(struct app *app) {
     app_view_del(app, idx);
     used = ~app->unused;
   }
-  pck.shutdown(&app->fs, &app->sys);
+  pck.shutdown(&app->fs, s);
   res.shutdown(&app->res);
-  sys.shutdown(&app->sys);
 }
 
 /* -----------------------------------------------------------------------------
@@ -294,7 +285,7 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
     int new_view = app_view_new(app);
     app_view_setup(app, new_view);
     app_tab_add(app, new_view);
-    app->sys.repaint = 1;
+    ctx->sys->repaint = 1;
   }
 }
 static void
@@ -304,6 +295,7 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   assert(ctx);
   assert(pan);
   assert(parent);
+
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_panel bdy = {.box = pan->box};
@@ -445,6 +437,7 @@ ui_app_view_tab(struct app *app, struct app_view *view,
 static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
+
   assert(app);
   assert(ctx);
   assert(pan);
@@ -539,50 +532,65 @@ usage(const char *app) {
   );
   exit(1);
 }
-extern int
-main(int argc, char **argv) {
-  const char *exe = 0;
-  /* api */
-  sys_api(&sys, 0);
-  res_api(&res, 0);
-  gui_api(&gui, 0);
-  pck_api(&pck, 0);
-  db_api(&dbs, 0);
+extern void
+app_run(struct sys *s) {
+  assert(s);
+  switch (s->op) {
+  case SYS_SETUP: {
+    s->win.title = "Tau";
+    s->win.x = -1, s->win.y = -1;
+    s->win.w = 800, s->win.h = 600;
+    s->gfx.clear_color = col_black;
+  } break;
 
-  /* init */
-  struct app app = {0};
-  cmd_arg_begin(exe, argc, argv){
-  case 'h': default: usage(exe); break;
-  } cmd_arg_end
-  app_init(&app);
+  case SYS_RUN: {
+    if (s->app == 0) {
+      /* init */
+      res_api(&res, 0);
+      gui_api(&gui, 0);
+      pck_api(&pck, 0);
+      db_api(&dbs, 0);
 
-  /* run */
-  while (app.sys.running) {
-    sys.pull(&app.sys);
+      struct app *app = calloc(1, sizeof(struct app));
+      app_init(app, s);
+      s->app = app;
+
+      const char *exe = 0;
+      cmd_arg_begin(exe, s->argc, s->argv){
+      case 'h': default: usage(exe); break;
+      } cmd_arg_end
+    }
     /* user interface */
-    if (app.sys.style_mod) {
-      gui.color_scheme(&app.gui, CFG_COLOR_SCHEME);
+    assert(s->app);
+    struct app *app = (struct app*)s->app;
+    if (s->style_mod) {
+      gui.color_scheme(&app->gui, CFG_COLOR_SCHEME);
     }
     for arr_loopv(i, app_ui_key_tbl) {
       /* map system keys to ui shortcuts */
-      const struct app_ui_shortcut *s = app_ui_key_tbl + i;
-      struct gui_ctx *ctx = &app.gui;
-      int keymod = app_on_mod(s->key.mod, app.sys.keymod);
-      if (bit_tst(app.sys.keys, s->key.code) && keymod) {
+      const struct app_ui_shortcut *k = app_ui_key_tbl + i;
+      struct gui_ctx *ctx = &app->gui;
+      int keymod = app_on_mod(k->key.mod, s->keymod);
+      if (bit_tst(s->keys, k->key.code) && keymod) {
         bit_set(ctx->keys, i);
-      } else if (bit_tst(app.sys.keys, s->alt.code) && keymod) {
+      } else if (bit_tst(s->keys, k->alt.code) && keymod) {
         bit_set(ctx->keys, i);
       }
     }
-    while (gui.begin(&app.gui)) {
-      /* run app ui */
-      struct gui_panel pan = {.box = app.gui.box};
-      ui_app_main(&app, &app.gui, &pan, &app.gui.root);
-      gui.end(&app.gui);
+    /* run app ui */
+    while (gui.begin(&app->gui)) {
+      struct gui_panel pan = {.box = app->gui.box};
+      ui_app_main(app, &app->gui, &pan, &app->gui.root);
+      gui.end(&app->gui);
     }
-    sys.push(&app.sys);
+  } break;
+
+  case SYS_QUIT: {
+    /* shutdown */
+    app_shutdown(s->app, s);
+    free(s->app);
+    s->app = 0;
+  } break;
   }
-  app_shutdown(&app);
-  return 0;
 }
 
