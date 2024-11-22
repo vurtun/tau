@@ -194,7 +194,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
 
   struct gui_lay_sol dummy;
   sol = !sol ? &dummy : sol;
-  mset(sol, 0, sizeof(*sol));
+  mset(sol,0,szof(*sol));
 
   for loop(i,cnt) {
     if (slots[i] < 0) {
@@ -607,7 +607,6 @@ gui_panel_hot(struct gui_ctx *ctx, struct gui_panel *p,
   assert(ctx && p);
   const struct sys *s = ctx->sys;
   const struct gui_box *b = &p->box;
-
   p->is_focused = p->id == ctx->focused;
   if (p->focusable && ctx->first_id == ctx->root.id) {
     ctx->first_id = p->id;
@@ -2186,7 +2185,6 @@ gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(ctx);
   assert(pan);
   assert(parent);
-
   gui_panel_begin(ctx, pan, parent);
   if (ctx->pass == GUI_RENDER && pan->state != GUI_HIDDEN) {
     int c = pan->state == GUI_DISABLED ? GUI_COL_TXT_DISABLED : GUI_COL_TXT;
@@ -2197,10 +2195,8 @@ gui_arrow(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
                     pan->box.y.max, pan->box.x.max, pan->box.y.max);
       } break;
       case GUI_WEST: {
-        gui_drw_tri(ctx,
-            pan->box.x.max, pan->box.y.min,
-            pan->box.x.max, pan->box.y.max,
-            pan->box.x.min, pan->box.y.mid);
+        gui_drw_tri(ctx, pan->box.x.max, pan->box.y.min, pan->box.x.max,
+                    pan->box.y.max, pan->box.x.min, pan->box.y.mid);
       } break;
       case GUI_SOUTH: {
         gui_drw_tri(ctx, pan->box.x.min, pan->box.y.min, pan->box.x.mid,

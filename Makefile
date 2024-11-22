@@ -33,10 +33,10 @@ debug: CC = clang
 debug: $(BIN)
 
 .PHONY: release
-release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -mfma -mshstk
+release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
 release: CFLAGS += -DRELEASE_MODE
 release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
-release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic -mshstk
+release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic
 release: CC = clang
 release: $(BIN)
 

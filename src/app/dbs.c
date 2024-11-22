@@ -844,6 +844,7 @@ db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
 static void
 db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
                 struct db_info_view *vinfo, int lo, int hi) {
+  int rc = 0;
   assert(sdb);
   assert(sinfo);
   assert(vinfo);
@@ -859,8 +860,8 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
   };
   sqlite3_stmt *stmt = 0;
   if (str_len(vinfo->fnd_str)) {
-    struct str sql = strv("SELECT rowid, name, sql FROM sqlite_master WHERE type = '%'||?||'%' AND name LIKE '%'||?||'%' LIMIT ?,?;");
-    int rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    struct str sql = strv("SELECT rowid, name, sql FROM sqlite_master WHERE type = ? AND name LIKE '%'||?||'%' LIMIT ?,?;");
+    rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_text(stmt, 1, type[sinfo->sel_tab], -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, db_str(vinfo->fnd_str), SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, lo);
@@ -868,7 +869,7 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
     assert(rc == SQLITE_OK);
   } else {
     struct str sql = strv("SELECT rowid, name, sql FROM sqlite_master WHERE type = ? LIMIT ?,?;");
-    int rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    rc = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_text(stmt, 1, type[sinfo->sel_tab], -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 2, lo);
     sqlite3_bind_int(stmt, 3, hi-lo);
@@ -879,7 +880,7 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
   sinfo->elm_cnt = 0;
   vinfo->id = sdb->id;
 
-  while (sqlite3_step(stmt) == SQLITE_ROW) {
+  while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
     long long rowid = sqlite3_column_int64(stmt, 0);
     const char *tbl_name = (const char*)sqlite3_column_text(stmt, 1);
     const char *tbl_sql = (const char*)sqlite3_column_text(stmt, 2);
@@ -890,6 +891,7 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
     struct str str_sql = strn(tbl_sql, tbl_sql_len);
     db_info_elm_add(sinfo, vinfo, rowid, str_name, str_sql);
   }
+  assert(rc == SQLITE_DONE);
   sqlite3_finalize(stmt);
 }
 static void
@@ -1913,9 +1915,9 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
       cfg.sel.mode = GUI_LST_SEL_MULTI;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      if (sdb->id != vdb->info.id ||
+      if (sdb->id != vdb->info.id || edt.mod ||
           tbl.lst.begin != sinfo->elm_rng.lo ||
-          tbl.lst.end != sinfo->elm_rng.hi || edt.mod) {
+          tbl.lst.end != sinfo->elm_rng.hi) {
         db_info_qry_elm(sdb, sinfo, vinfo, tbl.lst.begin, tbl.lst.end);
       }
       for gui_tbl_lst_loop(i,gui,&tbl) {
@@ -1968,6 +1970,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
   assert(vdb);
   assert(ctx);
   assert(pan);
+
   assert(sinfo);
   assert(vinfo);
   assert(parent);
@@ -2108,9 +2111,9 @@ ui_db_explr_tab_slot(struct db_state *sdb, struct db_tbl_state *stbl,
   assert(ctx);
   assert(tab);
   assert(hdr);
+  assert(ico);
   assert(stbl);
   assert(slot);
-  assert(ico);
 
   int ret = 0;
   unsigned long long tab_id = hash_lld(stbl->rowid);

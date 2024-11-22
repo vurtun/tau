@@ -402,7 +402,6 @@ file_view_lst_clr(struct file_list_view *lst) {
   lst->sel_idx = -1;
 
   lst->page_cnt = 0;
-  lst->page.cnt = 0;
   lst->page.idx = 0;
   lst->page.cur = 0;
 

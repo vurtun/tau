@@ -2889,26 +2889,6 @@ time_mod(long long a, long long b) {
 }
 
 /* ---------------------------------------------------------------------------
- *                              Ticket Mutex
- * ---------------------------------------------------------------------------
- */
-struct lck {
-  unsigned long long volatile ticket;
-  unsigned long long volatile serving;
-};
-static inline void
-lck_acq(struct lck *lck) {
-  unsigned long long t = atom_add(&lck->ticket, 1);
-  while(t != lck->serving) {
-    yield();
-  }
-}
-static inline void
-lck_rel(struct lck *lck) {
-  atom_add(&lck->serving, 1);
-}
-
-/* ---------------------------------------------------------------------------
  *                                  Path
  * ---------------------------------------------------------------------------
  */
