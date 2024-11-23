@@ -652,9 +652,12 @@ ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for gui_tbl_lst_loop(i,gui,&tbl) {
-        struct gui_panel elm = {0};
         int is_sel = (lst->sel_idx == i);
-        struct file_elm *e = lst->page.elms + lst->page.cur * FILE_LIST_ELM_CNT + i;
+        int idx = lst->page.cur * FILE_LIST_ELM_CNT + i;
+        assert(idx < cntof(lst->page.elms));
+
+        struct gui_panel elm = {0};
+        struct file_elm *e = lst->page.elms + idx;
         ui_file_view_tbl_elm(ctx, &tbl, tbl_lay, &elm, e, is_sel);
 
         /* input handling */
@@ -677,6 +680,7 @@ ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
   gui.pan.end(ctx, pan, parent);
 
   if (chdir) {
+    assert(dir < cntof(lst->page.elms));
     struct file_elm *fi = lst->page.elms + dir;
     if (fi->isdir) {
       char buf[MAX_FILE_PATH];

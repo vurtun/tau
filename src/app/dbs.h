@@ -34,6 +34,9 @@ struct gui_panel;
 #define DB_SQL_QRY_BUF_SIZ          KB(16)
 #define DB_SQL_QRY_NAME_BUF_SIZ     128
 
+#define DB_MAX_FLTR_CNT_MSK   ((1u<<DB_MAX_FLTR_CNT)-1)
+#define DB_TBL_CNT_MSK        ((1u<<DB_TBL_CNT)-1)
+
 /* ----------------------------------------------------------------------------
  *                                State
  *-----------------------------------------------------------------------------

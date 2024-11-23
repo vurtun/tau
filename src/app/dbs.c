@@ -103,6 +103,7 @@ db_tbl_fltr_new(struct db_tbl_fltr_state *fltr) {
 
   int idx = cpu_bit_ffs32(fltr->unused);
   fltr->unused &= ~(1u << idx);
+  assert(idx < cntof(fltr->elms));
   mset(fltr->elms + idx, 0, szof(fltr->elms[0]));
   return idx;
 }
@@ -185,11 +186,11 @@ db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
 static void
 db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
   assert(fltr);
-  unsigned used = ~fltr->unused;
+  unsigned used = (~fltr->unused) & DB_MAX_FLTR_CNT_MSK;
   while (used) {
     int idx = cpu_bit_ffs32(used);
     db_tbl_fltr_del(fltr, idx);
-    used = ~fltr->unused;
+    used = (~fltr->unused) & DB_MAX_FLTR_CNT_MSK;
   }
   fltr->cnt = 0;
 }
@@ -326,9 +327,11 @@ db_tbl_new(struct db_state *sdb) {
   assert(sdb->unused > 0);
 
   int idx = cpu_bit_ffs32(sdb->unused);
+  assert(idx < cntof(sdb->tbls));
   sdb->unused &= ~(1u << idx);
+
   mset(sdb->tbls + idx, 0, szof(sdb->tbls[0]));
-  sdb->tbls[idx].fltr.unused = ~0u;
+  sdb->tbls[idx].fltr.unused = DB_MAX_FLTR_CNT_MSK;
   return idx;
 }
 static enum res_ico_id
@@ -433,8 +436,11 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
     struct str name = strn(col_name, nam_len);
     struct str type = strn(col_type, typ_len);
 
-    /* add column into table */
     int col_idx = stbl->col.rng.cnt++;
+    assert(col_idx < cntof(vtbl->col.lst));
+    assert(col_idx < stbl->col.rng.total);
+
+    /* add column into table */
     struct db_tbl_col *col = &vtbl->col.lst[col_idx];
     col->rowid = col_rowid;
     col->name = str_buf_sqz(&vtbl->col.buf, name, DB_MAX_TBL_COL_NAME);
@@ -469,6 +475,9 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
     if (tbl_val(&col_tbl, it)) {
 
       int idx = tbl_unref(&col_tbl, it, 0);
+      assert(idx < cntof(vtbl->col.lst));
+      assert(idx >= 0);
+
       struct db_tbl_col *col = &vtbl->col.lst[idx];
       struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
       int min_len = min(str_len(col_name), from_len);
@@ -580,6 +589,7 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   stbl->row.rng.lo = lo;
   stbl->row.rng.hi = hi;
   stbl->row.rng.cnt = 0;
+
   str_buf_clr(&vtbl->row.buf);
   vtbl->row.id = stbl->rowid;
 
@@ -665,7 +675,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   tbl->qry_name = str_len(id) > str_len(tbl->title);
   tbl->disp = DB_TBL_VIEW_DSP_DATA;
   tbl->state = TBL_VIEW_DISPLAY;
-  tbl->fltr.unused = ~0u;
+  tbl->fltr.unused = DB_MAX_FLTR_CNT_MSK;
   tbl->rowid = rowid;
   tbl->kind = kind;
 
@@ -907,7 +917,7 @@ db_info_sel_elms(struct db_state *sdb, struct db_info_state *sinfo,
   if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
     tbl_clr(&vinfo->sel);
   }
-  if (sel->begin_idx + 1 == sel->end_idx) {
+  if (sel->begin_idx + 1 >= sel->end_idx) {
     /* single-selection */
     if (sinfo->sel_tab == DB_TBL_TYPE_TBL || sinfo->sel_tab == DB_TBL_TYPE_VIEW) {
       struct db_info_elm *elm = &vinfo->elms[sel->idx];
@@ -957,7 +967,7 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
   assert(sdb);
   assert(ctx);
 
-  sdb->unused = ~0u;
+  sdb->unused = DB_TBL_CNT_MSK;
   sdb->id = str_hash(path);
   int rc = sqlite3_open(str_beg(path), &sdb->con);
   if (rc != SQLITE_OK) {
@@ -987,11 +997,11 @@ static void
 db_free(struct db_state *sdb) {
   assert(sdb);
   /* cleanup tabs */
-  unsigned used = ~sdb->unused;
+  unsigned used = (~sdb->unused) & DB_TBL_CNT_MSK;
   while (used) {
     int idx = cpu_bit_ffs32(used);
     db_tbl_del(sdb, idx);
-    used = ~sdb->unused;
+    used = (~sdb->unused) & DB_TBL_CNT_MSK;
   }
   sdb->tab_cnt = 0;
   if (sdb->con){
@@ -1323,7 +1333,6 @@ ui_db_tbl_fltr_lst_view(struct db_state *sdb, struct db_view *vdb,
       ui_db_tbl_fltr_lst_tbl_hdr(fltr, &tbl, tbl_cols, ctx);
 
       /* list */
-      int del_idx = -1;
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, fltr->cnt);
       cfg.ctl.focus = GUI_LST_FOCUS_ON_HOV;
@@ -1331,9 +1340,13 @@ ui_db_tbl_fltr_lst_view(struct db_state *sdb, struct db_view *vdb,
       cfg.sel.mode = GUI_LST_SEL_SINGLE;
       cfg.sel.on = GUI_LST_SEL_ON_HOV;
 
+      int del_idx = -1;
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for gui_tbl_lst_loop(i,gui,&tbl) {
+
+        assert(i < cntof(fltr->lst));
         int idx = fltr->lst[i];
+        assert(idx < cntof(fltr->elms));
         struct db_tbl_fltr_elm *item = &fltr->elms[idx];
 
         struct gui_panel elm = {0};
@@ -1597,7 +1610,11 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
       int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_COLS)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, stbl->row.ui.state);
       for loopr(i, stbl->row.cols) {
-        struct db_tbl_col* col = &vtbl->col.lst[i - stbl->col.rng.lo];
+
+        assert(i >= stbl->col.rng.lo);
+        int idx = i - stbl->col.rng.lo;
+        assert(idx < cntof(vtbl->col.lst));
+        struct db_tbl_col* col = &vtbl->col.lst[idx];
 
         struct gui_btn slot = {0};
         gui.tbl.hdr.slot.begin(ctx, &tbl, &slot);
@@ -1728,11 +1745,14 @@ ui_db_tbl_view_dsp_layout(struct db_state *sdb, struct db_view *vdb,
         db_tbl_qry_cols(sdb, vdb, stbl, vtbl, tbl.lst.begin, tbl.lst.end, 0);
       }
       for gui_tbl_lst_loop(i,gui,&tbl) {
-        struct gui_panel item = {0};
+        assert(i < cntof(vtbl->col.lst));
+        assert(i < stbl->col.rng.total);
+
         struct db_tbl_col *col = &vtbl->col.lst[i];
         struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
         struct str col_type = str_buf_get(&vtbl->col.buf, col->type);
 
+        struct gui_panel item = {0};
         unsigned long long k = hash_lld(col->rowid);
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, k, 0);
         {
@@ -1820,6 +1840,7 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
       {
         for arr_loopv(i, tabs) {
           struct gui_panel slot = {0};
+          assert(i < cntof(tabs));
           gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, tabs[i].hash);
           gui.ico.box(ctx, &slot, &hdr.pan, tabs[i].ico, tabs[i].name);
           gui.tab.hdr.slot.end(ctx, &tab, &hdr, &slot, 0);
@@ -1902,6 +1923,7 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
     vinfo->fnd_str = ui_edit_fnd(ctx, &edt, &fltr, pan, &vinfo->fnd_ed,
         vinfo->fnd_buf, cntof(vinfo->fnd_buf), vinfo->fnd_str);
     if (edt.mod) {
+      assert(sinfo->sel_tab < cntof(sinfo->tab_cnt));
       sinfo->tab_cnt[sinfo->sel_tab] = db_info_qry_cnt(sdb, sinfo->sel_tab, vinfo->fnd_str);
     }
     struct gui_tbl tbl = {.box = lay};
@@ -1929,7 +1951,11 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
         db_info_qry_elm(sdb, sinfo, vinfo, tbl.lst.begin, tbl.lst.end);
       }
       for gui_tbl_lst_loop(i,gui,&tbl) {
+        assert(i >= tbl.lst.begin);
         int elm_idx = i - tbl.lst.begin;
+        assert(elm_idx < cntof(vinfo->elms));
+        assert(elm_idx >= 0);
+
         struct db_info_elm *elm = &vinfo->elms[elm_idx];
         struct str elm_name = str_buf_get(&vinfo->buf, elm->name);
         struct str elm_sql = str_buf_get(&vinfo->buf, elm->sql);
@@ -1983,7 +2009,10 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
   assert(vinfo);
   assert(parent);
 
-  static const struct {struct str title;enum res_ico_id ico;} tabs[] = {
+  static const struct tab_def {
+    struct str title;
+    enum res_ico_id ico;
+  } tabs[] = {
     #define DB_INFO(a,b,c,d) {.title = strv(c), .ico = d},
       DB_TBL_MAP(DB_INFO)
     #undef DB_INFO
@@ -1998,12 +2027,15 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       for loop(i, tab.cnt) {
+        assert(i < cntof(tabs));
+        const struct tab_def *def = &tabs[i];
+
         /* tab header slots */
         int dis = !(sinfo->tab_act & (1u << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
           struct gui_panel slot = {0};
-          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, str_hash(tabs[i].title));
-          gui.ico.box(ctx, &slot, &hdr.pan, tabs[i].ico, tabs[i].title);
+          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, str_hash(def->title));
+          gui.ico.box(ctx, &slot, &hdr.pan, def->ico, def->title);
           gui.tab.hdr.slot.end(ctx, &tab, &hdr, &slot, 0);
         }
       }
@@ -2056,13 +2088,13 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
   assert(view < cntof(sdb->tbls));
   assert(!(sdb->unused & (1llu << view)));
 
-  struct db_tbl_state *tbl = &sdb->tbls[view];
-  struct db_tbl_view *tblv = &vdb->tbl;
+  struct db_tbl_view *vtbl = &vdb->tbl;
+  struct db_tbl_state *stbl = &sdb->tbls[view];
   gui.pan.begin(ctx, pan, parent);
   {
     int gap = ctx->cfg.gap[1];
     struct gui_box lay = pan->box;
-    switch (tbl->state) {
+    switch (stbl->state) {
     case TBL_VIEW_SELECT: {
 
       struct gui_btn open = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
@@ -2081,7 +2113,7 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
     case TBL_VIEW_DISPLAY: {
       /* table view */
       struct gui_panel lst = {.box = pan->box};
-      ui_db_tbl_view_dsp(sdb, vdb, tbl, tblv, ctx, &lst, pan);
+      ui_db_tbl_view_dsp(sdb, vdb, stbl, vtbl, ctx, &lst, pan);
     } break;
     }
   }
@@ -2173,7 +2205,11 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx, struct gui_panel *
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, sdb->tbl_lst_off);
     for gui_lst_reg_loop(i,gui,&reg) {
-      struct db_tbl_state *tbl = &sdb->tbls[sdb->tabs[i]];
+
+      assert(i < cntof(sdb->tabs));
+      int idx = sdb->tabs[i];
+      assert(idx < cntof(sdb->tbls));
+      struct db_tbl_state *tbl = &sdb->tbls[idx];
 
       struct str title = strv("Info");
       enum res_ico_id ico = RES_ICO_CUBE;
@@ -2225,8 +2261,12 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       for loop(i, tab.cnt) {
         /* tab header slots */
+        assert(i < cntof(sdb->tabs));
+        int idx = sdb->tabs[i];
+        assert(idx < cntof(sdb->tbls));
+
         struct gui_panel slot = {0};
-        struct db_tbl_state *tbl = &sdb->tbls[sdb->tabs[i]];
+        struct db_tbl_state *tbl = &sdb->tbls[idx];
         if (ui_db_explr_tab(sdb, tbl, ctx, &tab, &hdr, &slot)) {
           del_tab = 1;
         }

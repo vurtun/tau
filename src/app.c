@@ -30,6 +30,7 @@
 #include "app.h"
 
 #define APP_VIEW_CNT 8
+#define APP_VIEW_CNT_MSK ((1u<<APP_VIEW_CNT)-1)
 #define APP_VIEW_PATH_BUF (MAX_FILE_PATH * APP_VIEW_CNT)
 
 enum app_view_state {
@@ -236,7 +237,7 @@ app_init(struct app *app, struct sys *s) {
   dbs.init(app->db_mem, szof(app->db_mem));
 
   app->tab_cnt = 0;
-  app->unused = ~0u;
+  app->unused = APP_VIEW_CNT_MSK;
   app->tabs[app->tab_cnt++] = castb(app_view_new(app));
   app_view_setup(app, app->tabs[0]);
 
@@ -247,7 +248,7 @@ app_init(struct app *app, struct sys *s) {
 static void
 app_shutdown(struct app *app, struct sys *s) {
   assert(app);
-  unsigned used = ~app->unused;
+  unsigned used = (~app->unused) & APP_VIEW_CNT_MSK;
   while (used) {
     int idx = cpu_bit_ffs32(used);
     assert(idx < APP_VIEW_CNT);
@@ -256,7 +257,7 @@ app_shutdown(struct app *app, struct sys *s) {
       dbs.del(&view->db);
     }
     app_view_del(app, idx);
-    used = ~app->unused;
+    used = (~app->unused) & APP_VIEW_CNT_MSK;
   }
   pck.shutdown(&app->fs, s);
   res.shutdown(&app->res);
@@ -354,8 +355,12 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, app->tab_lst_off);
     for gui_lst_reg_loop(i,gui,&reg) {
 
+      assert(i < cntof(app->tabs));
+      int idx = app->tabs[i];
+      assert(idx < cntof(app->views));
+
       struct gui_panel elm = {0};
-      struct app_view *view = &app->views[app->tabs[i]];
+      struct app_view *view = &app->views[idx];
       unsigned long long tab_id = hash_ptr(view);
       gui.lst.reg.elm.txt(ctx, &reg, &elm, tab_id, 0, strv("Open"), 0);
 
@@ -538,7 +543,8 @@ app_run(struct sys *s) {
   case SYS_SETUP: {
     s->win.title = "Tau";
     s->win.x = -1, s->win.y = -1;
-    s->win.w = 800, s->win.h = 600;
+    s->win.w = CFG_WIN_WIDTH;
+    s->win.h = CFG_WIN_HEIGHT;
     s->win.min_w = CFG_WIN_MIN_WIDTH;
     s->win.min_h = CFG_WIN_MIN_HEIGHT;
     s->win.max_w = CFG_WIN_MAX_WIDTH;
