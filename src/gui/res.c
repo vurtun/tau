@@ -150,7 +150,7 @@ res_unpack(int *data_siz, const char *src) {
   unsigned char *data = 0;
   {
     const int com_size = (((int)strlen(src) + 4) / 5) * 4;
-    unsigned char *com_buf = calloc(1, com_size);
+    unsigned char *com_buf = calloc(1, castsz(com_size));
     res__decode_85(com_buf, cast(const unsigned char *, src));
     {
       unsigned un_siz = res__decompress_len(com_buf);

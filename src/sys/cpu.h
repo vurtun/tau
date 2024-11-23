@@ -681,9 +681,9 @@ cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
   assert(k > 0);
   assert(n > 0);
 
-  const uint8x16_t first = vdupq_n_u8(needle[0]);
-  const uint8x16_t last  = vdupq_n_u8(needle[k - 1]);
-  const unsigned char *ptr = (unsigned char*)s;
+  const uint8x16_t first = vdupq_n_u8((unsigned char)needle[0]);
+  const uint8x16_t last  = vdupq_n_u8((unsigned char)needle[k - 1]);
+  const unsigned char *ptr = (const unsigned char*)s;
   for (size_t i = 0; i < n; i += 16) {
     const uint8x16_t blk_first = vld1q_u8(ptr + i);
     const uint8x16_t blk_last  = vld1q_u8(ptr + i + k - 1);
@@ -692,24 +692,24 @@ cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
     const uint8x16_t pred_16  = vandq_u8(eq_first, eq_last);
     unsigned long long mask = vgetq_lane_u64(vreinterpretq_u64_u8(pred_16), 0);
     if (mask) {
-      for (int j=0; j < 8; j++) {
+      for (size_t j=0; j < 8; j++) {
         if ((mask & 0xff) && (memcmp(s + i + j + 1, needle + 1, k - 2) == 0)) {
-            return i + j;
+          return (int)(i + j);
         }
         mask >>= 8;
       }
     }
     mask = vgetq_lane_u64(vreinterpretq_u64_u8(pred_16), 1);
     if (mask) {
-      for (int j=0; j < 8; j++) {
+      for (size_t j=0; j < 8; j++) {
         if ((mask & 0xff) && (memcmp(s + i + j + 8 + 1, needle + 1, k - 2) == 0)) {
-            return i + j + 8;
+            return (int)(i + j + 8);
         }
         mask >>= 8;
       }
     }
   }
-  return n;
+  return (int)n;
 }
 
 /* hash */

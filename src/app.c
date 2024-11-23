@@ -13,12 +13,11 @@
 #include <math.h>
 #include <time.h>
 
-/* sys */
+/* app */
 #include "sys/cpu.h"
 #include "lib/fmt.h"
 #include "lib/std.h"
 #include "lib/rpq.h"
-#include "lib/img.h"
 #include "lib/fnt.h"
 #include "lib/sql.h"
 #include "sys/gfx.h"
@@ -73,7 +72,6 @@ static struct db_api dbs;
 #include "lib/std.c"
 #include "lib/math.c"
 #include "lib/rpq.c"
-#include "lib/img.c"
 #include "lib/fnt.c"
 #include "lib/sql.c"
 #include "gui/res.c"
@@ -213,6 +211,7 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
 }
 static void
 app_init(struct app *app, struct sys *s) {
+  assert(s);
   assert(app);
   res.init(&app->res, s);
   {
@@ -540,6 +539,10 @@ app_run(struct sys *s) {
     s->win.title = "Tau";
     s->win.x = -1, s->win.y = -1;
     s->win.w = 800, s->win.h = 600;
+    s->win.min_w = CFG_WIN_MIN_WIDTH;
+    s->win.min_h = CFG_WIN_MIN_HEIGHT;
+    s->win.max_w = CFG_WIN_MAX_WIDTH;
+    s->win.max_h = CFG_WIN_MAX_HEIGHT;
     s->gfx.clear_color = col_black;
   } break;
 

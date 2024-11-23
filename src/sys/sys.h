@@ -115,6 +115,8 @@ enum sys_color {
 /* window */
 struct sys_win {
   int x, y, w, h;
+  int min_w, min_h;
+  int max_w, max_h;
   const char *title;
   unsigned resized:1;
 };

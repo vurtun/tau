@@ -1410,6 +1410,8 @@ gui_align_txt(struct gui_box *b, const struct gui_align *align, int *ext) {
   assert(ext);
   assert(align);
   switch (align->h) {
+    case GUI_HALIGN_LEFT:
+      break;
     case GUI_HALIGN_MID:
       b->x = gui_mid_ext(b->x.mid, ext[0]);
       break;
@@ -1418,6 +1420,8 @@ gui_align_txt(struct gui_box *b, const struct gui_align *align, int *ext) {
       break;
   }
   switch (align->v) {
+    case GUI_VALIGN_TOP:
+      break;
     case GUI_VALIGN_MID:
       b->y = gui_mid_ext(b->y.mid, ext[1]);
       break;
@@ -1433,6 +1437,8 @@ gui_txt_drw(struct gui_ctx *ctx, struct gui_panel *pan, struct str txt,
   assert(ctx);
   assert(pan);
   switch (pan->state) {
+    case GUI_HIDDEN:
+      return;
     case GUI_DISABLED: {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
       gui_drw_txt(ctx, pan->box.x.min, pan->box.y.min, txt);
@@ -1843,12 +1849,16 @@ gui_chk(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   pan->box = gui_box_mid_ext(&pan->box, ctx->cfg.item, ctx->cfg.item);
   gui_panel_begin(ctx, pan, parent);
   switch (ctx->pass) {
+    case GUI_INPUT:
+      break;
     case GUI_RENDER: {
       if (pan->state != GUI_HIDDEN) {
         gui__chk_drw(ctx, pan);
         gui__chk_cur(ctx, pan, chkd);
       }
     } break;
+    case GUI_FINISHED:
+      break;
   }
   gui_panel_end(ctx, pan, parent);
 
@@ -4980,6 +4990,8 @@ gui_tree_node_begin(struct gui_ctx *ctx, struct gui_tree_node *node,
   ico.box.y = gui_mid_ext(ico.box.y.mid, ext[1]);
 
   switch (node->type) {
+    case GUI_TREE_LEAF:
+      break;
     case GUI_TREE_NODE: {
       if (gui_tree_node_icon(ctx, &ico, parent, node->open)) {
         node->open = !node->open;
@@ -5949,6 +5961,7 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *b, unsigned flags,
               int off_x, int off_y) {
   assert(b);
   assert(ctx);
+
   int s = ctx->cfg.grid;
   gui_drw_line_style(ctx, 1);
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
@@ -6464,7 +6477,7 @@ gui_tml_zoom(struct gui_tml *t, int min, int max) {
 
   t->scale = clamp(t->scale_rng[0], new_scale, t->scale_rng[1]);
   t->zoom = math_log(t->scale);
-  t->off = math_roundi(castf(mid) * t->scale) - castf(tot >> 1);
+  t->off = castf(math_roundi(castf(mid) * t->scale)) - castf(tot >> 1);
   t->off_mod = 1;
 }
 static void

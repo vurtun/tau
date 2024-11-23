@@ -14,7 +14,7 @@ OBJCFLAGS = $(CFLAGS) -ObjC -fobjc-arc
 .PHONY: debug
 debug: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
 debug: CFLAGS += -Wno-padded -Wno-comma -Wno-declaration-after-statement
-debug: CFLAGS += -Wno-double-promotion -Wno-float-equal
+debug: CFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch-default
 debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
 debug: CFLAGS += -Wc++-compat -Wno-unused-function -Wsign-conversion
 debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough -Wno-vla

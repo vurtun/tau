@@ -224,6 +224,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   assert(lo >= 0);
   assert(hi >= 0);
   assert(lo <= hi);
+
   assert(lo <= stbl->fltr.data_rng.total);
   assert(hi <= stbl->fltr.data_rng.total);
   assert((hi - lo) <= cntof(view->data));
@@ -292,6 +293,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   }
   if (stmt) {
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+      assert(fltr->data_rng.cnt < cntof(view->data));
       long long rowid = sqlite3_column_int64(stmt, 0);
       const char *dat = (const char*)sqlite3_column_text(stmt, 1);
       int len = sqlite3_column_bytes(stmt, 1);
@@ -371,6 +373,7 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
   assert(lo >= 0);
   assert(hi >= 0);
   assert(lo <= hi);
+
   assert(lo < stbl->col.rng.total);
   assert(hi <= stbl->col.rng.total);
   assert((hi - lo) <= cntof(vtbl->col.lst));
@@ -469,7 +472,7 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
       struct db_tbl_col *col = &vtbl->col.lst[idx];
       struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
       int min_len = min(str_len(col_name), from_len);
-      if (!memcmp(str_beg(col_name), from, min_len)) {
+      if (!memcmp(str_beg(col_name), from, castsz(min_len))) {
         col->fk = 1;
       }
     }
@@ -972,10 +975,12 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
   zero2(sdb->info.tbl.off);
 
   for arr_loopv(i, sdb->info.tab_cnt) {
-    sdb->info.tab_cnt[i] = db_info_qry_cnt(sdb, i, str_nil);
+    enum db_tbl_type tab_type = cast(enum db_tbl_type, i);
+    sdb->info.tab_cnt[i] = db_info_qry_cnt(sdb, tab_type, str_nil);
     sdb->info.tab_act |= castu(!!sdb->info.tab_cnt[i]) << i;
   }
-  sdb->info.sel_tab = cpu_bit_ffs32(sdb->info.tab_act);
+  int sel = cpu_bit_ffs32(sdb->info.tab_act);
+  sdb->info.sel_tab = cast(enum db_tbl_type, sel);
   return 1;
 }
 static void
@@ -1469,6 +1474,8 @@ ui_db_tbl_view_dsp_fltr(struct db_state *sdb, struct db_view *vdb,
 static enum res_ico_id
 ui_db_tbl_lst_elm_ico(enum db_tbl_type type) {
   switch (type) {
+  case DB_TBL_TYPE_CNT:
+    assert(0);
   case DB_TBL_TYPE_TBL:
     return RES_ICO_TABLE;
   case DB_TBL_TYPE_VIEW:
@@ -1805,7 +1812,7 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
   {
     /* tab control */
     struct gui_tab_ctl tab = {.box = pan->box, .hdr_pos = GUI_TAB_HDR_BOT};
-    gui.tab.begin(ctx, &tab, pan, DB_TBL_VIEW_DSP_CNT, stbl->disp);
+    gui.tab.begin(ctx, &tab, pan, DB_TBL_VIEW_DSP_CNT, casti(stbl->disp));
     {
       /* tab header */
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
@@ -1822,6 +1829,7 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
       /* tab body */
       struct gui_panel bdy = {.box = tab.bdy};
       switch(stbl->disp) {
+      case DB_TBL_VIEW_DSP_CNT: assert(0); break;
       case DB_TBL_VIEW_DSP_DATA: {
         ui_db_tbl_view_dsp_data(sdb, vdb, stbl, vtbl, ctx, &bdy, &tab.pan);
       } break;
@@ -1854,7 +1862,7 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
           stbl->col.rng.total = stbl->col.total;
         }
       }
-      stbl->disp = tab.sel.idx;
+      stbl->disp = cast(enum db_tbl_view_dsp_state, tab.sel.idx);
     }
   }
   gui.pan.end(ctx, pan, parent);

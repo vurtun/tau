@@ -90,4 +90,8 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 #define CFG_GUI_VTX_MEMORY      KB(128)
 #define CFG_GUI_IDX_MEMORY      KB(128)
 #define CFG_GUI_MAX_MEMORY      (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY)
+#define CFG_WIN_MIN_WIDTH       480
+#define CFG_WIN_MIN_HEIGHT      360
+#define CFG_WIN_MAX_WIDTH       4096
+#define CFG_WIN_MAX_HEIGHT      2160
 
