@@ -1971,7 +1971,6 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
     struct gui_edit_box edt = {.box = fltr.box};
     vinfo->fnd_str = ui_edit_fnd(ctx, &edt, &fltr, pan, &vinfo->fnd_ed,
         vinfo->fnd_buf, cntof(vinfo->fnd_buf), vinfo->fnd_str);
-
     if (edt.mod) {
       assert(sinfo->sel_tab < cntof(sinfo->tab_cnt));
       sinfo->tab_cnt[sinfo->sel_tab] = db_info_qry_cnt(sdb, sinfo->sel_tab, vinfo->fnd_str);
@@ -2102,6 +2101,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
     if (tab.sel.mod) {
       if (str_len(vinfo->fnd_str)) {
         vinfo->fnd_str = str_nil;
+        assert(sinfo->sel_tab < cntof(sinfo->tab_cnt));
         sinfo->tab_cnt[sinfo->sel_tab] = db_info_qry_cnt(sdb, sinfo->sel_tab, str_nil);
       }
       sinfo->sel_tab = castb(tab.sel.idx);
