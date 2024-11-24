@@ -670,6 +670,7 @@ ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
       gui.tbl.lst.end(ctx, &tbl);
       if (tbl.lst.sel.mod) {
         /* selection handling */
+        assert(tbl.lst.sel.idx < cntof(lst->page.elms));
         struct file_elm *elm = lst->page.elms + tbl.lst.sel.idx;
         elm->isvalid = !elm->isdir;
         lst->sel_idx = tbl.lst.sel.idx;

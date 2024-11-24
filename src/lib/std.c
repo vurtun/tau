@@ -30,6 +30,7 @@ flt_valid(float a) {
 #define loopr(i,r) (int i = (r).lo; i != (r).hi; i += 1)
 #define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += 1, ++j)
 #define loop(i,n) (int i = 0; i < (n); ++i)
+#define loopx(i,n,m) (int i = 0; i < min(n,m); ++i)
 
 /* ---------------------------------------------------------------------------
  *                                Memory
@@ -406,6 +407,7 @@ guid_hash64(const struct guid *g) {
 #define arr_eachp(it,a,e) ((it) = (a); (it) < (e); ++(it))
 #define arr_each(it,a,n) arr_eachp(it,a,(a)+(n))
 #define arr_eachv(it,a) arr_eachp(it,(a),(a)+cntof(a))
+#define arr_loopn(i,a,n) (int i = 0; i < min(n,cntof(a)); ++i)
 #define arr_loopv(i,a) (int i = 0; i < cntof(a); ++i)
 #define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += 1)
 #define arr_rm(a,i,n) memmove(&(a)[i], &a[i+1], (size_t)(casti(n) - 1 - i) * sizeof((a)[0]))

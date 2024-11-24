@@ -346,8 +346,7 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.begin(ctx, pan, parent);
   {
     struct gui_lst_cfg cfg = {0};
-    int cnt = cpu_bit_cnt(~app->unused);
-    gui.lst.cfg(&cfg, cnt, app->tab_lst_off[1]);
+    gui.lst.cfg(&cfg, app->tab_cnt, app->tab_lst_off[1]);
     cfg.ctl.focus = GUI_LST_FOCUS_ON_HOV;
     cfg.sel.on = GUI_LST_SEL_ON_HOV;
 
@@ -450,6 +449,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.begin(ctx, pan, parent);
   {
     /* tab control */
+    assert(app->tab_cnt < cntof(app->tabs));
     struct gui_tab_ctl tab = {.box = pan->box, .show_btn = 1};
     gui.tab.begin(ctx, &tab, pan, app->tab_cnt, app->sel_tab);
     {
@@ -457,10 +457,16 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       int del_tab = 0;
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
-      for loop(i, tab.cnt) {
+      assert(tab.cnt < cntof(app->tabs));
+      for arr_loopn(i, app->tabs, tab.cnt) {
+
+        assert(i < cntof(app->tabs));
+        int idx = app->tabs[i];
+        assert(idx < cntof(app->views));
+
         /* tab header slots */
         struct gui_panel slot = {0};
-        struct app_view *view = &app->views[app->tabs[i]];
+        struct app_view *view = &app->views[idx];
         del_tab |= ui_app_view_tab(app, view, ctx, &tab, &hdr, &slot);
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
