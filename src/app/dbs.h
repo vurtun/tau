@@ -11,7 +11,7 @@ struct gui_panel;
 #define DB_MAX_TBL_TITLE      32
 #define DB_MAX_TBL_SQL        64
 #define DB_MAX_TBL_COLS       64
-#define DB_MAX_TBL_ROW_COLS   8
+#define DB_MAX_TBL_ROW_COLS   16
 #define DB_MAX_TBL_ROWS       128
 #define DB_MAX_TBL_ELM        (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS)
 #define DB_MAX_TBL_COL_NAME   64
