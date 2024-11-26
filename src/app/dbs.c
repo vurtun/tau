@@ -511,16 +511,17 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
   stbl->row.rng.hi = 0;
   stbl->row.rng.cnt = 0;
 
-  int hi = lo + stbl->row.cols.cnt;
-  if (!rng_has_inclv(&stbl->col.rng, lo)) {
-    int clo = max(0, lo - (stbl->col.cnt >> 1u));
-    db_tbl_qry_cols(sdb, vdb, stbl, vtbl, clo, clo + stbl->col.cnt, 0);
-  } else if (!rng_has_inclv(&stbl->col.rng, hi)) {
-    int clo = min(stbl->col.rng.total - stbl->col.cnt, hi + (stbl->col.cnt >> 1u));
-    db_tbl_qry_cols(sdb, vdb, stbl, vtbl, clo, clo + stbl->col.cnt, 0);
+  int end = max(stbl->col.cnt, stbl->col.rng.total) - stbl->col.cnt;
+  int lhs = min(end, lo);
+  int rhs = lhs + stbl->col.cnt;
+
+  if (!rng_has_inclv(&stbl->col.rng, lhs) ||
+      !rng_has_inclv(&stbl->col.rng, rhs)) {
+    db_tbl_qry_cols(sdb, vdb, stbl, vtbl, lhs, rhs, 0);
   }
-  stbl->row.cols.lo = lo;
-  stbl->row.cols.hi = hi;
+  int rend = max(stbl->row.cols.cnt, stbl->col.rng.total) - stbl->row.cols.cnt;
+  stbl->row.cols.lo = min(lo, rend);
+  stbl->row.cols.hi = stbl->row.cols.lo + stbl->row.cols.cnt;
 }
 static struct str
 db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
@@ -638,11 +639,13 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
       assert(elm_idx < DB_MAX_TBL_ELM);
       vtbl->row.rowids[stbl->row.rng.cnt++] = sqlite3_column_int64(stmt, 0);
       for loop(i, stbl->row.cols.cnt) {
-        const char *dat = (const char*)sqlite3_column_text(stmt, i+1);
-        int len = sqlite3_column_bytes(stmt, i+1);
-        struct str data = strn(dat, len);
-        assert(elm_idx < cntof(vtbl->row.lst));
-        vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
+        if (!vtbl->col.lst[i + stbl->row.cols.lo].blob) {
+          const char *dat = (const char*)sqlite3_column_text(stmt, i+1);
+          int len = sqlite3_column_bytes(stmt, i+1);
+          struct str data = strn(dat, len);
+          assert(elm_idx < cntof(vtbl->row.lst));
+          vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
+        }
         elm_idx++;
       }
     }
@@ -715,8 +718,8 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
 
   /* setup table column display table */
   struct gui_split_lay bld = {0};
-  gui.splt.lay.begin(&bld, tbl->row.ui.state, tbl->col.cnt, ctx->cfg.sep);
-  for loop(i, tbl->col.cnt) {
+  gui.splt.lay.begin(&bld, tbl->row.ui.state, tbl->row.cols.cnt, ctx->cfg.sep);
+  for loop(i, tbl->row.cols.cnt) {
     static const int cons[2] = {100, 1000};
     gui.splt.lay.add(&bld, GUI_LAY_SLOT_DYN, 1, cons);
   }
@@ -1591,7 +1594,7 @@ ui_db_tbl_view_hdr_blob_slot(struct gui_ctx *ctx, struct str txt,
   assert(ctx);
   assert(slot);
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
-  struct gui_panel pan = {.box = slot->box};
+  struct gui_panel pan = {.box = slot->pan.box};
   gui_txt(ctx, &pan, &slot->pan, txt, &align);
 }
 static void
@@ -1633,6 +1636,7 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
 
   gui.pan.begin(ctx, pan, parent);
   {
+    int back = 0, front = 0;
     struct gui_tbl tbl = {.box = pan->box};
     gui.tbl.begin(ctx, &tbl, pan, stbl->row.ui.off, 0);
     {
@@ -1644,11 +1648,11 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
           stbl->col.rng.total = stbl->col.sel.cnt;
           db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
         } else {
-          db_tbl_qry_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo, stbl->row.cols.hi, 0);
+          db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
         }
       }
       /* header */
-      int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_COLS)];
+      int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_ROW_COLS)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, stbl->row.ui.state);
       for loopr(i, stbl->row.cols) {
 
@@ -1665,9 +1669,7 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
           /* move column window to the left */
           int dis = stbl->col.rng.lo == 0 || stbl->col.rng.cnt == stbl->col.rng.total;
           confine gui_disable_on_scope(&gui, ctx, dis) {
-            if (gui__scrl_btn(ctx, &prv, &slot.pan, GUI_WEST)) {
-              db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo-1);
-            }
+            back = gui__scrl_btn(ctx, &prv, &slot.pan, GUI_WEST);
           }
           slot.pan.box.x = gui.bnd.min_max(prv.box.x.max, slot.pan.box.x.max);
         }
@@ -1676,11 +1678,9 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
           nxt.box.x = gui.bnd.max_ext(slot.pan.box.x.max, ctx->cfg.scrl);
           /* move column window to the right */
           int fits = stbl->col.rng.cnt == stbl->col.rng.total;
-          int end = (i == (stbl->col.rng.total - stbl->row.cols.cnt));
+          int end = (i >= (stbl->col.rng.total - stbl->row.cols.cnt));
           confine gui_disable_on_scope(&gui, ctx, fits || end) {
-            if (gui__scrl_btn(ctx, &nxt, &slot.pan, GUI_EAST)) {
-              db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo+1);
-            }
+            front = gui__scrl_btn(ctx, &nxt, &slot.pan, GUI_EAST);
           }
           slot.pan.box.x = gui.bnd.min_max(slot.pan.box.x.min, nxt.box.x.min);
         }
@@ -1738,6 +1738,12 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
       gui.tbl.lst.end(ctx, &tbl);
     }
     gui.tbl.end(ctx, &tbl, pan, stbl->row.ui.off);
+
+    if (back) {
+      db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo-1);
+    } else if (front) {
+      db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo+1);
+    }
   }
   gui.pan.end(ctx, pan, parent);
 }

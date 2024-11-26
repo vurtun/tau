@@ -144,7 +144,7 @@ enum db_tbl_view_state {
   TBL_VIEW_DISPLAY,
 };
 struct db_tbl_ui_state {
-  int state[GUI_TBL_CAP(DB_MAX_TBL_COLS)];
+  int state[GUI_TBL_CAP(DB_MAX_TBL_ROW_COLS)];
   double off[2];
 };
 enum db_tbl_ui_disp_state_col {
