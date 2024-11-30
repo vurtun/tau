@@ -11,7 +11,6 @@ struct gfx_tex {
 };
 struct gfx_mtl {
   struct sys *sys;
-  struct arena mem;
 
   id<MTLDevice> dev;
   id<MTLLibrary> lib;

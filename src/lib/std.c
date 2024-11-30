@@ -16,9 +16,10 @@ npow2(int x) {
  */
 #define forever while(1)
 #define loopr(i,r) (int i = (r).lo; i != (r).hi; i += 1)
+#define looprn(i,r,n) (int i = (r).lo; i != min((r).lo + n, (r).hi); i += 1)
 #define loopi(i,j,r) (int i = (r).lo, j = 0; i != (r).hi; i += 1, ++j)
 #define loop(i,n) (int i = 0; i < (n); ++i)
-#define loopx(i,n,m) (int i = 0; i < min(n,m); ++i)
+#define loopn(i,n,m) (int i = 0; i < min(n,m); ++i)
 
 /* ---------------------------------------------------------------------------
  *                                Memory
@@ -116,7 +117,7 @@ rng_put(const struct rng *r, const struct rng *v) {
  *                                  Hash
  * ---------------------------------------------------------------------------
  */
-#define FNV1A32_HASH_INITIAL 2166136261u
+#define FNV1A32_HASH_INITIAL 2166136261U
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
 
 static inline unsigned
@@ -202,8 +203,8 @@ rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
   unsigned lo = min(mini, maxi);
   unsigned hi = max(mini, maxi);
   unsigned rng = castu(-1);
-  unsigned n = hi - lo + 1u;
-  if (n == 1u)  {
+  unsigned n = hi - lo + 1U;
+  if (n == 1U)  {
     return mini;
   } else if(n == 0u) {
     return rndu(x);
@@ -391,7 +392,7 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
-    unsigned long cmsk = bit_mask(off) - 1u;
+    unsigned long cmsk = bit_mask(off) - 1U;
     unsigned long c = addr[i] & (unsigned long)~cmsk;
     if (!c) {
       off = bit_word_nxt(off);
@@ -409,7 +410,7 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
-    unsigned long cmsk = bit_mask(off) - 1u;
+    unsigned long cmsk = bit_mask(off) - 1U;
     unsigned long c = (~addr[i]) & (unsigned long)~cmsk;
     if (!c) {
       off = bit_word_nxt(off);
@@ -427,9 +428,9 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   assert(idx < nbits);
 
   unsigned long widx = bit_word(idx);
-  unsigned long cmsk = max(1u, bit_mask(idx)) - 1u;
+  unsigned long cmsk = max(1U, bit_mask(idx)) - 1U;
   if ((unsigned long)nbits < BITS_PER_LONG) {
-    cmsk |= ~(max(1u, bit_mask(nbits)) - 1u);
+    cmsk |= ~(max(1U, bit_mask(nbits)) - 1U);
   }
   unsigned long w = addr[widx] & ~cmsk;
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
@@ -437,7 +438,7 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   for (unsigned long i = widx + 1; i < n; ++i) {
     w = addr[i];
     if ((unsigned long)nbits - BITS_PER_LONG * i < BITS_PER_LONG) {
-      cmsk |= ~(bit_mask(nbits) - 1u);
+      cmsk |= ~(bit_mask(nbits) - 1U);
       w = w & ~cmsk;
     }
     cnt += cpu_bit_cnt64(w);
@@ -450,9 +451,9 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   assert(nbits >= 0);
 
   unsigned long widx = bit_word(idx);
-  unsigned long cmsk = max(1u, bit_mask(idx)) - 1u;
+  unsigned long cmsk = max(1U, bit_mask(idx)) - 1U;
   if ((unsigned long)nbits < BITS_PER_LONG) {
-    cmsk |= ~(max(1u, bit_mask(nbits)) - 1u);
+    cmsk |= ~(max(1U, bit_mask(nbits)) - 1U);
   }
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   unsigned long w = addr[widx] & ~cmsk;
@@ -460,7 +461,7 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   for (unsigned long i = widx + 1; i < n; ++i) {
     w = addr[i];
     if ((unsigned long)nbits - BITS_PER_LONG * i < BITS_PER_LONG) {
-      cmsk |= ~(bit_mask(nbits) - 1u);
+      cmsk |= ~(bit_mask(nbits) - 1U);
       w = w & ~cmsk;
     }
     cnt += cpu_bit_cnt64(~w);
@@ -513,6 +514,7 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 
 static int
 is_space(long c) {
+  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return 0;
   case 0x0020:
@@ -539,9 +541,11 @@ is_space(long c) {
   case 0x3000:
     return 1;
   }
+  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static int
 is_quote(long c) {
+  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return 0;
   case '\"':
@@ -559,9 +563,11 @@ is_quote(long c) {
   case 0x203A:
     return 1;
   }
+  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static int
 is_punct(long c) {
+  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return is_quote(c);
   case ',':
@@ -694,32 +700,13 @@ is_punct(long c) {
   case 0x2057:
     return 1;
   }
+  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 /* ---------------------------------------------------------------------------
  *                                  String
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define H1(s,i,x)   (x*65599u+(unsigned char)s[((i)<(cntof(s)-1))?cntof(s)-2-(i):(cntof(s)-1)])
-#define H4(s,i,x)   H1(s,i,H1(s,i+1,H1(s,i+2,H1(s,i+3,x))))
-#define H8(s,i,x)   H4(s,i,H4(s,i+4,x))
-#define H16(s,i,x)  H4(s,i,H4(s,i+4,H4(s,i+8,H4(s,i+12,x))))
-#define H32(s,i,x)  H16(s,i,H16(s,i+16,x))
-#define H64(s,i,x)  H16(s,i,H16(s,i+16,H16(s,i+32,H16(s,i+48,x))))
-
-#define STR_HASH4(s)    castu((H4(s,0,0)^(H4(s,0,0)>>16)))
-#define STR_HASH8(s)    castu((H8(s,0,0)^(H8(s,0,0)>>16)))
-#define STR_HASH16(s)   castu((H16(s,0,0)^(H16(s,0,0)>>16)))
-#define STR_HASH32(s)   castu((H32(s,0,0)^(H32(s,0,0)>>16)))
-#define STR_HASH64(s)   castu((H64(s,0,0)^(H64(s,0,0)>>16)))
-
-#define match(s) switch(str__match_hash(s))
-#define with4(s) case STR_HASH4(s)
-#define with8(s) case STR_HASH8(s)
-#define with16(s) case STR_HASH16(s)
-#define with32(s) case STR_HASH32(s)
-#define with64(s) case STR_HASH64(s)
-
 #define cstrn(s) casti(strlen(s))
 #define str(p,r) (struct str){.ptr = p, .rng = r}
 #define strptr(p,b,e,n) (struct str){.ptr = p, .rng = rng(casti(b-p),casti(e-p), n)}
@@ -754,14 +741,6 @@ is_punct(long c) {
    str_len(it); it = str_split_cut(&rest, delim))
 // clang-format on
 
-static inline unsigned
-str__match_hash(struct str s) {
-  unsigned int h = 0;
-  for str_loop(i,s) {
-    h = 65599u * h + castb(str_at(s,i));
-  }
-  return h ^ (h >> 16);
-}
 static unsigned long long
 str__hash(struct str s, unsigned long long id) {
   assert(str_len(s) >= 0);
@@ -1310,7 +1289,7 @@ str_buf__clr(char *mem, int *cnt) {
 #define tbl__is_del(k) (((k) >> 63llu) != 0)
 #define tbl__dist(h,n,i) (((i) + (n) - ((h) % n)) % (n))
 #define tbl__key(k) ((k) != 0u && !tbl__is_del(k))
-#define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
+#define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap && i < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
 #define tbl__clr(s,cnt,cap) do {mset(s,0,szof(unsigned long long)*cap); *cnt = 0;} while(0)
 
 #define tbl_fnd(t, k) tbl__fnd((t)->keys, cntof((t)->keys), k)
@@ -1422,25 +1401,4 @@ tbl__nxt_idx(unsigned long long *keys, int cap, int i) {
   }
   return cap;
 }
-
-/* ---------------------------------------------------------------------------
- *                            Command Arguments
- * --------------------------------------------------------------------------- */
-// clang-format off
-#define cmd_arg_begin(argv0, argc, argv) \
-  for (argv0 = *argv, argv++, argc--; argv[0] && argv[0][1] && argv[0][0] == '-'; argc--, argv++) {\
-    char argc_, **argv_; int brk_;\
-    if (argv[0][1] == '-' && argv[0][2] == '\0') {argv++; argc--; break;}\
-    for (brk_ = 0, argv[0]++, argv_ = argv; argv[0][0] && !brk_; argv[0]++) {\
-      if (argv_ != argv) break;\
-      argc_ = argv[0][0];\
-      switch (argc_)
-#define cmd_argc() argc_
-#define cmd_arg_opt_str(argv, x) ((argv[0][1] == '\0' && argv[1] == 0)?\
-  ((x), (char *)0) : (brk_ = 1, (argv[0][1] != '\0') ?\
-    (&argv[0][1]) : (argc--, argv++, argv[0])))
-#define cmd_arg_opt_int(argv,x) cmd_arg_int(cmd_arg_opt_str(argv,x))
-#define cmd_arg_opt_flt(argv,x) cmd_arg_flt(cmd_arg_opt_str(argv,x))
-#define cmd_arg_end }}
-// clang-format on
 

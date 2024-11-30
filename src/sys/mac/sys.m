@@ -56,8 +56,6 @@ struct sys_mac {
   int quit;
   int col_mod;
 
-  struct arena mem;
-  struct arena tmp;
   enum sys_cur_style cursor;
   struct str exe_path;
   struct gfx_mtl mtl;
@@ -477,6 +475,7 @@ sys__mac_on_btn(struct sys_btn *b, int down) {
 }
 static void
 sys__mac_on_key(unsigned long *keys, int scan) {
+  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (scan) {
   default: break;
   case 0x1D: bit_set(keys, '0'); break;
@@ -570,6 +569,7 @@ sys__mac_on_key(unsigned long *keys, int scan) {
   case 0x51: bit_set(keys, '='); break;
   case 0x43: bit_set(keys, '*'); break;
   case 0x4E: bit_set(keys, '-'); break;}
+  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static unsigned
 sys__mac_mods(const NSEvent *const ev) {
@@ -620,7 +620,6 @@ sys_mac__mouse_pos(const NSEvent *const e) {
 
   g_sys.op = SYS_SETUP;
   app_run(&g_sys);
-  g_sys.op = SYS_RUN;
 
   /* create window */
   const NSUInteger style =
@@ -658,6 +657,7 @@ sys_mac__mouse_pos(const NSEvent *const e) {
   [g_mac.view updateTrackingAreas];
   [g_mac.win setContentView:g_mac.view];
   [g_mac.win center];
+
   if (g_sys.win.max_w != 0 && g_sys.win.max_h != 0) {
     float max_w = castf(g_sys.win.max_w);
     float max_h = castf(g_sys.win.max_h);
@@ -673,6 +673,11 @@ sys_mac__mouse_pos(const NSEvent *const e) {
     float max_h = castf(g_sys.win.max_h);
     g_mac.win.maxFullScreenContentSize = NSMakeSize(max_w, max_h);
   }
+  g_sys.dpi_scale = castf([g_mac.win screen].backingScaleFactor);
+  g_sys.op = SYS_INIT;
+  app_run(&g_sys);
+  g_sys.op = SYS_RUN;
+
   NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
   [NSApp activateIgnoringOtherApps:YES];
   [g_mac.win makeKeyAndOrderFront:nil];

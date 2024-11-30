@@ -86,15 +86,17 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 };
 // clang-format on
 
-#define CFG_DB_MAX_MEMORY       KB(512)
-#define CFG_GUI_VTX_MEMORY      KB(128)
-#define CFG_GUI_IDX_MEMORY      KB(128)
-#define CFG_GUI_MAX_MEMORY      (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY)
+enum {
+  CFG_DB_MAX_MEMORY   = KB(512),
+  CFG_GUI_VTX_MEMORY  = KB(128),
+  CFG_GUI_IDX_MEMORY  = KB(128),
+  CFG_GUI_MAX_MEMORY  = (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY),
+  CFG_WIN_WIDTH       = 800,
+  CFG_WIN_HEIGHT      = 600,
+  CFG_WIN_MIN_WIDTH   = 480,
+  CFG_WIN_MIN_HEIGHT  = 360,
+  CFG_WIN_MAX_WIDTH   = 4096,
+  CFG_WIN_MAX_HEIGHT  = 2160,
+};
 
-#define CFG_WIN_WIDTH           800
-#define CFG_WIN_HEIGHT          600
-#define CFG_WIN_MIN_WIDTH       480
-#define CFG_WIN_MIN_HEIGHT      360
-#define CFG_WIN_MAX_WIDTH       4096
-#define CFG_WIN_MAX_HEIGHT      2160
 

@@ -696,11 +696,11 @@ angle3(const float *restrict a3, const float *restrict b3) {
 #define byte_flt(x) clamp(0u, castb(0.5f + 255.0f * (x)), 255u)
 #define flt_byte(x) (castf((x)) * (1.0f/255.0f))
 
-#define col_black col_rgb(0,0,0)
-#define col_white col_rgb(255,255,255)
-#define col_red col_rgb(255,0,0)
-#define col_green col_rgb(0,255,0)
-#define col_blue col_rgb(0,0,255)
+#define col_black col_rgb(0u,0u,0u)
+#define col_white col_rgb(255u,255u,255u)
+#define col_red col_rgb(255u,0u,0u)
+#define col_green col_rgb(0u,255u,0u)
+#define col_blue col_rgb(0u,0u,255u)
 
 static float
 col_srgb_linear(float x) {
@@ -1163,7 +1163,7 @@ qst_get(float *restrict qswing, float *restrict qtwist,
     float y = (q[3] * q[1] - q[0] * q[2]);
     float z = (q[3] * q[2] + q[0] * q[1]);
     float qs[4]; set4(qs, 0, y/s, z/s, s);
-    float qt[4]; set4(qtwist, q[0]/s, 0, 0, q[3]/s);
+    float qt[4]; set4(qt, q[0]/s, 0, 0, q[3]/s);
     cpy4(qswing, qs);
     cpy4(qtwist, qt);
   } else {

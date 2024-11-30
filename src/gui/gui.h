@@ -989,6 +989,8 @@ struct gui_txt_buf {
   struct str str;
   char buf[2*1024];
 };
+#define GUI_DND_SYS_FILES   (3759125185ull)
+#define GUI_DND_SYS_STRING  (2335494049ull)
 enum gui_dnd_paq_state {
   GUI_DND_ENTER,
   GUI_DND_PREVIEW,
@@ -1043,6 +1045,7 @@ struct gui_ctx {
   struct gui_cfg cfg;
   unsigned long keys[bits_to_long(GUI_KEY_CNT)];
   struct gui_box box;
+  int it;
 
   unsigned disabled;
   char focus_next;
@@ -1105,12 +1108,21 @@ struct gui_ctx {
     uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
     uniqid(_i_) < 1; ++uniqid(_i_))
 
+#define gui_loop(i,gui,ctx)\
+  (int i = 0; (gui)->begin(ctx) && i < GUI_FINISHED; i = (gui)->end(ctx), i + 1)
 #define gui_tbl_lst_loop(i,gui,t)\
   (int i = (t)->lst.begin; i < (t)->lst.end; i = (gui).tbl.lst.nxt(&(t)->lst, i))
+#define gui_tbl_lst_loopn(i,j,gui,t,n)\
+  (int i = (t)->lst.begin, j = 0; i < (t)->lst.end && j < (n); i = (gui).tbl.lst.nxt(&(t)->lst, i), ++j)
+#define gui_tbl_lst_loopv(i,j,gui,t,v) gui_tbl_lst_loopn(i,j,gui,t,cntof(v))
+
 #define gui_lst_loop(i,gui,l)\
   (int i = (l)->begin; i < (l)->end; i = (gui).lst.nxt(l, i))
 #define gui_lst_reg_loop(i,gui,r)\
   (int i = (r)->lst.begin; i < (r)->lst.end; i = (gui).lst.nxt(&(r)->lst, i))
+#define gui_lst_reg_loopn(i,j,gui,r,n)\
+  (int i = (r)->lst.begin, j = 0; i < (r)->lst.end && j < (n); i = (gui).lst.nxt(&(r)->lst, i), ++j)
+#define gui_lst_reg_loopv(i,j,gui,r,v) gui_lst_reg_loopn(i,j,gui,r,cntof(v))
 
 #define gui_clip_scope(gui,tmp,ctx,x0,y0,x1,y1)\
   (int uniqid(_i_) = ((gui)->clip.begin(tmp,ctx,x0,y0,x1,y1), 0); uniqid(_i_) < 1;\
@@ -1473,8 +1485,8 @@ struct gui_api {
   int version;
   void (*init)(struct gui_ctx *ctx, struct gui_args *args);
   void (*color_scheme)(struct gui_ctx *ctx, enum gui_col_scheme scm);
-  struct gui_panel*(*begin)(struct gui_ctx *ctx);
-  void (*end)(struct gui_ctx *ctx);
+  int (*begin)(struct gui_ctx *ctx);
+  int (*end)(struct gui_ctx *ctx);
   int (*enable)(struct gui_ctx *ctx, int cond);
   int (*disable)(struct gui_ctx *ctx, int cond);
   void (*tooltip)(struct gui_ctx *ctx, const struct gui_panel *pan, struct str str);

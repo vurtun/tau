@@ -1104,12 +1104,12 @@ gui_sys_dnd_begin(struct gui_ctx *ctx, struct sys *s) {
 
   switch (s->dnd.type) {
   case SYS_DND_FILE: {
-    ctx->dnd_paq.type = STR_HASH16("[sys:files]");
+    ctx->dnd_paq.type = GUI_DND_SYS_FILES;
     ctx->dnd_paq.data = s->dnd.files;
     ctx->dnd_paq.size = s->dnd.file_cnt;
   } break;
   case SYS_DND_STR: {
-    ctx->dnd_paq.type = STR_HASH16("[sys:str]");
+    ctx->dnd_paq.type = GUI_DND_SYS_STRING;
     ctx->dnd_paq.data = &s->dnd.str;
     ctx->dnd_paq.size = str_len(s->dnd.str);
   } break;}
@@ -1123,7 +1123,7 @@ gui_sys_dnd_end(struct gui_ctx *ctx, struct sys *s) {
     s->dnd.response = SYS_DND_ACCEPT; break;
   }
 }
-static struct gui_panel *
+static int
 gui_begin(struct gui_ctx *ctx) {
   assert(ctx);
   if (ctx->pass == GUI_FINISHED) {
@@ -1193,7 +1193,7 @@ gui_begin(struct gui_ctx *ctx) {
   pan->box = gui_box(0, 0, s->win.w, s->win.h);
   gui_panel_hot(ctx, pan, 0);
   ctx->box = gui_padv(&pan->box, ctx->cfg.pan_pad);
-  return &ctx->root;
+  return 1;
 }
 static void
 gui_dnd_clr(struct gui_ctx *ctx) {
@@ -1203,7 +1203,7 @@ gui_dnd_clr(struct gui_ctx *ctx) {
   ctx->dnd_set = 0;
   ctx->dnd_in = 0;
 }
-static void
+static int
 gui_end(struct gui_ctx *ctx) {
   assert(ctx);
   assert(ctx->disabled == 0);
@@ -1237,6 +1237,7 @@ gui_end(struct gui_ctx *ctx) {
       ctx->pass = GUI_FINISHED;
     } break;
   }
+  return 0;
 }
 static int
 gui_disable(struct gui_ctx *ctx, int cond) {
@@ -1272,7 +1273,7 @@ gui_dnd_src_begin(struct gui_dnd_src *ret, struct gui_ctx *ctx,
   struct gui_input *in = arg->in;
   if (!arg->in) {
     in = &dummy;
-    gui_input(in, ctx, pan, (1u << arg->drag_btn));
+    gui_input(in, ctx, pan, (1U << arg->drag_btn));
   }
   ret->activated = in->mouse.btns[arg->drag_btn].drag_begin;
   ret->drag_begin = in->mouse.btns[arg->drag_btn].drag_begin;
@@ -1521,6 +1522,7 @@ gui_txtf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   va_list args;
   va_start(args, fmt);
   gui_txtvf(ctx, pan, parent, align, fmt, args);
+  va_end(args);
 }
 static void
 gui_lbl(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
@@ -3353,7 +3355,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   gui_panel_end(ctx, pan, parent);
 
   if (gui_dnd_dst_begin(ctx, pan)) {
-    struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, STR_HASH16("[sys:str]"));
+    struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, GUI_DND_SYS_STRING);
     if (paq) { /* string drag & drop */
       const struct str *str = paq->data;
       switch (paq->state) {
@@ -3641,7 +3643,7 @@ gui_spin_str(char *buf, int cap, const struct gui_spin_val *spin) {
     return str_fmtsn(buf, cap, "%.2f", spin->val.f);
   default:
     assert(0);
-    break;
+    return strv("0");
   }
 }
 static void

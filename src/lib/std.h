@@ -104,26 +104,6 @@ struct str {
 struct str_fnd_tbl {
   int tbl[UCHAR_MAX+1];
 };
-struct mem_blk {
-  unsigned long long flags;
-  int size;
-  unsigned char *base;
-  int used;
-  struct mem_blk *prv;
-};
-struct arena_scope {
-  struct mem_blk *blk;
-  int used;
-};
-struct arena {
-  struct mem_blk *blk;
-  int blksiz;
-  int tmp_cnt;
-};
-struct lst_elm {
-  struct lst_elm *prv;
-  struct lst_elm *nxt;
-};
 struct color {
   unsigned char r, g, b, a;
 };

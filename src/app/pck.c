@@ -638,7 +638,7 @@ ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
       /* header */
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, lst->tbl.state);
-      for loop(i, tbl.cnt) {
+      for arr_loopn(i, file_tbl_def, tbl.cnt) {
         assert(i < cntof(file_tbl_def));
         struct str title = file_tbl_def[i].title;
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_lay, lst->tbl.state, title);
@@ -651,7 +651,7 @@ ui_file_view_tbl(char *filepath, int n, struct file_view *fs,
       cfg.sel.src = GUI_LST_SEL_SRC_EXT;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for gui_tbl_lst_loop(i,gui,&tbl) {
+      for gui_tbl_lst_loopn(i,_,gui,&tbl,FILE_LIST_ELM_CNT) {
         int is_sel = (lst->sel_idx == i);
         int idx = lst->page.cur * FILE_LIST_ELM_CNT + i;
         assert(idx < cntof(lst->page.elms));

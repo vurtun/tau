@@ -88,15 +88,15 @@ cpu_bit_ffs64(unsigned long long u) {
 /* os specific definitions */
 #if defined(SYS_WIN) || defined(SYS_WIN_CYG)
 
-#define COL_R 0
-#define COL_G 8
-#define COL_B 16
-#define COL_A 24
+#define COL_R 0u
+#define COL_G 8u
+#define COL_B 16u
+#define COL_A 24u
 
 #define col_rgb_hex(c) \
   (((((c) >> 16u) & 0xff) << COL_R) |\
-  (((((c) >>  8u) & 0xff) << COL_G) |\
-  (((((c) >>  0u) & 0xff) << COL_B) | (0xffu << COL_A))
+  (((((c) >>  8u) & 0xff) << COL_G)) |\
+  (((((c) >>  0u) & 0xff) << COL_B)) | (0xffu << COL_A))
 
 #define col_rgba_hex(c) \
   (((((c) >> 16u) & 0xff) << COL_R) |\
@@ -110,10 +110,10 @@ cpu_bit_ffs64(unsigned long long u) {
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define COL_R 0
-#define COL_G 8
-#define COL_B 16
-#define COL_A 24
+#define COL_R 0u
+#define COL_G 8u
+#define COL_B 16u
+#define COL_A 24u
 
 #define col_rgb_hex(c) \
   (((((c) >> 16u) & 0xff) << COL_R) |\

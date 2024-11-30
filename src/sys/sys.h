@@ -205,6 +205,7 @@ struct sys_rnd_api {
 #define SYS_MAX_INPUT 256
 enum sys_op {
   SYS_SETUP,
+  SYS_INIT,
   SYS_RUN,
   SYS_QUIT,
 };
@@ -213,6 +214,7 @@ struct sys {
   unsigned seq;
   enum sys_op op;
 
+  int quit;
   int argc;
   char **argv;
 
