@@ -473,8 +473,8 @@ file_view_free(struct file_view *fs, struct sys *_sys) {
 static struct str
 ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
                struct gui_panel *pan, struct gui_panel *parent,
-               struct gui_txt_ed *ed, char *buf, int cap, struct str s) {
-  assert(ed);
+               struct gui_txt_ed *ted, char *buf, int cap, struct str str) {
+  assert(ted);
   assert(buf);
   assert(ctx);
   assert(edt);
@@ -495,18 +495,18 @@ ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
     gui.ico.img(ctx, &ico, pan, RES_ICO_SEARCH);
 
     /* edit */
-    ed->buf = buf;
-    ed->cap = cap;
-    ed->str = s;
+    ted->buf = buf;
+    ted->cap = cap;
+    ted->str = str;
 
     edt->pan.focusable = 1;
     edt->pan.box.x = gui.bnd.min_max(ico.box.x.max, pan->box.x.max);
     edt->pan.box.x = gui.bnd.shrink(&edt->pan.box.x, pad[0]);
     edt->pan.box.y = gui.bnd.shrink(&pan->box.y, pad[1]);
-    gui.edt.fld(ctx, edt, &edt->pan, pan, ed);
+    gui.edt.fld(ctx, edt, &edt->pan, pan, ted);
   }
   gui.pan.end(ctx, pan, parent);
-  return ed->str;
+  return ted->str;
 }
 static void
 ui_file_lst_view_fnd(struct file_view *fs, struct file_list_view *lst,

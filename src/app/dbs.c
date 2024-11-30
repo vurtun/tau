@@ -6,7 +6,7 @@
  */
 #define db_str(s) str_beg(s), str_len(s)
 #define db_loopn(i,e,stmt,n)\
-  (int i = 0; (e = sqlite3_step(stmt)) == SQLITE_ROW && i < (n); ++i)
+  (int i = 0; ((e) = sqlite3_step(stmt)) == SQLITE_ROW && (i) < (n); ++(i))
 #define db_loop(i,e,stmt,n) db_loopn(i,e,stmt,cntof(n))
 
 // clang-format off
@@ -346,10 +346,13 @@ db_tbl_new(struct db_state *sdb) {
 }
 static enum res_ico_id
 db_tbl_col_ico(struct str type) {
-  if (str_eq(type, strv("REAL")) ||
-      str_eq(type, strv("DOUBLE")) ||
-      str_eq(type, strv("DOUBLE PRECISION")) ||
-      str_eq(type, strv("FLOAT"))) {
+  if (str_eq(type, strv("REAL"))) {
+    return RES_ICO_MODIFY;
+  } else if(str_eq(type, strv("DOUBLE"))) {
+    return RES_ICO_MODIFY;
+  } else if(str_eq(type, strv("DOUBLE PRECISION"))) {
+    return RES_ICO_MODIFY;
+  } else if(str_eq(type, strv("FLOAT"))) {
     return RES_ICO_MODIFY;
   } else if (str_eq(type, strv("DATE"))) {
     return RES_ICO_CALENDAR;
@@ -359,16 +362,25 @@ db_tbl_col_ico(struct str type) {
     return RES_ICO_CUBE;
   } else if (str_eq(type, strv("BOOLEAN"))) {
     return RES_ICO_CHECK;
-  } else if (str_eq(type, strv("INT")) ||
-      str_eq(type, strv("INTEGER")) ||
-      str_eq(type, strv("TINYINT")) ||
-      str_eq(type, strv("SMALLINT")) ||
-      str_eq(type, strv("MEDIUMINT")) ||
-      str_eq(type, strv("BIGINT")) ||
-      str_eq(type, strv("UNSIGNED BIG INT")) ||
-      str_eq(type, strv("INT2")) ||
-      str_eq(type, strv("INT8")) ||
-      str_eq(type, strv("NUMERIC"))) {
+  } else if (str_eq(type, strv("INT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("INTEGER"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("TINYINT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("SMALLINT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("MEDIUMINT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("BIGINT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("UNSIGNED BIG INT"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("INT2"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("INT8"))) {
+    return RES_ICO_CALCULATOR;
+  } else if (str_eq(type, strv("NUMERIC"))) {
     return RES_ICO_CALCULATOR;
   } else {
     return RES_ICO_FONT;
@@ -554,8 +566,8 @@ db_tbl_qry_row_cnt(struct db_state *sdb, struct db_view *vdb,
   if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
     sqlite3_stmt *stmt = 0;
     sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
-    int rc = sqlite3_step(stmt);
-    assert(rc == SQLITE_ROW);
+    int err = sqlite3_step(stmt);
+    assert(err == SQLITE_ROW);
     cnt = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
   }
@@ -746,7 +758,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
     tbl->row.rng.total = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
   } else {
-    tbl->row.rng.total = sqlite3_column_int(stmt, 0);
+    tbl->row.rng.total = 0;
   }
 }
 static void
@@ -768,7 +780,7 @@ db_tbl_add(struct db_state *sdb, int idx) {
   assert(idx < cntof(sdb->tbls));
   assert(sdb->tab_cnt < cntof(sdb->tabs));
   assert(!(sdb->unused & (1U << castu(idx))));
-  assert(sdb->tab_cnt <= 0xff);
+  assert(sdb->tab_cnt <= UCHAR_MAX);
 
   sdb->tabs[sdb->tab_cnt] = castb(idx);
   return sdb->tab_cnt++;
@@ -1198,9 +1210,9 @@ ui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *paren
 static struct str
 ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
             struct gui_panel *pan, struct gui_panel *parent,
-            struct gui_txt_ed *ed, char *buf, int cap, struct str str) {
+            struct gui_txt_ed *ted, char *buf, int cap, struct str str) {
 
-  assert(ed);
+  assert(ted);
   assert(buf);
   assert(ctx);
   assert(edt);
@@ -1221,15 +1233,15 @@ ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
     gui.ico.img(ctx, &ico, pan, RES_ICO_SEARCH);
 
     /* edit */
-    ed->buf = buf;
-    ed->cap = cap;
-    ed->str = str;
+    ted->buf = buf;
+    ted->cap = cap;
+    ted->str = str;
 
     edt->pan.focusable = 1;
     edt->pan.box.x = gui.bnd.min_max(ico.box.x.max, pan->box.x.max);
     edt->pan.box.x = gui.bnd.shrink(&edt->pan.box.x, pad[0]);
     edt->pan.box.y = gui.bnd.shrink(&pan->box.y, pad[1]);
-    str = gui.edt.fld(ctx, edt, &edt->pan, pan, ed);
+    str = gui.edt.fld(ctx, edt, &edt->pan, pan, ted);
   }
   gui.pan.end(ctx, pan, parent);
   return str;
@@ -1626,7 +1638,9 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
 
   gui.pan.begin(ctx, pan, parent);
   {
-    int back = 0, front = 0;
+    int back = 0;
+    int front = 0;
+
     struct gui_tbl tbl = {.box = pan->box};
     gui.tbl.begin(ctx, &tbl, pan, stbl->row.ui.off, 0);
     {
@@ -1959,7 +1973,7 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
   gui.pan.begin(ctx, pan, parent);
   {
     const struct {struct str type; enum res_ico_id ico;} types[] = {
-      #define DB_INFO(a,b,c,d) {.type = strv(b), .ico = d},
+      #define DB_INFO(a,b,c,d) {.type = strv(b), .ico = (d)},
         DB_TBL_MAP(DB_INFO)
       #undef DB_INFO
     };
@@ -2065,7 +2079,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
     struct str title;
     enum res_ico_id ico;
   } tabs[] = {
-    #define DB_INFO(a,b,c,d) {.title = strv(c), .ico = d},
+    #define DB_INFO(a,b,c,d) {.title = strv(c), .ico = (d)},
       DB_TBL_MAP(DB_INFO)
     #undef DB_INFO
   };
@@ -2081,6 +2095,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
       for arr_loopn(i, sinfo->tab_cnt, tab.cnt) {
         assert(i < cntof(tabs));
         const struct tab_def *def = &tabs[i];
+
         /* tab header slots */
         int dis = !(sinfo->tab_act & (1U << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
@@ -2138,7 +2153,7 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
 
   assert(view >= 0);
   assert(view < cntof(sdb->tbls));
-  assert(!(sdb->unused & (1llu << castu(view))));
+  assert(!(sdb->unused & (1U << castu(view))));
 
   struct db_tbl_view *vtbl = &vdb->tbl;
   struct db_tbl_state *stbl = &sdb->tbls[view];
@@ -2276,9 +2291,9 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx, struct gui_panel *
       unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
       gui.lst.reg.elm.txt_ico(ctx, &reg, &elm, id, 0, title, ico);
 
-      struct gui_input in = {0};
-      gui.pan.input(&in, ctx, &elm, GUI_BTN_LEFT);
-      ret = in.mouse.btn.left.clk ? i : ret;
+      struct gui_input pin = {0};
+      gui.pan.input(&pin, ctx, &elm, GUI_BTN_LEFT);
+      ret = pin.mouse.btn.left.clk ? i : ret;
     }
     gui.lst.reg.end(ctx, &reg, pan, sdb->tbl_lst_off);
   }

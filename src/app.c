@@ -134,10 +134,12 @@ app_view_init(struct app *app, int idx, struct str path) {
 static int
 app_tab_add(struct app *app, int idx) {
   assert(app);
+  assert(app->tab_cnt >= 0);
+  assert(app->tab_cnt <= cntof(app->tabs));
+
   assert(idx >= 0);
   assert(idx <= 0xff);
   assert(idx < cntof(app->views));
-  assert(app->tab_cnt < cntof(app->tabs));
   assert(!(app->unused & (1U << castu(idx))));
 
   app->tabs[app->tab_cnt] = castb(idx);
@@ -147,6 +149,8 @@ static void
 app_tab_rm(struct app *app, int tab_idx) {
   assert(app);
   assert(app->tab_cnt > 0);
+  assert(app->tab_cnt <= app->tab_cnt);
+
   assert(tab_idx >= 0);
   assert(tab_idx < app->tab_cnt);
   assert(tab_idx < cntof(app->tabs));
@@ -159,6 +163,8 @@ static void
 app_tab_close(struct app *app, int tab_idx) {
   assert(app);
   assert(app->tab_cnt > 0);
+  assert(app->tab_cnt <= cntof(app->tabs));
+
   assert(tab_idx >= 0);
   assert(tab_idx < app->tab_cnt);
   assert(tab_idx < cntof(app->tabs));
@@ -172,9 +178,11 @@ app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   assert(app);
   assert(files);
   assert(file_cnt >= 0);
+
   assert(app->tab_cnt >= 0);
   assert(app->tab_cnt <= cntof(app->tabs));
   assert(file_cnt < cntof(app->tabs) - app->tab_cnt);
+
   /* open each database in new tab */
   for arr_loopn(i, app->tabs, file_cnt) {
     int view = app_view_new(app);
@@ -192,7 +200,7 @@ static int
 app_tab_open(struct app *app) {
   assert(app);
   assert(app->unused > 0);
-  assert(app->tab_cnt < cntof(app->tabs));
+  assert(app->tab_cnt <= cntof(app->tabs));
 
   int view = app_view_new(app);
   app->sel_tab = castb(app_tab_add(app, view));
@@ -208,6 +216,9 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
   assert(src_idx < app->tab_cnt);
   assert(dst_idx < cntof(app->tabs));
   assert(src_idx < cntof(app->tabs));
+
+  assert(app->tabs[dst_idx] < cntof(app->views));
+  assert(app->tabs[src_idx] < cntof(app->views));
 
   assert(!(app->unused & (1U << castu(app->tabs[dst_idx]))));
   assert(!(app->unused & (1U << castu(app->tabs[src_idx]))));
@@ -254,7 +265,7 @@ app_shutdown(struct app *app, struct sys *sys) {
   assert(app);
 
   assert(app->tab_cnt >= 0);
-  assert(app->tab_cnt < cntof(app->tabs));
+  assert(app->tab_cnt <= cntof(app->tabs));
   for arr_loopn(i, app->tabs, app->tab_cnt) {
     int idx = app->tabs[i];
     assert(idx < APP_VIEW_CNT);
@@ -353,6 +364,7 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   assert(parent);
+  assert(app->tab_cnt <= cntof(app->tabs));
 
   int ret = -1;
   gui.pan.begin(ctx, pan, parent);
@@ -458,10 +470,13 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   assert(pan);
   assert(parent);
 
+  assert(app->tab_cnt <= cntof(app->tabs));
+  assert(app->sel_tab < cntof(app->tabs));
+  assert(app->sel_tab < app->tab_cnt);
+
   gui.pan.begin(ctx, pan, parent);
   {
     /* tab control */
-    assert(app->tab_cnt < cntof(app->tabs));
     struct gui_tab_ctl tab = {.box = pan->box, .show_btn = 1};
     gui.tab.begin(ctx, &tab, pan, app->tab_cnt, app->sel_tab);
     {
@@ -469,7 +484,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       unsigned del_tab = 0;
       struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
       gui.tab.hdr.begin(ctx, &tab, &hdr);
-      assert(tab.cnt < cntof(app->tabs));
+      assert(tab.cnt <= cntof(app->tabs));
       for arr_loopn(i, app->tabs, tab.cnt) {
 
         assert(i < cntof(app->tabs));
@@ -509,7 +524,9 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
           app->sel_tab = 0;
         }
       } else {
-        assert(app->sel_tab < APP_VIEW_CNT);
+        assert(app->sel_tab < cntof(app->tabs));
+        assert(app->sel_tab < app->tab_cnt);
+
         int sel_view = app->tabs[app->sel_tab];
         assert(!(app->unused & (1U << sel_view)));
         ui_app_view(app, app->views + sel_view, ctx, &bdy, pan);
@@ -518,6 +535,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     gui.tab.end(ctx, &tab, pan);
     if (tab.sel.mod) {
       app->sel_tab = castb(tab.sel.idx);
+      assert(app->sel_tab < cntof(app->tabs));
       assert(app->sel_tab < APP_VIEW_CNT);
     }
   }
@@ -600,4 +618,5 @@ app_run(struct sys *sys) {
   } break;
   }
 }
+
 

@@ -989,8 +989,8 @@ struct gui_txt_buf {
   struct str str;
   char buf[2*1024];
 };
-#define GUI_DND_SYS_FILES   (3759125185ull)
-#define GUI_DND_SYS_STRING  (2335494049ull)
+#define GUI_DND_SYS_FILES   (0x573433a3878fa0d3ULL)
+#define GUI_DND_SYS_STRING  (0xd43ac49ff730c5f3ULL)
 enum gui_dnd_paq_state {
   GUI_DND_ENTER,
   GUI_DND_PREVIEW,
