@@ -478,7 +478,8 @@ retry:;
     fnt_PackEnd(&pc);
 
     if (!ok0 || !ok1 || !ok2) {
-      w *= 2, h *= 2;
+      w *= 2;
+      h *= 2;
       free(img);
       goto retry;
     }

@@ -2091,11 +2091,17 @@ static void fnt__fill_active_edges_new(float *scanline, float *scanline_fill, in
                   float t;
                   sy0 = y_bottom - (sy0 - y_top);
                   sy1 = y_bottom - (sy1 - y_top);
-                  t = sy0, sy0 = sy1, sy1 = t;
-                  t = x_bottom, x_bottom = x_top, x_top = t;
+                  t = sy0;
+                  sy0 = sy1;
+                  sy1 = t;
+                  t = x_bottom;
+                  x_bottom = x_top;
+                  x_top = t;
                   dx = -dx;
                   dy = -dy;
-                  t = x0, x0 = xb, xb = t;
+                  t = x0;
+                  x0 = xb;
+                  xb = t;
                }
                FNT_assert(dy >= 0);
                FNT_assert(dx >= 0);
@@ -2469,7 +2475,8 @@ static void fnt__rasterize(fnt__bitmap *result, fnt__point *pts, int *wcount, in
          e[n].invert = 0;
          if (invert ? p[j].y > p[k].y : p[j].y < p[k].y) {
             e[n].invert = 1;
-            a=j,b=k;
+            a=j;
+            b=k;
          }
          e[n].x0 = p[a].x * scale_x + shift_x;
          e[n].y0 = (p[a].y * y_scale_inv + shift_y) * vsubsample;
@@ -2601,11 +2608,13 @@ static fnt__point *fnt_FlattenCurves(fnt_vertex *vertices, int num_verts, float 
                ++n;
                start = num_points;
 
-               x = vertices[i].x, y = vertices[i].y;
+               x = vertices[i].x;
+               y = vertices[i].y;
                fnt__add_point(points, num_points++, x,y);
                break;
             case FNT_vline:
-               x = vertices[i].x, y = vertices[i].y;
+               x = vertices[i].x;
+               y = vertices[i].y;
                fnt__add_point(points, num_points++, x, y);
                break;
             case FNT_vcurve:
@@ -2613,7 +2622,8 @@ static fnt__point *fnt_FlattenCurves(fnt_vertex *vertices, int num_verts, float 
                                         vertices[i].cx, vertices[i].cy,
                                         vertices[i].x,  vertices[i].y,
                                         objspace_flatness_squared, 0);
-               x = vertices[i].x, y = vertices[i].y;
+               x = vertices[i].x;
+               y = vertices[i].y;
                break;
             case FNT_vcubic:
                fnt__tesselate_cubic(points, &num_points, x,y,
@@ -2621,7 +2631,8 @@ static fnt__point *fnt_FlattenCurves(fnt_vertex *vertices, int num_verts, float 
                                         vertices[i].cx1, vertices[i].cy1,
                                         vertices[i].x,  vertices[i].y,
                                         objspace_flatness_squared, 0);
-               x = vertices[i].x, y = vertices[i].y;
+               x = vertices[i].x;
+               y = vertices[i].y;
                break;
          }
       }
@@ -2780,8 +2791,11 @@ static int fnt_BakeFontBitmap_internal(unsigned char *data, int offset,  // font
       fnt_GetGlyphBitmapBox(&f, g, scale,scale, &x0,&y0,&x1,&y1);
       gw = x1-x0;
       gh = y1-y0;
-      if (x + gw + 1 >= pw)
-         y = bottom_y, x = 1; // advance to next row
+      if (x + gw + 1 >= pw) {
+         // advance to next row
+         y = bottom_y;
+         x = 1;
+      }
       if (y + gh + 1 >= ph) // check if it fits vertically AFTER potentially moving to next row
          return -i;
       FNT_assert(x+gw < pw);
@@ -3631,8 +3645,10 @@ static unsigned char * fnt_GetGlyphSDF(const fnt_fontinfo *info, float scale, in
                   if (sx > box_x0-min_dist && sx < box_x1+min_dist && sy > box_y0-min_dist && sy < box_y1+min_dist) {
                      int num=0;
                      float ax = x1-x0, ay = y1-y0;
-                     float bx = x0 - 2*x1 + x2, by = y0 - 2*y1 + y2;
-                     float mx = x0 - sx, my = y0 - sy;
+                     float bx = x0 - 2*x1 + x2;
+                     float by = y0 - 2*y1 + y2;
+                     float mx = x0 - sx;
+                     float my = y0 - sy;
                      float ret[3] = {0.f,0.f,0.f};
                      float px,py,t,it,dist2;
                      float a_inv = precompute[i];
@@ -3666,7 +3682,8 @@ static unsigned char * fnt_GetGlyphSDF(const fnt_fontinfo *info, float scale, in
                         min_dist = (float) FNT_sqrt(dist2);
 
                      if (num >= 1 && ret[0] >= 0.0f && ret[0] <= 1.0f) {
-                        t = ret[0], it = 1.0f - t;
+                        t = ret[0];
+                        it = 1.0f - t;
                         px = it*it*x0 + 2*t*it*x1 + t*t*x2;
                         py = it*it*y0 + 2*t*it*y1 + t*t*y2;
                         dist2 = (px-sx)*(px-sx) + (py-sy)*(py-sy);
@@ -3674,7 +3691,8 @@ static unsigned char * fnt_GetGlyphSDF(const fnt_fontinfo *info, float scale, in
                            min_dist = (float) FNT_sqrt(dist2);
                      }
                      if (num >= 2 && ret[1] >= 0.0f && ret[1] <= 1.0f) {
-                        t = ret[1], it = 1.0f - t;
+                        t = ret[1];
+                        it = 1.0f - t;
                         px = it*it*x0 + 2*t*it*x1 + t*t*x2;
                         py = it*it*y0 + 2*t*it*y1 + t*t*y2;
                         dist2 = (px-sx)*(px-sx) + (py-sy)*(py-sy);
@@ -3682,7 +3700,8 @@ static unsigned char * fnt_GetGlyphSDF(const fnt_fontinfo *info, float scale, in
                            min_dist = (float) FNT_sqrt(dist2);
                      }
                      if (num >= 3 && ret[2] >= 0.0f && ret[2] <= 1.0f) {
-                        t = ret[2], it = 1.0f - t;
+                        t = ret[2];
+                        it = 1.0f - t;
                         px = it*it*x0 + 2*t*it*x1 + t*t*x2;
                         py = it*it*y0 + 2*t*it*y1 + t*t*y2;
                         dist2 = (px-sx)*(px-sx) + (py-sy)*(py-sy);

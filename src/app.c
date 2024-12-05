@@ -181,7 +181,7 @@ app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
 
   assert(app->tab_cnt >= 0);
   assert(app->tab_cnt <= cntof(app->tabs));
-  assert(file_cnt < cntof(app->tabs) - app->tab_cnt);
+  assert(file_cnt <= cntof(app->tabs) - app->tab_cnt);
 
   /* open each database in new tab */
   for arr_loopn(i, app->tabs, file_cnt) {
@@ -214,6 +214,7 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
 
   assert(dst_idx < app->tab_cnt);
   assert(src_idx < app->tab_cnt);
+
   assert(dst_idx < cntof(app->tabs));
   assert(src_idx < cntof(app->tabs));
 
@@ -256,7 +257,7 @@ app_init(struct app *app, struct sys *sys) {
   app_view_setup(app, app->tabs[0]);
 
 #ifdef DEBUG_MODE
-  ut_str(sys);
+  ut_str();
 #endif
 }
 static void
@@ -312,6 +313,7 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
 static void
 ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent) {
+
   assert(app);
   assert(ctx);
   assert(pan);
@@ -342,16 +344,20 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       const struct str *file_urls = paq->data;
       switch (paq->state) {
       case GUI_DND_DELIVERY: {
+
         int file_cnt = paq->size;
-        int rest = cpu_bit_cnt((~app->unused) & APP_VIEW_CNT_MSK);
+        int rest = cpu_bit_cnt(app->unused & APP_VIEW_CNT_MSK);
         int cnt = min(file_cnt, rest);
+
         app_tab_open_files(app, file_urls, cnt);
         paq->response = GUI_DND_ACCEPT;
       } break;
       case GUI_DND_LEFT: break;
       case GUI_DND_ENTER:
       case GUI_DND_PREVIEW: {
-        paq->response = GUI_DND_ACCEPT;
+        if (app->unused & APP_VIEW_CNT_MSK) {
+          paq->response = GUI_DND_ACCEPT;
+        }
       } break;}
     }
     gui.dnd.dst.end(ctx);
@@ -498,11 +504,10 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
         del_tab |= castu(ret);
       }
       gui.tab.hdr.end(ctx, &tab, &hdr);
-      if (tab.sort.mod) {
-        app_tab_swap(app, tab.sort.dst, tab.sort.src);
-      }
       if (del_tab) {
         app_tab_close(app, app->sel_tab);
+      } else if (tab.sort.mod) {
+        app_tab_swap(app, tab.sort.dst, tab.sort.src);
       }
       if (app->unused) {
         /* add/open new file view tab */
@@ -618,5 +623,4 @@ app_run(struct sys *sys) {
   } break;
   }
 }
-
 

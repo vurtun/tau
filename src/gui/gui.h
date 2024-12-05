@@ -364,13 +364,13 @@ union gui_spin_dat {
 };
 struct gui_spin_val {
   enum gui_spin_val_typ typ;
-  union gui_spin_dat val;
+  union gui_spin_dat num;
   union gui_spin_dat min;
   union gui_spin_dat max;
   union gui_spin_dat inc;
 };
 enum gui_spin_flag {
-  GUI_SPIN_SLIDER = 1 << 0,
+  GUI_SPIN_SLIDER = 0x01,
 };
 struct gui_spin {
   /* in */
@@ -655,7 +655,7 @@ struct gui_split_lay_cfg {
   int off;
   int size;
   const void *slots;
-  // optional:
+  /* optional: */
   const int *sort;
   const unsigned long *fltr;
 };

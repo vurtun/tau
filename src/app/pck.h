@@ -1,15 +1,17 @@
 #define PCK_VERISON 1
 
-#define FILE_LIST_ELM_CNT         128
-#define FILE_LIST_ELM_BUF_CNT     (FILE_LIST_ELM_CNT*2)
-#define FILE_LIST_STR_BUF_SIZ     (FILE_LIST_ELM_BUF_CNT*MAX_FILE_NAME)
-#define FILE_LIST_MAX_FILTER      32
-#define FILE_SPLIT_MAX            2
-
 struct gui_api;
 struct gui_ctx;
 struct gui_panel;
 
+enum {
+  FILE_LIST_ELM_CNT         = 128,
+  FILE_LIST_ELM_BUF_CNT     = (FILE_LIST_ELM_CNT*2),
+  FILE_LIST_STR_BUF_SIZ     = (FILE_LIST_ELM_BUF_CNT*MAX_FILE_NAME),
+  FILE_LIST_MAX_FILTER      = 32,
+  FILE_SPLIT_MAX            = 2,
+  FILE_MAX_PAGE_BUF         = 128,
+};
 struct file_elm {
   struct str name;
   size_t size;

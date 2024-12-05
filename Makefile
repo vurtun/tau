@@ -8,35 +8,37 @@ CC = clang
 # MAC OS
 ifeq ($(platform),Darwin)
 
-CFLAGS = -std=c99 -pedantic -DUSE_SIMD_128
+CFLAGS = -std=c11 -pedantic -DUSE_SIMD_128
 OBJCFLAGS = $(CFLAGS) -ObjC -fobjc-arc
 
 .PHONY: debug
-debug: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
-debug: CFLAGS += -Wno-padded -Wno-comma -Wno-declaration-after-statement
+debug: CFLAGS += -g -Weverything -Wno-covered-switch-default
+debug: CFLAGS += -Wno-padded -Wno-declaration-after-statement
 debug: CFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch-default
-debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
+debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef
 debug: CFLAGS += -Wc++-compat -Wno-unused-function -Wsign-conversion
-debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough -Wno-vla
+debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough
 debug: CFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
+debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions -Wno-pre-c11-compat
 debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE -DDEBUG
-debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier -DSQLITE_DEBUG
-debug: OBJCFLAGS = -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
+debug: CFLAGS += -DSQLITE_DEBUG
+debug: OBJCFLAGS = -g -Weverything -Wno-covered-switch-default
 debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-double-promotion -Wno-float-equal
-debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
+debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef
 debug: OBJCFLAGS += -Wno-unused-function -Wimplicit-int-conversion -Wimplicit-fallthrough
-debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations -Wno-vla
+debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations
 debug: OBJCFLAGS += -DDEBUG_MODE -std=c99 -pedantic -Wno-deprecated-declarations
 debug: OBJCFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
-debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-reserved-identifier -DDEBUG -DSQLITE_DEBUG
+debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions
+debug: OBJCFLAGS += -DDEBUG -DSQLITE_DEBUG
 debug: CC = clang
 debug: $(BIN)
 
 .PHONY: release
 release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
-release: CFLAGS += -DRELEASE_MODE
-release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv
-release: OBJCFLAGS += -DRELEASE_MODE -std=c99 -pedantic
+release: CFLAGS += -DRELEASE_MODE -fstack-protector-all -Werror
+release: OBJCFLAGS = -Wall -Wextra -O2 -fwhole-program -flto -fwrapv -Werror
+release: OBJCFLAGS += -DRELEASE_MODE -std=c11 -pedantic -fstack-protector-all
 release: CC = clang
 release: $(BIN)
 

@@ -69,8 +69,7 @@
 #define align_up_ptr(p, a) ((void *)align_up((uintptr_t)(p), (uintptr_t)(a)))
 
 #define uniqid(name) glue(name, __LINE__)
-#define compiler_assert(exp) \
-  typedef char uniqid(_compile_assert_array)[(exp) ? 1 : -1]
+#define compiler_assert(exp,str) _Static_assert(exp,str)
 #define fall_through __attribute__((fallthrough));
 
 #define BITS_PER_BYTE CHAR_BIT

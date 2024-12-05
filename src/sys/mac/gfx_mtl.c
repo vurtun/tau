@@ -143,8 +143,8 @@ static const int gfx__mtl_pix_fmt_bytes[] = {
   [GFX_PIX_FMT_R8]        = 1,
   [GFX_PIX_FMT_R8G8B8A8]  = 4,
 };
-compiler_assert(cntof(gfx__mtl_pix_fmt) == GFX_PIX_FMT_TYPE_CNT);
-compiler_assert(cntof(gfx__mtl_pix_fmt_bytes) == GFX_PIX_FMT_TYPE_CNT);
+compiler_assert(cntof(gfx__mtl_pix_fmt) == GFX_PIX_FMT_TYPE_CNT, "[metal] invalid pixel format");
+compiler_assert(cntof(gfx__mtl_pix_fmt_bytes) == GFX_PIX_FMT_TYPE_CNT, "[metal] invalid pixel format size");
 
 static int
 gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, int h) {
@@ -173,7 +173,8 @@ gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, i
   [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:(NSUInteger)(bpr*w)];
 
   struct gfx_tex *img = mtl->tex + i;
-  img->w = w, img->h = h;
+  img->w = w;
+  img->h = h;
   img->hdl = tex;
   img->act = 1;
   return i;

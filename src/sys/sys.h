@@ -164,6 +164,19 @@ enum sys_file_type {
   SYS_FILE_LNK,
   SYS_FILE_FIFO,
 };
+enum sys_file_perm {
+  SYS_FILE_PERM_USR_READ  = 0x001,
+  SYS_FILE_PERM_USR_WRITE = 0x002,
+  SYS_FILE_PERM_USR_EXEC  = 0x004,
+
+  SYS_FILE_PERM_GRP_READ  = 0x008,
+  SYS_FILE_PERM_GRP_WRITE = 0x010,
+  SYS_FILE_PERM_GRP_EXEC  = 0x020,
+
+  SYS_FILE_PERM_ALL_READ  = 0x040,
+  SYS_FILE_PERM_ALL_WRITE = 0x080,
+  SYS_FILE_PERM_ALL_EXEC  = 0x100,
+};
 struct sys_file_info {
   size_t siz;
   time_t mtime;

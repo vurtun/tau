@@ -86,16 +86,6 @@ static void sys_mac_prep(struct sys *s);
 #define SYS__OBJ_REL(obj) do{ [obj release]; obj = nil; } while(0)
 #endif
 
-static void
-xpanic(const char *fmt, ...) {
-  assert(fmt);
-  va_list args;
-  fflush(stdout);
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  va_end(args);
-  exit(EXIT_FAILURE);
-}
 static unsigned
 sys__mac_col(NSColor *col) {
   @autoreleasepool {
@@ -832,7 +822,8 @@ sys_mac__mouse_pos(const NSEvent *const e) {
   float dx = castf(e.scrollingDeltaX);
   float dy = castf(e.scrollingDeltaY);
   if (e.hasPreciseScrollingDeltas) {
-    dx *= 0.1f, dy *= 0.1f;
+    dx *= 0.1f;
+    dy *= 0.1f;
   }
   if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
     g_sys.keymod |= sys__mac_mods(e);

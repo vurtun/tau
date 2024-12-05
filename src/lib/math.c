@@ -804,9 +804,15 @@ col_rgb_hsv(float *restrict rgb_out, const float *restrict hsv_in) {
  */
 static void
 m3x3id(float *m) {
-  m[0*3+0] = 1.0f, m[0*3+1] = 0.0f, m[0*3+2] = 0.0f;
-  m[1*3+0] = 0.0f; m[1*3+1] = 1.0f; m[1*3+2] = 0.0f;
-  m[2*3+0] = 0.0f; m[2*3+1] = 0.0f; m[2*3+2] = 1.0f;
+  m[0*3+0] = 1.0f;
+  m[0*3+1] = 0.0f;
+  m[0*3+2] = 0.0f;
+  m[1*3+0] = 0.0f;
+  m[1*3+1] = 1.0f;
+  m[1*3+2] = 0.0f;
+  m[2*3+0] = 0.0f;
+  m[2*3+1] = 0.0f;
+  m[2*3+2] = 1.0f;
 }
 static void
 m3x3q(float *restrict m, const float *restrict q) {
@@ -840,9 +846,15 @@ m3x3q(float *restrict m, const float *restrict q) {
 }
 static void
 m3x3T(float *restrict t, const float *restrict m) {
-  t[3*0+0] = m[3*0+0], t[3*0+1] = m[3*1+0], t[3*0+2] = m[3*2+0];
-  t[3*1+0] = m[3*0+1], t[3*1+1] = m[3*1+1], t[3*1+2] = m[3*2+1];
-  t[3*2+0] = m[3*0+2], t[3*2+1] = m[3*1+2], t[3*2+2] = m[3*2+2];
+  t[3*0+0] = m[3*0+0];
+  t[3*0+1] = m[3*1+0];
+  t[3*0+2] = m[3*2+0];
+  t[3*1+0] = m[3*0+1];
+  t[3*1+1] = m[3*1+1];
+  t[3*1+2] = m[3*2+1];
+  t[3*2+0] = m[3*0+2];
+  t[3*2+1] = m[3*1+2];
+  t[3*2+2] = m[3*2+2];
 }
 static void
 mul3x3(float *restrict d, const float *restrict a, const float *restrict b) {
@@ -862,8 +874,10 @@ static void
 quatf(float *restrict q, float angle, float x, float y, float z) {
   assert(q);
   float s, c; math_sin_cos(&s, &c, angle * 0.5f);
-  q[0] = x * s, q[1] = y * s;
-  q[2] = z * s, q[3] = c;
+  q[0] = x * s;
+  q[1] = y * s;
+  q[2] = z * s;
+  q[3] = c;
 }
 static void
 qrot3(float *restrict out, const float *restrict qrot,
@@ -1408,13 +1422,19 @@ covar3(float *restrict mat33, const float *restrict pnts, int n) {
   float xy = 0.0f, xz = 0.0f, yz = 0.0f;
   for loop(i,n) {
     float p[3]; sub3(p, pnts+i*3, mean);
-    xx += p[0] * p[0], xy += p[0] * p[1];
-    xz += p[0] * p[2], yy += p[1] * p[1];
-    yz += p[1] * p[2], zz += p[2] * p[2];
+    xx += p[0] * p[0];
+    xy += p[0] * p[1];
+    xz += p[0] * p[2];
+    yy += p[1] * p[1];
+    yz += p[1] * p[2];
+    zz += p[2] * p[2];
   }
-  xx *= div, xy *= div;
-  xz *= div, yy *= div;
-  yz *= div, zz *= div;
+  xx *= div;
+  xy *= div;
+  xz *= div;
+  yy *= div;
+  yz *= div;
+  zz *= div;
 
   mat33[0*3+0] = xx;
   mat33[0*3+1] = xy;
