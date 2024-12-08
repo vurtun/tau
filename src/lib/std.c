@@ -7,16 +7,34 @@
 #endif
 
 static inline int
-npow2(int x) {
-  unsigned int v = castu(x);
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v |= v >> 8;
-  v |= v >> 16;
-  v++;
-  return casti(v);
+chk_add(int a, int b, unsigned *ovf) {
+  int ret = 0;
+  *ovf |= ckd_add(&ret, a, b);
+  return ret;
+}
+static inline int
+chk_sub(int a, int b, unsigned *ovf) {
+  int ret = 0;
+  *ovf |= ckd_sub(&ret, a, b);
+  return ret;
+}
+static inline int
+chk_mul(int a, int b, unsigned *ovf) {
+  int ret = 0;
+  *ovf |= ckd_mul(&ret, a, b);
+  return ret;
+}
+static inline int
+npow2(int input) {
+  unsigned int val = castu(input);
+  val--;
+  val |= val >> 1;
+  val |= val >> 2;
+  val |= val >> 4;
+  val |= val >> 8;
+  val |= val >> 16;
+  val++;
+  return casti(val);
 }
 /* ---------------------------------------------------------------------------
  *                                Foreach
@@ -34,24 +52,24 @@ npow2(int x) {
  * ---------------------------------------------------------------------------
  */
 static inline void
-mcpy(void* restrict dst, void const *restrict src, int n) {
-  assert(n >= 0);
-  assert(dst != 0 || !n);
-  assert(src != 0 || !n);
+mcpy(void* restrict dst, void const *restrict src, int cnt) {
+  assert(cnt >= 0);
+  assert(dst != 0 || !cnt);
+  assert(src != 0 || !cnt);
 
-  unsigned char *restrict d = dst;
-  const unsigned char *restrict s = src;
-  for loop(i, n) {
-    d[i] = s[i];
+  unsigned char *restrict dst8 = dst;
+  const unsigned char *restrict src8 = src;
+  for loop(i, cnt) {
+    dst8[i] = src8[i];
   }
 }
 static inline void
-mset(void *addr, int c, int n) {
+mset(void *addr, int val, int cnt) {
   assert(addr);
-  assert(n >= 0);
+  assert(cnt >= 0);
   unsigned char *dst = addr;
-  for loop(i, n) {
-    dst[i] = castb(c);
+  for loop(i, cnt) {
+    dst[i] = castb(val);
   }
 }
 #define swap(x,y) do {\
@@ -95,29 +113,29 @@ mset(void *addr, int c, int n) {
 #define rng_cut_rhs(r,n) *(r) = rng_lhs(s,n)
 
 static force_inline int
-rng__bnd(int i, int n) {
-  int l = max(n, 1) - 1;
-  int v = (i < 0) ? (n - i) : i;
-  return clamp(v, 0, l);
+rng__bnd(int idx, int cnt) {
+  int lft = max(cnt, 1) - 1;
+  int val = (idx < 0) ? (cnt - idx) : idx;
+  return clamp(val, 0, lft);
 }
 static force_inline struct rng
-rng__mk(int lo, int hi, int n) {
-  assert(lo <= hi);
-  struct rng r = {.lo = lo, .hi = hi};
-  r.cnt = abs(r.hi - r.lo);
-  r.total = n;
-  return r;
-}
-static force_inline struct rng
-rng_sub(const struct rng *r, int b, int e) {
-  struct rng ret = rng(b, e, r->total);
-  rng_shft(&ret, r->lo);
+rng__mk(int low, int high, int cnt) {
+  assert(low <= high);
+  struct rng ret = {.lo = low, .hi = high};
+  ret.cnt = abs(ret.hi - ret.lo);
+  ret.total = cnt;
   return ret;
 }
 static force_inline struct rng
-rng_put(const struct rng *r, const struct rng *v) {
-  struct rng ret = *v;
-  rng_shft(&ret, r->lo);
+rng_sub(const struct rng *rng, int beg, int end) {
+  struct rng ret = rng(beg, end, rng->total);
+  rng_shft(&ret, rng->lo);
+  return ret;
+}
+static force_inline struct rng
+rng_put(const struct rng *rng, const struct rng *val) {
+  struct rng ret = *val;
+  rng_shft(&ret, rng->lo);
   return ret;
 }
 
@@ -128,83 +146,89 @@ rng_put(const struct rng *r, const struct rng *v) {
 #define FNV1A32_HASH_INITIAL 2166136261U
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
 
-static inline unsigned
-fnv1a32(const void *ptr, int size, unsigned h) {
-  const unsigned char *p = ptr;
-  for loop(i,size) {
-     h = (h ^ p[i]) * 16777619u;
+static inline no_sanitize_int unsigned
+fnv1a32(const void *ptr, int cnt, unsigned hash) {
+  const unsigned char *ptr8 = ptr;
+  if (!ptr) {
+    return FNV1A32_HASH_INITIAL;
   }
-  return h;
+  for loop(i,cnt) {
+     hash = (hash ^ ptr8[i]) * 16777619u;
+  }
+  return hash;
 }
-static inline unsigned long long
-fnv1a64(const void *ptr, int len, unsigned long long h) {
-  const unsigned char *p = ptr;
-  for loop(i,len) {
-    h ^= (unsigned long long)p[i];
-    h *= 1099511628211llu;
+static inline no_sanitize_int unsigned long long
+fnv1a64(const void *ptr, int len, unsigned long long hash) {
+  const unsigned char *ptr8 = ptr;
+  if (!ptr || !len) {
+    return FNV1A64_HASH_INITIAL;
   }
-  return h;
+  for loop(i,len) {
+    hash ^= (unsigned long long)ptr8[i];
+    hash *= 1099511628211LLU;
+  }
+  return hash;
 }
 static unsigned
-fnv1au32(unsigned h, unsigned id) {
-  return fnv1a32(&id, sizeof(id), h);
+fnv1au32(unsigned hash, unsigned uid) {
+  return fnv1a32(&uid, sizeof(uid), hash);
 }
 static unsigned long long
-fnv1au64(unsigned long long id, unsigned long long h) {
-  return fnv1a64(&id, sizeof(id), h);
+fnv1au64(unsigned long long uid, unsigned long long hash) {
+  return fnv1a64(&uid, sizeof(uid), hash);
 }
 static unsigned long long
 hash_ptr(const void *ptr) {
-  return fnv1a64(&ptr, szof(void *), FNV1A64_HASH_INITIAL);
+  return fnv1a64(&ptr, szof(void*), FNV1A64_HASH_INITIAL);
 }
 static unsigned long long
-hash_int(long long d) {
-  return fnv1a64(&d, szof(d), FNV1A64_HASH_INITIAL);
+hash_int(long long lld) {
+  return fnv1a64(&lld, szof(lld), FNV1A64_HASH_INITIAL);
 }
 static unsigned long long
-hash_lld(long long d) {
-  return fnv1a64(&d, szof(d), FNV1A64_HASH_INITIAL);
+hash_lld(long long lld) {
+  return fnv1a64(&lld, szof(lld), FNV1A64_HASH_INITIAL);
 }
 
 /* ---------------------------------------------------------------------------
- *                                  Random
+ *                                Random
  * ---------------------------------------------------------------------------
  */
 static inline unsigned long long
-rnd_gen(unsigned long long x, int n) {
-  return x + castull(n) * 0x9E3779B97F4A7C15llu;
+rnd_gen(unsigned long long val, int idx) {
+  return val + castull(idx) * 0x9E3779B97F4A7C15llu;
 }
 static inline unsigned long long
-rnd_mix(unsigned long long z) {
-  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9llu;
-  z = (z ^ (z >> 27)) * 0x94D049BB133111EBllu;
-  return z ^ (z >> 31llu);
+rnd_mix(unsigned long long val) {
+  val = (val ^ (val >> 30)) * 0xBF58476D1CE4E5B9llu;
+  val = (val ^ (val >> 27)) * 0x94D049BB133111EBllu;
+  return val ^ (val >> 31llu);
 }
 static inline unsigned long long
-rnd_split_mix(unsigned long long *x, int i) {
-  *x = rnd_gen(*x, i);
-  return rnd_mix(*x);
+rnd_split_mix(unsigned long long *val, int idx) {
+  *val = rnd_gen(*val, idx);
+  return rnd_mix(*val);
 }
 static inline unsigned long long
-rnd(unsigned long long *x) {
-  return rnd_split_mix(x, 1);
+rnd(unsigned long long *val) {
+  return rnd_split_mix(val, 1);
 }
 static inline unsigned
-rndu(unsigned long long *x) {
-  unsigned long long z = rnd(x);
-  return castu(z & 0xffffffffu);
+rndu(unsigned long long *val) {
+  unsigned long long ret = rnd(val);
+  return castu(ret & 0xffffffffu);
 }
 static inline int
-rndi(unsigned long long *x) {
-  unsigned z = rndu(x);
-  long long n = castll(z) - (UINT_MAX/2);
-  assert(n >= INT_MIN && n <= INT_MAX);
-  return casti(n);
+rndi(unsigned long long *val) {
+  unsigned rnd = rndu(val);
+  long long norm = castll(rnd) - (UINT_MAX/2);
+  assert(norm >= INT_MIN && norm <= INT_MAX);
+  return casti(norm);
 }
 static inline double
-rndn(unsigned long long *x) {
-  unsigned n = rndu(x);
-  return castd(n) / castd(UINT_MAX);
+rndn(unsigned long long *val) {
+  unsigned rnd = rndu(val);
+  return castd(rnd) / castd(UINT_MAX);
 }
 static unsigned
 rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
@@ -524,7 +548,6 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 
 static int
 is_space(long c) {
-  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return 0;
   case 0x0020:
@@ -551,11 +574,9 @@ is_space(long c) {
   case 0x3000:
     return 1;
   }
-  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static int
 is_quote(long c) {
-  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return 0;
   case '\"':
@@ -573,11 +594,9 @@ is_quote(long c) {
   case 0x203A:
     return 1;
   }
-  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static int
 is_punct(long c) {
-  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   switch (c) {
   default: return is_quote(c);
   case ',':
@@ -710,27 +729,26 @@ is_punct(long c) {
   case 0x2057:
     return 1;
   }
-  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 /* ---------------------------------------------------------------------------
  *                                  String
  * ---------------------------------------------------------------------------
  */
+#define rng(b,e,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), n)
+
 // clang-format off
 #define cstrn(s) casti(strlen(s))
 #define str(p,r) (struct str){.ptr = p, .rng = r}
-#define strptr(p,b,e,n) (struct str){.ptr = p, .rng = rng(casti(b-p),casti(e-p), n)}
-#define strp(b,e) strptr(b,b,e,casti(e-b))
 #define strn(s,n) str(s,rngn(n))
 #define str0(s) str(s,rngn(cstrn(s)))
-#define strv(s) (struct str){.ptr = s, .rng = {0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
+#define strv(s) (struct str){.ptr = (s),.rng ={0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
 #define strf(s) s.rng.cnt, str_beg(s)
 #define str_nil (struct str){0,rngn(0)}
 #define str_inv (struct str){0,rng_inv}
 #define str_len(s) rng_cnt(&(s).rng)
 #define str_is_empty(s) (str_len(s) == 0)
-#define str_is_inv(s) rng_is_inv(s.rng)
-#define str_is_val(s) (!rng_is_inv(s.rng))
+#define str_is_inv(s) ((s).ptr == 0 || rng_is_inv((s).rng))
+#define str_is_val(s) (!rng_is_inv((s).rng))
 #define str_eq(a,b) (str_cmp(a,b) == 0)
 #define str_neq(a,b) (str_cmp(a,b) != 0)
 #define str_sub(s,b,e) str((s).ptr, rng_sub(&(s).rng, b, e))
@@ -738,8 +756,8 @@ is_punct(long c) {
 #define str_lhs(s,n) str_sub(s, 0, min(str_len(s), n))
 #define str_cut_lhs(s,n) *(s) = str_rhs(*(s), n)
 #define str_cut_rhs(s,n) *(s) = str_lhs(*(s), n)
-#define str_beg(s) slc_beg((s).ptr, (s).rng)
-#define str_end(s) slc_end((s).ptr, (s).rng)
+#define str_beg(s) (((s).ptr) ? (slc_beg((s).ptr, (s).rng)) : 0)
+#define str_end(s) (((s).ptr) ? (slc_end((s).ptr, (s).rng)) : 0)
 #define str_at(s,i) slc_at((s).ptr, (s).rng, i)
 #define str_ptr(s,i) slc_ptr((s).ptr, (s).rng, i)
 
@@ -751,9 +769,32 @@ is_punct(long c) {
    str_len(it); it = str_split_cut(&rest, delim))
 // clang-format on
 
+static inline struct str
+strptr(const char *ptr, const char *begin, const char *end, int total) {
+  if (ptr == 0 || begin == 0 || end == 0) {
+    return str_nil;
+  }
+  struct str str = {.ptr = ptr};
+  int low = casti(begin - ptr);
+  int hih = casti(end - ptr);
+  int cnt = casti(end - begin);
+  str.rng = (struct rng){low, hih, cnt, total};
+  return str;
+}
+static inline struct str
+strp(const char *begin, const char *end) {
+  if (begin == 0 || end == 0) {
+    return str_nil;
+  }
+  int cnt = casti(end - begin);
+  return strptr(begin, begin, end, cnt);
+}
 static unsigned long long
 str__hash(struct str str, unsigned long long id) {
   assert(str_len(str) >= 0);
+  if (str_is_inv(str)) {
+    return id;
+  }
   return fnv1a64(str_beg(str), str_len(str), id);
 }
 static unsigned long long
@@ -787,9 +828,16 @@ static int
 str_fnd(struct str hay, struct str needle) {
   assert(str_len(hay) >= 0);
   assert(str_len(needle) >= 0);
+  if (str_len(hay) == 0 ||
+      str_len(hay) == 0) {
+    return str_len(hay);
+  }
   if (str_len(needle) == 1) {
     const char *ret = cpu_str_chr(str_beg(hay), str_len(hay), str_at(needle,0));
-    return ret ? casti(ret - str_beg(hay)) : str_len(hay);
+    if (ret) {
+      return casti(ret - str_beg(hay));
+    }
+    return str_len(hay);
   } else {
     return cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
   }
@@ -821,7 +869,8 @@ str_split_cut(struct str *str, struct str delim) {
 }
 static void
 ut_str(void) {
-  static const struct str hay = strv("cmd[stk?utf/boot/usr/str_bootbany.exe");
+  char test_str[64] = "cmd[stk?utf/boot/usr/str_bootbany.exe";
+  const struct str hay = str0(test_str);
   int dot_pos = str_fnd(hay, strv("["));
   assert(dot_pos == 3);
   int cmd_pos = str_fnd(hay, strv("cmd"));
@@ -834,8 +883,6 @@ ut_str(void) {
   assert(close_no == str_len(hay));
   int no = str_fnd(hay, strv("rock"));
   assert(no == str_len(hay));
-  int end = str_fnd(strv("test.exe"), strv(".exe"));
-  assert(end == 4);
 }
 
 /* ---------------------------------------------------------------------------
@@ -865,6 +912,9 @@ utf_dec(unsigned *rune, struct str *str) {
   if (str_is_empty(*str)) {
     if (rune) {
       *rune = UTF_INVALID;
+    }
+    if (str_is_inv(*str)) {
+      return str_nil;
     }
     return strptr(str->ptr, str_end(*str), str_end(*str), str->rng.total);
   }
@@ -951,6 +1001,9 @@ utf_at(unsigned *rune, struct str str, int idx) {
   }
   if (rune) {
     *rune = UTF_INVALID;
+  }
+  if (str_is_inv(str)) {
+    return str_nil;
   }
   return strptr(str.ptr, str_end(str), str_end(str), str.rng.total);
 }

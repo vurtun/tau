@@ -123,7 +123,8 @@ static fnt__buf fnt__new_buf(const void *p, size_t size)
 #define fnt__buf_get16(b)  fnt__buf_get((b), 2)
 #define fnt__buf_get32(b)  fnt__buf_get((b), 4)
 
-static fnt__buf fnt__buf_range(const fnt__buf *b, int o, int s)
+static fnt__buf
+fnt__buf_range(const fnt__buf *b, int o, int s)
 {
    fnt__buf r = fnt__new_buf(NULL, 0);
    if (o < 0 || s < 0 || o > b->size || s > b->size - o) return r;
@@ -131,50 +132,48 @@ static fnt__buf fnt__buf_range(const fnt__buf *b, int o, int s)
    r.size = s;
    return r;
 }
-
-static fnt__buf fnt__cff_get_index(fnt__buf *b)
-{
-   int count, start, offsize;
-   start = b->cursor;
-   count = fnt__buf_get16(b);
-   if (count) {
-      offsize = fnt__buf_get8(b);
-      FNT_assert(offsize >= 1 && offsize <= 4);
-      fnt__buf_skip(b, offsize * count);
-      fnt__buf_skip(b, fnt__buf_get(b, offsize) - 1);
-   }
-   return fnt__buf_range(b, start, b->cursor - start);
+static fnt__buf
+fnt__cff_get_index(fnt__buf *b) {
+  int count, start, offsize;
+  start = b->cursor;
+  count = fnt__buf_get16(b);
+  if (count) {
+    offsize = fnt__buf_get8(b);
+    FNT_assert(offsize >= 1 && offsize <= 4);
+    fnt__buf_skip(b, offsize * count);
+    fnt__buf_skip(b, fnt__buf_get(b, offsize) - 1);
+  }
+  return fnt__buf_range(b, start, b->cursor - start);
 }
-
-static fnt_uint32 fnt__cff_int(fnt__buf *b)
-{
-   int b0 = fnt__buf_get8(b);
-   if (b0 >= 32 && b0 <= 246)       return b0 - 139;
-   else if (b0 >= 247 && b0 <= 250) return (b0 - 247)*256 + fnt__buf_get8(b) + 108;
-   else if (b0 >= 251 && b0 <= 254) return -(b0 - 251)*256 - fnt__buf_get8(b) - 108;
-   else if (b0 == 28)               return fnt__buf_get16(b);
-   else if (b0 == 29)               return fnt__buf_get32(b);
-   FNT_assert(0);
-   return 0;
+static fnt_uint32
+fnt__cff_int(fnt__buf *b) {
+  int b0 = fnt__buf_get8(b);
+  if (b0 >= 32 && b0 <= 246)       return b0 - 139;
+  else if (b0 >= 247 && b0 <= 250) return (b0 - 247)*256 + fnt__buf_get8(b) + 108;
+  else if (b0 >= 251 && b0 <= 254) return -(b0 - 251)*256 - fnt__buf_get8(b) - 108;
+  else if (b0 == 28)               return fnt__buf_get16(b);
+  else if (b0 == 29)               return fnt__buf_get32(b);
+  FNT_assert(0);
+  return 0;
 }
-
-static void fnt__cff_skip_operand(fnt__buf *b) {
-   int v, b0 = fnt__buf_peek8(b);
-   FNT_assert(b0 >= 28);
-   if (b0 == 30) {
-      fnt__buf_skip(b, 1);
-      while (b->cursor < b->size) {
-         v = fnt__buf_get8(b);
-         if ((v & 0xF) == 0xF || (v >> 4) == 0xF)
-            break;
+static void
+fnt__cff_skip_operand(fnt__buf *b) {
+  int v, b0 = fnt__buf_peek8(b);
+  FNT_assert(b0 >= 28);
+  if (b0 == 30) {
+    fnt__buf_skip(b, 1);
+    while (b->cursor < b->size) {
+      v = fnt__buf_get8(b);
+      if ((v & 0xF) == 0xF || (v >> 4) == 0xF) {
+        break;
       }
-   } else {
-      fnt__cff_int(b);
-   }
+    }
+  } else {
+    fnt__cff_int(b);
+  }
 }
-
-static fnt__buf fnt__dict_get(fnt__buf *b, int key)
-{
+static fnt__buf
+fnt__dict_get(fnt__buf *b, int key) {
    fnt__buf_seek(b, 0);
    while (b->cursor < b->size) {
       int start = b->cursor, end, op;
@@ -188,32 +187,31 @@ static fnt__buf fnt__dict_get(fnt__buf *b, int key)
    return fnt__buf_range(b, 0, 0);
 }
 
-static void fnt__dict_get_ints(fnt__buf *b, int key, int outcount, fnt_uint32 *out)
-{
-   int i;
-   fnt__buf operands = fnt__dict_get(b, key);
-   for (i = 0; i < outcount && operands.cursor < operands.size; i++)
-      out[i] = fnt__cff_int(&operands);
+static void
+fnt__dict_get_ints(fnt__buf *b, int key, int outcount, fnt_uint32 *out) {
+  int i;
+  fnt__buf operands = fnt__dict_get(b, key);
+  for (i = 0; i < outcount && operands.cursor < operands.size; i++) {
+    out[i] = fnt__cff_int(&operands);
+  }
 }
-
-static int fnt__cff_index_count(fnt__buf *b)
-{
-   fnt__buf_seek(b, 0);
-   return fnt__buf_get16(b);
+static int
+fnt__cff_index_count(fnt__buf *b) {
+  fnt__buf_seek(b, 0);
+  return fnt__buf_get16(b);
 }
-
-static fnt__buf fnt__cff_index_get(fnt__buf b, int i)
-{
-   int count, offsize, start, end;
-   fnt__buf_seek(&b, 0);
-   count = fnt__buf_get16(&b);
-   offsize = fnt__buf_get8(&b);
-   FNT_assert(i >= 0 && i < count);
-   FNT_assert(offsize >= 1 && offsize <= 4);
-   fnt__buf_skip(&b, i*offsize);
-   start = fnt__buf_get(&b, offsize);
-   end = fnt__buf_get(&b, offsize);
-   return fnt__buf_range(&b, 2+(count+1)*offsize+start, end - start);
+static fnt__buf
+fnt__cff_index_get(fnt__buf b, int i) {
+  int count, offsize, start, end;
+  fnt__buf_seek(&b, 0);
+  count = fnt__buf_get16(&b);
+  offsize = fnt__buf_get8(&b);
+  FNT_assert(i >= 0 && i < count);
+  FNT_assert(offsize >= 1 && offsize <= 4);
+  fnt__buf_skip(&b, i*offsize);
+  start = fnt__buf_get(&b, offsize);
+  end = fnt__buf_get(&b, offsize);
+  return fnt__buf_range(&b, 2+(count+1)*offsize+start, end - start);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -229,7 +227,7 @@ static fnt__buf fnt__cff_index_get(fnt__buf b, int i)
 #define ttFixed(p)    ttLONG(p)
 
 static fnt_uint16 ttUSHORT(fnt_uint8 *p) { return p[0]*256 + p[1]; }
-static fnt_int16 ttSHORT(fnt_uint8 *p)   { return p[0]*256 + p[1]; }
+static fnt_int16 no_sanitize_int ttSHORT(fnt_uint8 *p)   { return casts(casti(p[0])*256 + casti(p[1])); }
 static fnt_uint32 ttULONG(fnt_uint8 *p)  { return (p[0]<<24) + (p[1]<<16) + (p[2]<<8) + p[3]; }
 static fnt_int32 ttLONG(fnt_uint8 *p)    { return (p[0]<<24) + (p[1]<<16) + (p[2]<<8) + p[3]; }
 
@@ -1551,110 +1549,97 @@ static fnt_int32 fnt__GetGlyphGPOSInfoAdvance(const fnt_fontinfo *info, int glyp
 
    return 0;
 }
-
-static int  fnt_GetGlyphKernAdvance(const fnt_fontinfo *info, int g1, int g2)
-{
-   int xAdvance = 0;
-
-   if (info->gpos)
-      xAdvance += fnt__GetGlyphGPOSInfoAdvance(info, g1, g2);
-   else if (info->kern)
-      xAdvance += fnt__GetGlyphKernInfoAdvance(info, g1, g2);
-
-   return xAdvance;
+static int
+fnt_GetGlyphKernAdvance(const fnt_fontinfo *info, int g1, int g2) {
+  int xAdvance = 0;
+  if (info->gpos) {
+    xAdvance += fnt__GetGlyphGPOSInfoAdvance(info, g1, g2);
+  } else if (info->kern) {
+    xAdvance += fnt__GetGlyphKernInfoAdvance(info, g1, g2);
+  }
+  return xAdvance;
 }
-
-static int  fnt_GetCodepointKernAdvance(const fnt_fontinfo *info, int ch1, int ch2)
-{
-   if (!info->kern && !info->gpos) // if no kerning table, don't waste time looking up both codepoint->glyphs
-      return 0;
-   return fnt_GetGlyphKernAdvance(info, fnt_FindGlyphIndex(info,ch1), fnt_FindGlyphIndex(info,ch2));
+static int
+fnt_GetCodepointKernAdvance(const fnt_fontinfo *info, int ch1, int ch2) {
+  if (!info->kern && !info->gpos) { // if no kerning table, don't waste time looking up both codepoint->glyphs
+    return 0;
+  }
+  return fnt_GetGlyphKernAdvance(info, fnt_FindGlyphIndex(info,ch1), fnt_FindGlyphIndex(info,ch2));
 }
-
-static void fnt_GetCodepointHMetrics(const fnt_fontinfo *info, int codepoint, int *advanceWidth, int *leftSideBearing)
-{
+static void
+fnt_GetCodepointHMetrics(const fnt_fontinfo *info, int codepoint, int *advanceWidth, int *leftSideBearing) {
    fnt_GetGlyphHMetrics(info, fnt_FindGlyphIndex(info,codepoint), advanceWidth, leftSideBearing);
 }
-
-static void fnt_GetFontVMetrics(const fnt_fontinfo *info, int *ascent, int *descent, int *lineGap)
-{
-   if (ascent ) *ascent  = ttSHORT(info->data+info->hhea + 4);
-   if (descent) *descent = ttSHORT(info->data+info->hhea + 6);
-   if (lineGap) *lineGap = ttSHORT(info->data+info->hhea + 8);
+static void
+fnt_GetFontVMetrics(const fnt_fontinfo *info, int *ascent, int *descent, int *lineGap) {
+  if (ascent ) *ascent  = ttSHORT(info->data+info->hhea + 4);
+  if (descent) *descent = ttSHORT(info->data+info->hhea + 6);
+  if (lineGap) *lineGap = ttSHORT(info->data+info->hhea + 8);
 }
-
-static int  fnt_GetFontVMetricsOS2(const fnt_fontinfo *info, int *typoAscent, int *typoDescent, int *typoLineGap)
-{
-   int tab = fnt__find_table(info->data, info->fontstart, "OS/2");
-   if (!tab)
-      return 0;
-   if (typoAscent ) *typoAscent  = ttSHORT(info->data+tab + 68);
-   if (typoDescent) *typoDescent = ttSHORT(info->data+tab + 70);
-   if (typoLineGap) *typoLineGap = ttSHORT(info->data+tab + 72);
-   return 1;
+static int
+fnt_GetFontVMetricsOS2(const fnt_fontinfo *info, int *typoAscent, int *typoDescent, int *typoLineGap) {
+  int tab = fnt__find_table(info->data, info->fontstart, "OS/2");
+  if (!tab) {
+    return 0;
+  }
+  if (typoAscent ) *typoAscent  = ttSHORT(info->data+tab + 68);
+  if (typoDescent) *typoDescent = ttSHORT(info->data+tab + 70);
+  if (typoLineGap) *typoLineGap = ttSHORT(info->data+tab + 72);
+  return 1;
 }
-
-static void fnt_GetFontBoundingBox(const fnt_fontinfo *info, int *x0, int *y0, int *x1, int *y1)
-{
-   *x0 = ttSHORT(info->data + info->head + 36);
-   *y0 = ttSHORT(info->data + info->head + 38);
-   *x1 = ttSHORT(info->data + info->head + 40);
-   *y1 = ttSHORT(info->data + info->head + 42);
+static void
+fnt_GetFontBoundingBox(const fnt_fontinfo *info, int *x0, int *y0, int *x1, int *y1) {
+  *x0 = ttSHORT(info->data + info->head + 36);
+  *y0 = ttSHORT(info->data + info->head + 38);
+  *x1 = ttSHORT(info->data + info->head + 40);
+  *y1 = ttSHORT(info->data + info->head + 42);
 }
-
-static float fnt_ScaleForPixelHeight(const fnt_fontinfo *info, float height)
-{
-   int fheight = ttSHORT(info->data + info->hhea + 4) - ttSHORT(info->data + info->hhea + 6);
-   return (float) height / fheight;
+static float
+fnt_ScaleForPixelHeight(const fnt_fontinfo *info, float height) {
+  int fheight = ttSHORT(info->data + info->hhea + 4) - ttSHORT(info->data + info->hhea + 6);
+  return (float) height / fheight;
 }
-
-static float fnt_ScaleForMappingEmToPixels(const fnt_fontinfo *info, float pixels)
-{
-   int unitsPerEm = ttUSHORT(info->data + info->head + 18);
-   return pixels / unitsPerEm;
+static float
+fnt_ScaleForMappingEmToPixels(const fnt_fontinfo *info, float pixels) {
+  int unitsPerEm = ttUSHORT(info->data + info->head + 18);
+  return pixels / unitsPerEm;
 }
-
-static void fnt_FreeShape(const fnt_fontinfo *info, fnt_vertex *v)
-{
-   FNT_free(v, info->userdata);
+static void
+fnt_FreeShape(const fnt_fontinfo *info, fnt_vertex *v) {
+  FNT_free(v, info->userdata);
 }
+static fnt_uint8*
+fnt_FindSVGDoc(const fnt_fontinfo *info, int gl) {
+  int i;
+  fnt_uint8 *data = info->data;
+  fnt_uint8 *svg_doc_list = data + fnt__get_svg((fnt_fontinfo *) info);
 
-static fnt_uint8 *fnt_FindSVGDoc(const fnt_fontinfo *info, int gl)
-{
-   int i;
-   fnt_uint8 *data = info->data;
-   fnt_uint8 *svg_doc_list = data + fnt__get_svg((fnt_fontinfo *) info);
-
-   int numEntries = ttUSHORT(svg_doc_list);
-   fnt_uint8 *svg_docs = svg_doc_list + 2;
-
-   for(i=0; i<numEntries; i++) {
-      fnt_uint8 *svg_doc = svg_docs + (12 * i);
-      if ((gl >= ttUSHORT(svg_doc)) && (gl <= ttUSHORT(svg_doc + 2)))
-         return svg_doc;
-   }
-   return 0;
+  int numEntries = ttUSHORT(svg_doc_list);
+  fnt_uint8 *svg_docs = svg_doc_list + 2;
+  for(i=0; i<numEntries; i++) {
+    fnt_uint8 *svg_doc = svg_docs + (12 * i);
+    if ((gl >= ttUSHORT(svg_doc)) && (gl <= ttUSHORT(svg_doc + 2)))
+      return svg_doc;
+  }
+  return 0;
 }
-
-static int fnt_GetGlyphSVG(const fnt_fontinfo *info, int gl, const char **svg)
-{
-   fnt_uint8 *data = info->data;
-   fnt_uint8 *svg_doc;
-
-   if (info->svg == 0)
-      return 0;
-
-   svg_doc = fnt_FindSVGDoc(info, gl);
-   if (svg_doc != NULL) {
-      *svg = (char *) data + info->svg + ttULONG(svg_doc + 4);
-      return ttULONG(svg_doc + 8);
-   } else {
-      return 0;
-   }
+static int
+fnt_GetGlyphSVG(const fnt_fontinfo *info, int gl, const char **svg) {
+  fnt_uint8 *data = info->data;
+  fnt_uint8 *svg_doc;
+  if (info->svg == 0) {
+    return 0;
+  }
+  svg_doc = fnt_FindSVGDoc(info, gl);
+  if (svg_doc != NULL) {
+    *svg = (char *) data + info->svg + ttULONG(svg_doc + 4);
+    return ttULONG(svg_doc + 8);
+  } else {
+    return 0;
+  }
 }
-
-static int fnt_GetCodepointSVG(const fnt_fontinfo *info, int unicode_codepoint, const char **svg)
-{
+static int
+fnt_GetCodepointSVG(const fnt_fontinfo *info, int unicode_codepoint, const char **svg) {
    return fnt_GetGlyphSVG(info, fnt_FindGlyphIndex(info, unicode_codepoint), svg);
 }
 
@@ -1662,9 +1647,10 @@ static int fnt_GetCodepointSVG(const fnt_fontinfo *info, int unicode_codepoint, 
 //
 // antialiasing software rasterizer
 //
-
-static void fnt_GetGlyphBitmapBoxSubpixel(const fnt_fontinfo *font, int glyph, float scale_x, float scale_y,float shift_x, float shift_y, int *ix0, int *iy0, int *ix1, int *iy1)
-{
+static void
+fnt_GetGlyphBitmapBoxSubpixel(const fnt_fontinfo *font, int glyph, float scale_x,
+                              float scale_y,float shift_x, float shift_y, int *ix0,
+                              int *iy0, int *ix1, int *iy1) {
    int x0=0,y0=0,x1,y1; // =0 suppresses compiler warning
    if (!fnt_GetGlyphBox(font, glyph, &x0,&y0,&x1,&y1)) {
       // e.g. space character
@@ -3140,19 +3126,16 @@ static int fnt_PackFontRangesGatherRects(fnt_pack_context *spc, const fnt_fontin
    return k;
 }
 
-static void fnt_MakeGlyphBitmapSubpixelPrefilter(const fnt_fontinfo *info, unsigned char *output, int out_w, int out_h, int out_stride, float scale_x, float scale_y, float shift_x, float shift_y, int prefilter_x, int prefilter_y, float *sub_x, float *sub_y, int glyph)
-{
-   fnt_MakeGlyphBitmapSubpixel(info,
-                                 output,
-                                 out_w - (prefilter_x - 1),
-                                 out_h - (prefilter_y - 1),
-                                 out_stride,
-                                 scale_x,
-                                 scale_y,
-                                 shift_x,
-                                 shift_y,
-                                 glyph);
-
+static void
+fnt_MakeGlyphBitmapSubpixelPrefilter(const fnt_fontinfo *info,
+                                     unsigned char *output, int out_w, int out_h,
+                                     int out_stride, float scale_x, float scale_y,
+                                     float shift_x, float shift_y, int prefilter_x,
+                                     int prefilter_y, float *sub_x, float *sub_y,
+                                     int glyph) {
+   fnt_MakeGlyphBitmapSubpixel(info, output, out_w - (prefilter_x - 1),
+                               out_h - (prefilter_y - 1), out_stride, scale_x,
+                               scale_y, shift_x, shift_y, glyph);
    if (prefilter_x > 1)
       fnt__h_prefilter(output, out_w, out_h, out_stride, prefilter_x);
 
@@ -3162,10 +3145,11 @@ static void fnt_MakeGlyphBitmapSubpixelPrefilter(const fnt_fontinfo *info, unsig
    *sub_x = fnt__oversample_shift(prefilter_x);
    *sub_y = fnt__oversample_shift(prefilter_y);
 }
-
 // rects array must be big enough to accommodate all characters in the given ranges
-static int fnt_PackFontRangesRenderIntoRects(fnt_pack_context *spc, const fnt_fontinfo *info, fnt_pack_range *ranges, int num_ranges, rpq_rect *rects)
-{
+static int no_sanitize_int
+fnt_PackFontRangesRenderIntoRects(fnt_pack_context *spc, const fnt_fontinfo *info,
+                                  fnt_pack_range *ranges, int num_ranges,
+                                  rpq_rect *rects) {
    int i,j,k, missing_glyph = -1, return_value = 1;
 
    // save current values
@@ -3258,14 +3242,13 @@ static int fnt_PackFontRangesRenderIntoRects(fnt_pack_context *spc, const fnt_fo
 
    return return_value;
 }
-
-static void fnt_PackFontRangesPackRects(fnt_pack_context *spc, rpq_rect *rects, int num_rects)
-{
+static void
+fnt_PackFontRangesPackRects(fnt_pack_context *spc, rpq_rect *rects, int num_rects) {
    rpq_pack_rects((rpq_context *) spc->pack_info, rects, num_rects);
 }
-
-static int fnt_PackFontRanges(fnt_pack_context *spc, const unsigned char *fontdata, int font_index, fnt_pack_range *ranges, int num_ranges)
-{
+static int no_sanitize_int
+fnt_PackFontRanges(fnt_pack_context *spc, const unsigned char *fontdata,
+                   int font_index, fnt_pack_range *ranges, int num_ranges) {
    fnt_fontinfo info;
    int i,j,n, return_value = 1;
    //rpq_context *context = (rpq_context *) spc->pack_info;

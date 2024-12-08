@@ -22,6 +22,7 @@ debug: CFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
 debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions -Wno-pre-c11-compat
 debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE -DDEBUG
 debug: CFLAGS += -DSQLITE_DEBUG
+debug: CFLAGS += -fsanitize=address,undefined,leak,integer
 debug: OBJCFLAGS = -g -Weverything -Wno-covered-switch-default
 debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-double-promotion -Wno-float-equal
 debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef

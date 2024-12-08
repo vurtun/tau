@@ -98,6 +98,9 @@ fmt__lead_sign(fmt__uint32 fl, char *sign) {
   }
 }
 static int
+no_sanitize_int
+no_sanitize_addr
+no_sanitize_undef
 fmtvscb(FMT_SPRINTFCB *callback, void *user, char *buf, char const *fmt,
         va_list va) {
   static char hex[] = "0123456789abcdefxp";

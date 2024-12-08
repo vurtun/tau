@@ -75,8 +75,8 @@ gui_div(const struct gui_bnd *bnd, int gap, int cnt, int idx) {
   int lft = max(0, bnd->ext - (gap * cnt));
   int ext = math_floori(castf(lft) / castf(cnt));
   idx = clamp(0, idx, max(0, cnt - 1));
-  int at = bnd->min + (ext + gap) * idx;
-  return gui_min_ext(at, ext);
+  int off = bnd->min + ((ext + gap) * idx);
+  return gui_min_ext(off, ext);
 }
 static struct gui_box
 gui_box_div_x(const struct gui_box *box, int gap, int cnt, int idx) {
@@ -91,7 +91,8 @@ gui_box_div_y(const struct gui_box *box, int gap, int cnt, int idx) {
   return ret;
 }
 static struct gui_box
-gui_box_div(const struct gui_box *box, int *gap, int cntx, int cnty, int posx, int posy) {
+gui_box_div(const struct gui_box *box, int *gap, int cntx, int cnty,
+            int posx, int posy) {
   struct gui_box ret;
   ret.x = gui_div(&box->x, gap[0], cntx, posx);
   ret.y = gui_div(&box->y, gap[1], cnty, posy);
@@ -195,6 +196,8 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
           const int *con, struct gui_lay_sol *sol) {
   assert(ret);
   assert(slots);
+  assert(ext >= 0);
+  assert(cnt >= 0);
 
   struct gui_lay_sol dummy;
   sol = !sol ? &dummy : sol;
@@ -218,7 +221,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
       }
     }
   }
-  sol->weight = 0.0f;
+  sol->weight = 0.0F;
   sol->dyn_siz = max(0, total - sol->fix_siz);
   for loop(i, cnt) {
     if (slots[i] >= 0) {
@@ -252,7 +255,7 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
     while (grow_cnt > 0 && grow_siz > 0) {
       int nxt_siz = 0;
       int nxt_cnt = 0;
-      float nxt_weight = 0.0f;
+      float nxt_weight = 0.0F;
       for loop(i, cnt) {
         if (slots[i] >= 0) {
           continue;
@@ -372,15 +375,15 @@ gui_clip_begin(struct gui_clip *tmp, struct gui_ctx *ctx, int lhs, int top,
   assert(tmp);
 
   *tmp = ctx->clip;
-  int x0 = max(tmp->box.x.min, lhs);
-  int y0 = max(tmp->box.y.min, top);
-  int x1 = min(tmp->box.x.max, rhs);
-  int y1 = min(tmp->box.y.max, bot);
+  int px0 = max(tmp->box.x.min, lhs);
+  int py0 = max(tmp->box.y.min, top);
+  int px1 = min(tmp->box.x.max, rhs);
+  int py1 = min(tmp->box.y.max, bot);
 
   struct sys *sys = ctx->sys;
-  ctx->clip.box = gui_clip(x0, y0, x1, y1);
+  ctx->clip.box = gui_clip(px0, py0, px1, py1);
   if (ctx->pass == GUI_RENDER) {
-    ctx->clip.hdl = sys->gfx.d2d.clip(&sys->gfx.buf2d, x0, y0, x1, y1);
+    ctx->clip.hdl = sys->gfx.d2d.clip(&sys->gfx.buf2d, px0, py0, px1, py1);
   } else {
     ctx->clip.hdl = 0;
   }
@@ -428,21 +431,21 @@ gui_drw_line_style(struct gui_ctx *ctx, int line_size) {
   ctx->line_size = line_size;
 }
 static void
-gui_drw_box(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
+gui_drw_box(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
-    !gui_intersect(&ctx->clip.box, x0,y0,x1,y1)) {
+    !gui_intersect(&ctx->clip.box, px0,py0,px1,py1)) {
     return;
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.box)) {
-    sys->gfx.d2d.box(&sys->gfx.buf2d, x0, y0, x1, y1, ctx->drw_col, ctx->clip.hdl);
+    sys->gfx.d2d.box(&sys->gfx.buf2d, px0, py0, px1, py1, ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
-gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
+gui_drw_ln(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
@@ -451,39 +454,39 @@ gui_drw_ln(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.line)) {
-    sys->gfx.d2d.ln(&sys->gfx.buf2d, x0, y0, x1, y1, ctx->line_size, ctx->drw_col,
+    sys->gfx.d2d.ln(&sys->gfx.buf2d, px0, py0, px1, py1, ctx->line_size, ctx->drw_col,
       ctx->clip.hdl);
   }
 }
 static void
-gui_drw_hln(struct gui_ctx *ctx, int y, int x0, int x1) {
+gui_drw_hln(struct gui_ctx *ctx, int posy, int px0, int px1) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
-  gui_drw_ln(ctx, x0, y, x1, y);
+  gui_drw_ln(ctx, px0, posy, px1, posy);
 }
 static void
-gui_drw_vln(struct gui_ctx *ctx, int x, int y0, int y1) {
+gui_drw_vln(struct gui_ctx *ctx, int posx, int py0, int py1) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
-  gui_drw_ln(ctx, x, y0, x, y1);
+  gui_drw_ln(ctx, posx, py0, posx, py1);
 }
 static void
-gui_drw_sbox(struct gui_ctx *ctx, int x0, int y0, int x1, int y1) {
+gui_drw_sbox(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
-  gui_drw_hln(ctx, y0, x0, x1);
-  gui_drw_hln(ctx, y1, x0, x1);
-  gui_drw_vln(ctx, x0, y0, y1);
-  gui_drw_vln(ctx, x1, y0, y1);
+  gui_drw_hln(ctx, py0, px0, px1);
+  gui_drw_hln(ctx, py1, px0, px1);
+  gui_drw_vln(ctx, px0, py0, py1);
+  gui_drw_vln(ctx, px1, py0, py1);
 }
 static void
-gui_drw_circle(struct gui_ctx *ctx, int x, int y, int r) {
+gui_drw_circle(struct gui_ctx *ctx, int posx, int posy, int radius) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
@@ -492,73 +495,73 @@ gui_drw_circle(struct gui_ctx *ctx, int x, int y, int r) {
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.circle)) {
-    sys->gfx.d2d.circle(&sys->gfx.buf2d, x, y, r, ctx->drw_col, ctx->clip.hdl);
+    sys->gfx.d2d.circle(&sys->gfx.buf2d, posx, posy, radius, ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
-gui_drw_tri(struct gui_ctx *ctx, int x0, int y0, int x1, int y1, int x2, int y2) {
+gui_drw_tri(struct gui_ctx *ctx, int px0, int py0, int px1, int py1, int px2, int py2) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
-  if (!gui_inbox(x0, y0, &ctx->clip.box) &&
-      !gui_inbox(x1, y1, &ctx->clip.box) &&
-      !gui_inbox(x2, y2, &ctx->clip.box)) {
+  if (!gui_inbox(px0, py0, &ctx->clip.box) &&
+      !gui_inbox(px1, py1, &ctx->clip.box) &&
+      !gui_inbox(px2, py2, &ctx->clip.box)) {
     return;
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.tri)) {
-    sys->gfx.d2d.tri(&sys->gfx.buf2d, x0, y0, x1, y1, x2, y2,
+    sys->gfx.d2d.tri(&sys->gfx.buf2d, px0, py0, px1, py1, px2, py2,
         ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
-gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *g) {
+gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *gly) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
-    !gui_intersect(&ctx->clip.box, g->x0,g->y0,g->x1,g->y1)) {
+    !gui_intersect(&ctx->clip.box, gly->x0, gly->y0, gly->x1, gly->y1)) {
     return;
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.ico)) {
-    sys->gfx.d2d.ico(&sys->gfx.buf2d, g->x0, g->y0, g->x1, g->y1, g->sx, g->sy,
-        ctx->drw_col, ctx->clip.hdl);
+    sys->gfx.d2d.ico(&sys->gfx.buf2d, gly->x0, gly->y0, gly->x1, gly->y1,
+        gly->sx, gly->sy, ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
-gui_drw_rune(struct gui_ctx *ctx, int x, int y, int rune) {
-  struct res_glyph g;
-  res.fnt.glyph(&g, &ctx->res->fnt, x, y, rune);
-  gui_drw_glyph(ctx, &g);
+gui_drw_rune(struct gui_ctx *ctx, int posx, int posy, int rune) {
+  struct res_glyph gly;
+  res.fnt.glyph(&gly, &ctx->res->fnt, posx, posy, rune);
+  gui_drw_glyph(ctx, &gly);
 }
 static void
-gui_drw_ico(struct gui_ctx *ctx, int x, int y, enum res_ico_id icon) {
+gui_drw_ico(struct gui_ctx *ctx, int posx, int posy, enum res_ico_id icon) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
 
   int rune = casti(icon);
-  gui_drw_rune(ctx, x, y, rune) ;
+  gui_drw_rune(ctx, posx, posy, rune) ;
 }
 static void
-gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
+gui_drw_txt(struct gui_ctx *ctx, int dstx, int dsty, struct str txt) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
     return;
   }
-  int posx = dx;
+  int posx = dstx;
   struct res_fnt_run_it itr;
   for res_run_loop(run, &itr, &res, ctx->res, txt) {
     int run_x = posx;
     for loopn(i, run->len, RES_FNT_MAX_RUN) {
       struct res_glyph gly = {0};
-      res.run.glyph(&gly, run, i, run_x, dy);
+      res.run.glyph(&gly, run, i, run_x, dsty);
       gui_drw_glyph(ctx, &gly);
       run_x = posx + run->adv[i];
     }
@@ -566,23 +569,23 @@ gui_drw_txt(struct gui_ctx *ctx, int dx, int dy, struct str txt) {
   }
 }
 static void
-gui_drw_sprite(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh,
-               int sx, int sy, int sw, int sh) {
+gui_drw_sprite(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int dsth,
+               int srcx, int srcy, int srcw, int srch) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
-    !gui_intersect(&ctx->clip.box, dx,dy,dx+dw,dy+dh)) {
+    !gui_intersect(&ctx->clip.box, dstx,dsty,dstx+dstw,dsty+dsth)) {
     return;
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.img)) {
-    sys->gfx.d2d.img(&sys->gfx.buf2d, tex, dx, dy, dw, dh,
-      sx, sy, sw, sh, ctx->clip.hdl);
+    sys->gfx.d2d.img(&sys->gfx.buf2d, tex, dstx, dsty, dstw, dsth,
+      srcx, srcy, srcw, srch, ctx->clip.hdl);
   }
 }
 static void
-gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
+gui_drw_img(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int dsth) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
@@ -590,10 +593,10 @@ gui_drw_img(struct gui_ctx *ctx, int tex, int dx, int dy, int dw, int dh) {
   int img_siz[2];
   struct sys *sys = ctx->sys;
   sys->gfx.tex.info(img_siz, ctx->sys, tex);
-  gui_drw_sprite(ctx, tex, dx, dy, dw, dh, 0, 0, img_siz[0], img_siz[1]);
+  gui_drw_sprite(ctx, tex, dstx, dsty, dstw, dsth, 0, 0, img_siz[0], img_siz[1]);
 }
 static void
-gui_drw_blit(struct gui_ctx *ctx, int tex, int x, int y) {
+gui_drw_blit(struct gui_ctx *ctx, int tex, int posx, int posy) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
@@ -601,7 +604,8 @@ gui_drw_blit(struct gui_ctx *ctx, int tex, int x, int y) {
   int img_siz[2];
   struct sys *sys = ctx->sys;
   sys->gfx.tex.info(img_siz, ctx->sys, tex);
-  gui_drw_sprite(ctx, tex, x, y, img_siz[0], img_siz[1], 0, 0, img_siz[0], img_siz[1]);
+  gui_drw_sprite(ctx, tex, posx, posy, img_siz[0], img_siz[1], 0, 0,
+      img_siz[0], img_siz[1]);
 }
 
 /* ---------------------------------------------------------------------------
@@ -769,22 +773,22 @@ gui_panel_drw(struct gui_ctx *ctx, const struct gui_box *box) {
   gui_drw_vln(ctx, box->x.max - 1, box->y.min, box->y.max - 1);
 }
 static void
-gui_focus_drw(struct gui_ctx *ctx, const struct gui_box *b, int pad) {
-  struct gui_box box;
-  box.x = gui_shrink(&b->x, pad);
-  box.y = gui_shrink(&b->y, pad);
+gui_focus_drw(struct gui_ctx *ctx, const struct gui_box *box, int pad) {
+  struct gui_box foc;
+  foc.x = gui_shrink(&box->x, pad);
+  foc.y = gui_shrink(&box->y, pad);
 
   gui_drw_line_style(ctx, 1);
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
-  gui_drw_sbox(ctx, gui_unbox(&box));
+  gui_drw_sbox(ctx, gui_unbox(&foc));
 }
 static void
 gui_panel_open(struct gui_ctx *ctx, struct gui_panel *pan,
-               struct gui_panel *parent, unsigned long long id) {
+               struct gui_panel *parent, unsigned long long uid) {
   assert(pan);
   assert(ctx);
 
-  pan->id = parent ? fnv1au64(id, parent->id) : id;
+  pan->id = parent ? fnv1au64(uid, parent->id) : uid;
   pan->max[0] = pan->max[1] = 0;
   pan->is_hot = pan->is_hov = 0;
   pan->is_focused = 0;
@@ -825,12 +829,12 @@ gui_panel_begin(struct gui_ctx *ctx, struct gui_panel *pan,
 }
 static void
 gui_panel_id(struct gui_ctx *ctx, struct gui_panel *pan,
-             struct gui_panel *parent, unsigned long long id) {
+             struct gui_panel *parent, unsigned long long uid) {
   assert(pan);
   assert(ctx);
   assert(parent);
 
-  gui_panel_open(ctx, pan, parent, id);
+  gui_panel_open(ctx, pan, parent, uid);
   gui_panel_close(ctx, pan, parent);
 }
 static void
@@ -839,8 +843,8 @@ gui_panel_cur_hov(struct gui_ctx *ctx, const struct gui_panel *pan,
   assert(pan);
   assert(ctx);
   if (pan->is_hov) {
-    struct sys *s = ctx->sys;
-    s->cursor = cur;
+    struct sys *sys = ctx->sys;
+    sys->cursor = cur;
   }
 }
 static void
@@ -848,13 +852,13 @@ gui_tooltip(struct gui_ctx *ctx, const struct gui_panel *pan, struct str str) {
   assert(pan);
   assert(ctx);
   if (pan->is_hov) {
-    struct sys *s = ctx->sys;
-    if (str_len(str) < szof(s->tooltip.buf)) {
-      mcpy(s->tooltip.buf, str_beg(str), str_len(str));
-      s->tooltip.str = strn(s->tooltip.buf, str_len(str));
+    struct sys *sys = ctx->sys;
+    if (str_len(str) < szof(sys->tooltip.buf)) {
+      mcpy(sys->tooltip.buf, str_beg(str), str_len(str));
+      sys->tooltip.str = strn(sys->tooltip.buf, str_len(str));
     } else {
-      mcpy(s->tooltip.buf, str_beg(str), sizeof(s->tooltip.buf));
-      s->tooltip.str = strn(s->tooltip.buf, szof(s->tooltip.buf));
+      mcpy(sys->tooltip.buf, str_beg(str), sizeof(sys->tooltip.buf));
+      sys->tooltip.str = strn(sys->tooltip.buf, szof(sys->tooltip.buf));
     }
   }
 }
@@ -871,18 +875,18 @@ static void
 gui_color_scheme(struct gui_ctx *ctx, enum gui_col_scheme scm) {
   switch (scm) {
     case GUI_COL_SCHEME_SYS: {
-      const struct sys *s = ctx->sys;
-      ctx->cfg.col[GUI_COL_BG] = s->col[SYS_COL_WIN];
-      ctx->cfg.col[GUI_COL_CONTENT] = s->col[SYS_COL_BG];
-      ctx->cfg.col[GUI_COL_CONTENT_HOV] = s->col[SYS_COL_HOV];
-      ctx->cfg.col[GUI_COL_SEL] = s->col[SYS_COL_SEL];
-      ctx->cfg.col[GUI_COL_LIGHT] = s->col[SYS_COL_LIGHT];
-      ctx->cfg.col[GUI_COL_SHADOW_SEAM] = s->col[SYS_COL_SHADOW];
-      ctx->cfg.col[GUI_COL_SHADOW] = s->col[SYS_COL_SHADOW];
-      ctx->cfg.col[GUI_COL_ICO] = s->col[SYS_COL_ICO];
-      ctx->cfg.col[GUI_COL_TXT] = s->col[SYS_COL_TXT];
-      ctx->cfg.col[GUI_COL_TXT_DISABLED] = s->col[SYS_COL_TXT_DISABLED];
-      ctx->cfg.col[GUI_COL_TXT_SELECTED] = s->col[SYS_COL_TXT_SEL];
+      const struct sys *sys = ctx->sys;
+      ctx->cfg.col[GUI_COL_BG] = sys->col[SYS_COL_WIN];
+      ctx->cfg.col[GUI_COL_CONTENT] = sys->col[SYS_COL_BG];
+      ctx->cfg.col[GUI_COL_CONTENT_HOV] = sys->col[SYS_COL_HOV];
+      ctx->cfg.col[GUI_COL_SEL] = sys->col[SYS_COL_SEL];
+      ctx->cfg.col[GUI_COL_LIGHT] = sys->col[SYS_COL_LIGHT];
+      ctx->cfg.col[GUI_COL_SHADOW_SEAM] = sys->col[SYS_COL_SHADOW];
+      ctx->cfg.col[GUI_COL_SHADOW] = sys->col[SYS_COL_SHADOW];
+      ctx->cfg.col[GUI_COL_ICO] = sys->col[SYS_COL_ICO];
+      ctx->cfg.col[GUI_COL_TXT] = sys->col[SYS_COL_TXT];
+      ctx->cfg.col[GUI_COL_TXT_DISABLED] = sys->col[SYS_COL_TXT_DISABLED];
+      ctx->cfg.col[GUI_COL_TXT_SELECTED] = sys->col[SYS_COL_TXT_SEL];
     } break;
 
     case GUI_COL_SCHEME_DARK: {
@@ -928,37 +932,32 @@ gui_color_scheme(struct gui_ctx *ctx, enum gui_col_scheme scm) {
     } break;
   }
 }
+
 static void
 gui_dflt_cfg(struct gui_cfg *cfg) {
-  cfg->sep = 6;
-  cfg->item = 22;
-  cfg->elm = 18;
-  cfg->tab = 120;
-  cfg->depth = 22;
-  cfg->btn_pad = 20;
-  cfg->grid = 40;
-
-  cfg->pan_pad[0] = 4;
-  cfg->pan_pad[1] = 4;
-  cfg->pan_gap[0] = 4;
-  cfg->pan_gap[1] = 4;
-
-  cfg->grp_off = 10;
-  cfg->grp_pad = 7;
-
-  cfg->lay_pad[0] = 0;
-  cfg->lay_pad[1] = 2;
-
-  cfg->lst_pad[0] = 4;
-  cfg->lst_pad[1] = 3;
-
-  cfg->gap[0] = 4;
-  cfg->gap[1] = 3;
-  cfg->pad[0] = 5;
-  cfg->pad[1] = 2;
-
-  cfg->ico = 14;
-  cfg->scrl = 14;
+  cfg->sep = GUI_CFG_SEP;
+  cfg->item = GUI_CFG_ITEM;
+  cfg->elm = GUI_CFG_ELM;
+  cfg->tab = GUI_CFG_TAB;
+  cfg->depth = GUI_CFG_DEPTH;
+  cfg->btn_pad = GUI_CFG_BTN_PAD;
+  cfg->grid = GUI_CFG_GRID;
+  cfg->pan_pad[0] = GUI_CFG_PAN_PADX;
+  cfg->pan_pad[1] = GUI_CFG_PAN_PADY;
+  cfg->pan_gap[0] = GUI_CFG_PAN_GAPX;
+  cfg->pan_gap[1] = GUI_CFG_PAN_GAPY;
+  cfg->grp_off = GUI_CFG_GRP_OFF;
+  cfg->grp_pad = GUI_CFG_GRP_PAD;
+  cfg->lay_pad[0] = GUI_CFG_LAY_PADX;
+  cfg->lay_pad[1] = GUI_CFG_LAY_PADY;
+  cfg->lst_pad[0] = GUI_CFG_LST_PADX;
+  cfg->lst_pad[1] = GUI_CFG_LST_PADY;
+  cfg->gap[0] = GUI_CFG_GAPX;
+  cfg->gap[1] = GUI_CFG_GAPY;
+  cfg->pad[0] = GUI_CFG_PADX;
+  cfg->pad[1] = GUI_CFG_PADY;
+  cfg->ico = GUI_CFG_ICO;
+  cfg->scrl = GUI_CFG_SCRL;
 }
 static inline int
 gui__scale_val(int val, float dpi_scale) {
@@ -995,7 +994,7 @@ gui_init(struct gui_ctx *ctx, struct gui_args *args) {
   assert(ctx);
   gui_color_scheme(ctx, args->scm);
   gui_dflt_cfg(&ctx->cfg);
-  if (args->scale != 0.0f) {
+  if (args->scale != 0.0F) {
     gui_cfg_scale(&ctx->cfg, &ctx->cfg, args->scale);
   }
 }
@@ -1145,7 +1144,7 @@ gui_begin(struct gui_ctx *ctx) {
 
   /* tree */
   struct gui_panel *pan = &ctx->root;
-  pan->id = 14695981039346656037llu;
+  pan->id = 14695981039346656037LLU;
   if (ctx->pass == GUI_INPUT) {
     /* skip input pass when only mouse movement happend and not dragging */
     int no_move = !sys->mouse_mod || (sys->mouse_mod && !sys->mouse_grap);
@@ -1280,15 +1279,15 @@ gui_dnd_src_begin(struct gui_dnd_src *ret, struct gui_ctx *ctx,
   assert(arg);
 
   struct gui_input dummy = {0};
-  struct gui_input *in = arg->in;
+  struct gui_input *pin = arg->in;
   if (!arg->in) {
-    in = &dummy;
-    gui_input(in, ctx, pan, (1U << arg->drag_btn));
+    pin = &dummy;
+    gui_input(pin, ctx, pan, (1U << arg->drag_btn));
   }
-  ret->activated = in->mouse.btns[arg->drag_btn].drag_begin;
-  ret->drag_begin = in->mouse.btns[arg->drag_btn].drag_begin;
-  ret->dragged = in->mouse.btns[arg->drag_btn].dragged;
-  ret->drag_end = in->mouse.btns[arg->drag_btn].drag_end;
+  ret->activated = pin->mouse.btns[arg->drag_btn].drag_begin;
+  ret->drag_begin = pin->mouse.btns[arg->drag_btn].drag_begin;
+  ret->dragged = pin->mouse.btns[arg->drag_btn].dragged;
+  ret->drag_end = pin->mouse.btns[arg->drag_btn].drag_end;
   if (ret->drag_end) {
     ctx->dnd_clr = 1;
   }
@@ -1336,11 +1335,11 @@ gui_dnd_dst_begin(struct gui_ctx *ctx, struct gui_panel *pan) {
   assert(ctx->dnd_act);
   assert(ctx->dnd_set);
 
-  struct gui_input in;
-  gui_input(&in, ctx, pan, 0);
-  if (in.entered) {
+  struct gui_input pin;
+  gui_input(&pin, ctx, pan, 0);
+  if (pin.entered) {
     ctx->dnd_paq.state = GUI_DND_ENTER;
-  } else if (in.exited) {
+  } else if (pin.exited) {
     ctx->dnd_paq.state = GUI_DND_LEFT;
   } else {
     struct sys *sys = ctx->sys;
@@ -1409,7 +1408,9 @@ gui_drw_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
   struct str uln_min = utf_at(0, txt, uln_pos);
   struct str uln_max = utf_at(0, strp(str_end(uln_min), str_end(txt)), uln_cnt);
 
-  int off[2], len[2];
+  int off[2];
+  int len[2];
+
   gui_txt_ext(off, ctx, strp(str_beg(txt), str_beg(uln_min)));
   gui_txt_ext(len, ctx, strp(str_beg(uln_min), str_beg(uln_max)));
   gui_drw_hln(ctx, pan->box.y.max - 1, pan->box.x.min + off[0],
@@ -1515,7 +1516,7 @@ gui_txtvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[1024];
+  char buf[GUI_MAX_FMT_BUF];
   int cnt = fmtvsn(buf, cntof(buf), fmt, args);
   if (cnt < cntof(buf)) {
     gui_txt(ctx, pan, parent, str0(buf), align);
@@ -1557,7 +1558,7 @@ gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[256];
+  char buf[GUI_MAX_FMT_BUF];
   int cnt = fmtvsn(buf, cntof(buf), fmt, args);
   if (cnt < cntof(buf)) {
     gui_lbl(ctx, pan, parent, cut, str0(buf));
@@ -1587,7 +1588,7 @@ gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   assert(pan);
   assert(parent);
 
-  char buf[128];
+  char buf[GUI_MAX_TM_BUF];
   strftime(buf, cntof(buf), fmt, tm);
   gui_txt(ctx, pan, parent, str0(buf), 0);
 }
@@ -1597,7 +1598,7 @@ gui_tm(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
  */
 static void
 gui_ico(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
-         enum res_ico_id id) {
+         enum res_ico_id ico_id) {
 
   assert(ctx);
   assert(pan);
@@ -1612,20 +1613,20 @@ gui_ico(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
     } else {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
     }
-    gui_drw_ico(ctx, ico.x.min, ico.y.min, id);
+    gui_drw_ico(ctx, ico.x.min, ico.y.min, ico_id);
   }
   gui_panel_end(ctx, pan, parent);
 }
 static void
 gui_icon(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent,
-         enum res_ico_id id) {
+         enum res_ico_id ico_id) {
 
   assert(ctx);
   assert(icn);
   assert(parent);
 
   icn->pan.box = icn->box;
-  gui_ico(ctx, &icn->pan, parent, id);
+  gui_ico(ctx, &icn->pan, parent, ico_id);
   gui_panel_cur_hov(ctx, &icn->pan, SYS_CUR_HAND);
 
   gui_input(&icn->in, ctx, &icn->pan, GUI_BTN_LEFT);
@@ -1638,7 +1639,7 @@ gui_icon(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent,
 }
 static void
 gui_icon_box(struct gui_ctx *ctx, struct gui_panel *pan,
-             struct gui_panel *parent, enum res_ico_id id,
+             struct gui_panel *parent, enum res_ico_id ico_id,
              const struct str txt) {
 
   assert(ctx);
@@ -1654,7 +1655,7 @@ gui_icon_box(struct gui_ctx *ctx, struct gui_panel *pan,
   {
     struct gui_panel ico = {.box = pan->box};
     ico.box.x = gui_min_ext(pan->box.x.min, ctx->cfg.item);
-    gui_ico(ctx, &ico, pan, id);
+    gui_ico(ctx, &ico, pan, ico_id);
 
     struct gui_panel lbl = {.box = pan->box};
     static const struct gui_align def_align = {GUI_HALIGN_MID, GUI_VALIGN_MID};
@@ -1728,7 +1729,7 @@ gui_btn_end(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent) 
 }
 static int
 gui_btn_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
-            struct str s, const struct gui_align *align) {
+            struct str str, const struct gui_align *align) {
 
   assert(btn);
   assert(ctx);
@@ -1739,7 +1740,7 @@ gui_btn_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   {
     struct gui_panel txt = {.box = btn->pan.box};
     txt.box.x = gui_shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
-    gui_txt(ctx, &txt, &btn->pan, s, align ? align : &def_align);
+    gui_txt(ctx, &txt, &btn->pan, str, align ? align : &def_align);
   }
   gui_btn_end(ctx, btn, parent);
   return btn->clk;
@@ -1754,7 +1755,7 @@ gui_btn_lbl(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
 
   /* calculate desired space */
   int txtw = gui_txt_width(ctx, txt);
-  int ext = txtw + ctx->cfg.btn_pad * 2;
+  int ext = txtw + (ctx->cfg.btn_pad * 2);
   btn->box = gui_cut_box(cut, ext);
   return gui_btn_txt(ctx, btn, parent, txt, align);
 }
@@ -1850,8 +1851,8 @@ gui__chk_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   const struct gui_box *box = &pan->box;
   gui_drw_line_style(ctx, 1);
 
-  int bg = (pan->state == GUI_DISABLED) ? GUI_COL_BG : GUI_COL_CONTENT;
-  gui_drw_col(ctx, ctx->cfg.col[bg]);
+  int bgc = (pan->state == GUI_DISABLED) ? GUI_COL_BG : GUI_COL_CONTENT;
+  gui_drw_col(ctx, ctx->cfg.col[bgc]);
   gui_drw_box(ctx, gui_unbox(box));
 
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
@@ -1940,9 +1941,9 @@ gui_chk_boxi(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(pan);
   assert(parent);
 
-  enum gui_chk_state st = gui_chk_box_state(*chkd);
-  int ret = gui_chk_box(ctx, pan, parent, cut, txt, &st);
-  *chkd = gui_chk_box_bool(st);
+  enum gui_chk_state state = gui_chk_box_state(*chkd);
+  int ret = gui_chk_box(ctx, pan, parent, cut, txt, &state);
+  *chkd = gui_chk_box_bool(state);
   return ret;
 }
 /* ---------------------------------------------------------------------------
@@ -2078,8 +2079,8 @@ gui__scrl_cur_lay(int *off, struct gui_panel *cur, const struct gui_scrl *scl,
   space[0] = castd(box->x.ext - off[0]);
   space[1] = castd(box->y.ext - off[1]);
 
-  int posx = math_floori(castd(box->x.min) + ratio[0] * space[0]);
-  int posy = math_floori(castd(box->y.min) + ratio[1] * space[1]);
+  int posx = math_floori(castd(box->x.min) + (ratio[0] * space[0]));
+  int posy = math_floori(castd(box->y.min) + (ratio[1] * space[1]));
   cur->box = gui_box(posx, posy, width, height);
 }
 static void
@@ -2096,14 +2097,14 @@ gui__scrl_cur_drag(double *off, const struct gui_ctx *ctx,
   double dpx = castd(pin->mouse.btn.left.drag_pos[0]);
   double dpy = castd(pin->mouse.btn.left.drag_pos[1]);
 
-  double dx = castd(pin->mouse.pos[0]) - dpx;
-  double dy = castd(pin->mouse.pos[1]) - dpy;
+  double dstx = castd(pin->mouse.pos[0]) - dpx;
+  double dsty = castd(pin->mouse.pos[1]) - dpy;
 
-  double rx = dx / castd(box->x.ext);
-  double ry = dy / castd(box->y.ext);
+  double ratiox = dstx / castd(box->x.ext);
+  double ratioy = dsty / castd(box->y.ext);
 
-  double off_x = ctx->drag_state[0] + rx * scl->total[0];
-  double off_y = ctx->drag_state[1] + ry * scl->total[1];
+  double off_x = ctx->drag_state[0] + (ratiox * scl->total[0]);
+  double off_y = ctx->drag_state[1] + (ratioy * scl->total[1]);
 
   off[0] = clamp(0, off_x, scl->total[0] - scl->size[0]);
   off[1] = clamp(0, off_y, scl->total[1] - scl->size[1]);
@@ -2164,13 +2165,13 @@ gui__scrl_jmp(double *off, const struct gui_scrl *scl,
 
   double mpx = castd(posx);
   double mpy = castd(posy);
-  double dx = mpx - scl->box.x.min - (cur->box.x.ext >> 1);
-  double dy = mpy - scl->box.y.min - (cur->box.y.ext >> 1);
-  double rx = dx / castd(scl->box.x.ext);
-  double ry = dy / castd(scl->box.y.ext);
+  double dstx = mpx - scl->box.x.min - (cur->box.x.ext >> 1);
+  double dsty = mpy - scl->box.y.min - (cur->box.y.ext >> 1);
+  double ratiox = dstx / castd(scl->box.x.ext);
+  double ratioy = dsty / castd(scl->box.y.ext);
 
-  off[0] = clamp(0, rx * scl->total[0], scl->total[0] - scl->size[0]);
-  off[1] = clamp(0, ry * scl->total[1], scl->total[1] - scl->size[1]);
+  off[0] = clamp(0, ratiox * scl->total[0], scl->total[0] - scl->size[0]);
+  off[1] = clamp(0, ratioy * scl->total[1], scl->total[1] - scl->size[1]);
 }
 static void
 gui__scrl_drw(struct gui_ctx *ctx, struct gui_scrl *scl) {
@@ -2345,7 +2346,7 @@ gui_hscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
   gui_panel_begin(ctx, &bar->pan, parent);
   {
     bar->scrolled = 0;
-    bar->step = bar->step <= 0 ? bar->size * 0.1f : bar->step;
+    bar->step = bar->step <= 0 ? bar->size * 0.1F : bar->step;
 
     /* decrement button */
     bar->btn_dec.box.x = gui_min_ext(bar->box.x.min, bar->box.y.ext);
@@ -2518,22 +2519,24 @@ gui_txt_ed_undo_discard(struct gui_txt_ed_undo *undo) {
 static void
 gui_txt_ed_redo_discard(struct gui_txt_ed_undo *undo) {
   assert(undo);
-  int k = GUI_EDT_UNDO_CNT - 1;
-  if (undo->redo_pnt > k) {
+  int total = GUI_EDT_UNDO_CNT - 1;
+  if (undo->redo_pnt > total) {
     return;
   }
   /* discard the oldest entry in the redo list--it's bad if this
   ever happens, but because undo & redo have to store the actual
   characters in different cases, the redo character buffer can
   fill up even though the undo buffer didn't */
-  if (undo->stk[k].char_at >= 0) {
+  if (undo->stk[total].char_at >= 0) {
     /* if the k'th undo state has chars, clean up */
-    int len = undo->stk[k].in_len;
+    int len = undo->stk[total].in_len;
     undo->redo_char_pnt = casts(undo->redo_char_pnt + len);
     int cnt = GUI_EDT_UNDO_CHAR_CNT - undo->redo_char_pnt;
     mcpy(undo->buf + undo->redo_char_pnt, undo->buf + undo->redo_char_pnt - len, cnt * szof(char));
-    for (int i = undo->redo_pnt; i < k; ++i) {
-      if (undo->stk[i].char_at < 0) continue;
+    for (int i = undo->redo_pnt; i < total; ++i) {
+      if (undo->stk[i].char_at < 0) {
+        continue;
+      }
       undo->stk[i].char_at = casts(undo->stk[i].char_at + len);
     }
   }
@@ -2690,13 +2693,13 @@ gui_txt_ed_undo_repl(struct gui_txt_ed *edt, int where,
 }
 static int
 gui_txt_ed_ext(const struct gui_txt_ed *edt, int line_begin, int char_idx,
-               struct res *r) {
+               struct res *fnt_res) {
   assert(edt);
-  assert(r);
+  assert(fnt_res);
 
   int ext[2];
   struct str view = utf_at(0, edt->str, line_begin + char_idx);
-  res.fnt.ext(ext, r, view);
+  res.fnt.ext(ext, fnt_res, view);
   return ext[0];
 }
 struct gui_txt_row {
@@ -2746,9 +2749,11 @@ gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int posx, int posy, int row_h
     gui_txt_ed_lay_row(&row, edt, idx, row_h, fnt_res);
     if (row.char_cnt <= 0) {
       return str_len(edt->str);
-    } else if (idx == 0 && posy < base_y + row.y[0]) {
+    }
+    if (idx == 0 && posy < base_y + row.y[0]) {
       return 0;
-    } else if (posy < base_y + row.y[1]) {
+    }
+    if (posy < base_y + row.y[1]) {
       break;
     }
     base_y += row.baseline_y_dt;
@@ -2895,16 +2900,16 @@ gui_txt_ed_move_to_prev_word(struct gui_txt_ed *edt) {
   }
   /* skip all trailing word boundary runes */
   int cnt = edt->cur - 1;
-  struct str at = utf_at(0, edt->str, cnt);
-  for utf_loop_rev(&rune, _, rest, strp(edt->buf, str_beg(at))) {
+  struct str off = utf_at(0, edt->str, cnt);
+  for utf_loop_rev(&rune, _, rest, strp(edt->buf, str_beg(off))) {
     if (!gui_rune_is_word_boundary(rune)) {
-      at = rest;
+      off = rest;
       break;
     }
     cnt--;
   }
   /* find first word boundary rune */
-  for utf_loop_rev(&rune, _, rest, at) {
+  for utf_loop_rev(&rune, _, rest, off) {
     if (gui_rune_is_word_boundary(rune)) {
       break;
     }
@@ -2917,15 +2922,15 @@ gui_txt_ed_move_to_next_word(struct gui_txt_ed *edt) {
   assert(edt);
   unsigned rune = 0;
   int cnt = edt->cur + 1;
-  struct str at = utf_at(0, edt->str, cnt);
-  for utf_loop(&rune, _, rest, strp(edt->buf, str_beg(at))) {
+  struct str off = utf_at(0, edt->str, cnt);
+  for utf_loop(&rune, _, rest, strp(edt->buf, str_beg(off))) {
     if (!gui_rune_is_word_boundary(rune)) {
-      at = rest;
+      off = rest;
       break;
     }
     cnt++;
   }
-  for utf_loop(&rune, _, rest, at) {
+  for utf_loop(&rune, _, rest, off) {
     if (gui_rune_is_word_boundary(rune)) {
       break;
     }
@@ -3056,7 +3061,9 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_CUR_LEFT)) {
     gui_txt_ed_clamp(edt);
     gui_txt_ed_prep_sel_at_cur(edt);
-    if (edt->sel[1] > 0) edt->sel[1]--;
+    if (edt->sel[1] > 0) {
+      edt->sel[1]--;
+    }
     edt->cur = edt->sel[1];
     *ret = 1;
   }
@@ -3068,14 +3075,18 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_LEFT)) {
-    if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
+    if (!gui_txt_ed_has_sel(edt)) {
+      gui_txt_ed_prep_sel_at_cur(edt);
+    }
     edt->cur = gui_txt_ed_move_to_prev_word(edt);
     edt->sel[1] = edt->cur;
     gui_txt_ed_clamp(edt);
     *ret = 1;
   }
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_SEL_WORD_RIGHT)) {
-    if (!gui_txt_ed_has_sel(edt)) gui_txt_ed_prep_sel_at_cur(edt);
+    if (!gui_txt_ed_has_sel(edt)) {
+      gui_txt_ed_prep_sel_at_cur(edt);
+    }
     edt->cur = gui_txt_ed_move_to_next_word(edt);
     edt->sel[1] = edt->cur;
     gui_txt_ed_clamp(edt);
@@ -3147,11 +3158,11 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
   /* modification */
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_DELETE)) {
     if (!gui_txt_ed_has_sel(edt)) {
-      int n = utf_len(edt->str);
-      if (edt->cur < n) {
+      int cnt = utf_len(edt->str);
+      if (edt->cur < cnt) {
         gui_txt_ed_del(edt, edt->cur, 1);
-      } else if (n) {
-        gui_txt_ed_del(edt, n-1, 1);
+      } else if (cnt) {
+        gui_txt_ed_del(edt, cnt-1, 1);
       }
     } else {
       gui_txt_ed_del_sel(edt);
@@ -3214,7 +3225,9 @@ gui_calc_edit_off(int *cur_ext, struct res *ret, const struct gui_txt_ed *edt,
   assert(txt_ext);
 
   struct str cur = utf_at(0, edt->str, edt->cur);
-  res.fnt.ext(cur_ext, ret, strp(str_beg(edt->str), str_beg(cur)));
+  struct str str = strp(str_beg(edt->str), str_beg(cur));
+
+  res.fnt.ext(cur_ext, ret, str);
   int off = cur_ext[0] - (width >> 1);
   off = clamp(0, off, max(0, txt_ext[0] - width));
   return off;
@@ -3232,7 +3245,8 @@ gui_edit_field_drw_txt_sel(struct gui_ctx *ctx, struct gui_panel *pan,
   int sel0 = utf_at_idx(edt->str, min(edt->sel[0], edt->sel[1]));
   int sel1 = utf_at_idx(edt->str, max(edt->sel[1], edt->sel[0]));
 
-  int sel_end_off[2] = {0}, sel_begin_off[2] = {0};
+  int sel_end_off[2] = {0};
+  int sel_begin_off[2] = {0};
   gui_txt_ext(sel_begin_off, ctx, strn(edt->buf, sel0));
   gui_txt_ext(sel_end_off, ctx, strn(edt->buf, sel1));
 
@@ -3428,23 +3442,23 @@ gui_edit_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   assert(ctx);
   assert(pan);
 
-  const struct gui_box *b = &pan->box;
+  const struct gui_box *box = &pan->box;
   gui_drw_line_style(ctx, 1);
-  int c = pan->state == GUI_DISABLED ? GUI_COL_BG : GUI_COL_CONTENT;
-  gui_drw_col(ctx, ctx->cfg.col[c]);
-  gui_drw_box(ctx, gui_unbox(b));
+  int col = pan->state == GUI_DISABLED ? GUI_COL_BG : GUI_COL_CONTENT;
+  gui_drw_col(ctx, ctx->cfg.col[col]);
+  gui_drw_box(ctx, gui_unbox(box));
 
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
-  gui_drw_hln(ctx, b->y.max - 1, b->x.min + 1, b->x.max);
-  gui_drw_vln(ctx, b->x.max - 1, b->y.min + 1, b->y.max - 1);
+  gui_drw_hln(ctx, box->y.max - 1, box->x.min + 1, box->x.max);
+  gui_drw_vln(ctx, box->x.max - 1, box->y.min + 1, box->y.max - 1);
 
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-  gui_drw_hln(ctx, b->y.min, b->x.min, b->x.max - 1);
-  gui_drw_vln(ctx, b->x.min, b->y.min, b->y.max - 1);
+  gui_drw_hln(ctx, box->y.min, box->x.min, box->x.max - 1);
+  gui_drw_vln(ctx, box->x.min, box->y.min, box->y.max - 1);
 
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-  gui_drw_hln(ctx, b->y.max, b->x.min, b->x.max);
-  gui_drw_vln(ctx, b->x.max, b->y.min + 1, b->y.max);
+  gui_drw_hln(ctx, box->y.max, box->x.min, box->x.max);
+  gui_drw_vln(ctx, box->x.max, box->y.min + 1, box->y.max);
 }
 static struct str
 gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
@@ -3497,7 +3511,7 @@ gui_edit_box(struct gui_ctx *ctx, struct gui_edit_box *box,
 static float
 gui_spin_cur_ratio(const struct gui_spin_val *val){
   assert(val);
-  float ret = 0.0f;
+  float ret = 0.0F;
   switch (val->typ) {
   case GUI_SPIN_INT:
     ret = castf(val->num.i - val->min.i) / castf(val->max.i);
@@ -3545,9 +3559,9 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *val) {
       }
     } break;
     case GUI_SPIN_FLT: {
-      char *ep = 0;
-      double num = strtod(ctx->txt_state.buf, &ep);
-      if (*ep == '\0' && ep != ctx->txt_state.buf) {
+      char *eptr = 0;
+      double num = strtod(ctx->txt_state.buf, &eptr);
+      if (*eptr == '\0' && eptr != ctx->txt_state.buf) {
         val->num.f = clamp(val->min.f, castf(num), val->max.f);
         mod = 1;
       }
@@ -3624,12 +3638,12 @@ gui_spin_scrl(struct sys *sys, struct gui_spin_val *val) {
 
   switch (val->typ) {
   case GUI_SPIN_INT: {
-    int idx = val->num.i + val->inc.i * sys->mouse.scrl[1];
+    int idx = val->num.i + (val->inc.i * sys->mouse.scrl[1]);
     val->num.i = clamp(val->min.i, idx, val->max.i);
   } break;
   case GUI_SPIN_FLT: {
     float delta = castf(sys->mouse.scrl[1]);
-    float new_val = val->num.f + val->inc.f * delta;
+    float new_val = val->num.f + (val->inc.f * delta);
     val->num.f = clamp(val->min.f, new_val, val->max.f);
   } break;
   default:
@@ -3734,7 +3748,8 @@ gui_spin(struct gui_ctx *ctx, struct gui_spin *spin, struct gui_panel *parent,
   {
     static const int edt_flags = GUI_EDIT_SEL_ON_ACT | GUI_EDIT_ENABLE_COMMIT;
     struct gui_edit_box edt = {.flags = edt_flags};
-    if (ctx->pass == GUI_RENDER && spin->pan.state != GUI_HIDDEN) {
+    if (ctx->pass == GUI_RENDER &&
+        spin->pan.state != GUI_HIDDEN) {
       gui_spin_drw(ctx, val, spin);
     }
     int pad = ctx->cfg.pad[0];
@@ -3755,7 +3770,7 @@ gui_spin(struct gui_ctx *ctx, struct gui_spin *spin, struct gui_panel *parent,
       }
     } else {
       /* convert number to string */
-      char buf[256];
+      char buf[GUI_MAX_NUM_BUF];
       struct str str = gui_spin_str(buf, cntof(buf), val);
 
       /* edit field */
@@ -3811,13 +3826,13 @@ gui_spin_flt(struct gui_ctx *ctx, struct gui_spin *ctl,
 
   struct gui_spin_val val;
   val.typ = GUI_SPIN_FLT;
-  val.inc.f = inc == 0.0f ? 1.0f : inc;
+  val.inc.f = inc == 0.0F ? 1.0F : inc;
   val.num.f = *num;
 
   if ((min == max) && min == 0.0f) {
     val.min.f = -(1 << FLT_MANT_DIG);
     val.max.f = (1 << FLT_MANT_DIG);
-    val.inc.f = 1.0f;
+    val.inc.f = 1.0F;
   } else {
     val.min.f = min;
     val.max.f = max;
@@ -3834,7 +3849,7 @@ gui_spin_f(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent,
   assert(num);
   assert(ctx);
   assert(parent);
-  return gui_spin_flt(ctx, ctl, parent, num, 0.0f, 0.0f, 0.0f);
+  return gui_spin_flt(ctx, ctl, parent, num, 0.0F, 0.0F, 0.0F);
 }
 static int
 gui_spin_int(struct gui_ctx *ctx, struct gui_spin *ctl,
@@ -3905,22 +3920,22 @@ gui_grp_drw(struct gui_ctx *ctx, const struct gui_grp *grp,
   assert(grp);
   assert(pan);
 
-  const struct gui_box *b = &pan->box;
-  int top = b->y.min + (grp->ext[1] >> 1);
-  int ext_off = 2 * ctx->cfg.grp_off + grp->ext[0];
+  const struct gui_box *box = &pan->box;
+  int top = box->y.min + (grp->ext[1] >> 1);
+  int ext_off = (2 * ctx->cfg.grp_off) + grp->ext[0];
 
   gui_drw_line_style(ctx, 1);
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-  gui_drw_hln(ctx, top, b->x.min + ext_off, b->x.max - 1);
-  gui_drw_hln(ctx, b->y.max - 1, b->x.min, b->x.max - 1);
-  gui_drw_vln(ctx, b->x.min, b->y.min, b->y.max - 1);
-  gui_drw_vln(ctx, b->x.max - 1, top, b->y.max - 1);
+  gui_drw_hln(ctx, top, box->x.min + ext_off, box->x.max - 1);
+  gui_drw_hln(ctx, box->y.max - 1, box->x.min, box->x.max - 1);
+  gui_drw_vln(ctx, box->x.min, box->y.min, box->y.max - 1);
+  gui_drw_vln(ctx, box->x.max - 1, top, box->y.max - 1);
 
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-  gui_drw_hln(ctx, top + 1, b->x.min + ext_off, b->x.max - 2);
-  gui_drw_hln(ctx, b->y.max, b->x.min, b->x.max);
-  gui_drw_vln(ctx, b->x.min + 1, top + 1, b->y.max - 2);
-  gui_drw_vln(ctx, b->x.max, top, b->y.max);
+  gui_drw_hln(ctx, top + 1, box->x.min + ext_off, box->x.max - 2);
+  gui_drw_hln(ctx, box->y.max, box->x.min, box->x.max);
+  gui_drw_vln(ctx, box->x.min + 1, top + 1, box->y.max - 2);
+  gui_drw_vln(ctx, box->x.max, top, box->y.max);
 }
 static void
 gui_grp_begin(struct gui_ctx *ctx, struct gui_grp *grp,
@@ -4080,7 +4095,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
     reg->vscrl.off = reg->off[1];
     if (reg->vscrl.total > reg->vscrl.size + ctx->cfg.scrl) {
       gui_vscrl(ctx, &reg->vscrl, pan);
-      if (math_abs(reg->off[1] - reg->vscrl.off) >= 1.0f) {
+      if (math_abs(reg->off[1] - reg->vscrl.off) >= 1.0F) {
         reg->off[1] = reg->vscrl.off;
         reg->scrolled = 1;
       }
@@ -4100,7 +4115,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
     if (reg->hscrl.total > reg->hscrl.size) {
       /* horizontal scrollbar */
       gui_hscrl(ctx, &reg->hscrl, pan);
-      if (math_abs(reg->off[0] - reg->hscrl.off) >= 1.0f) {
+      if (math_abs(reg->off[0] - reg->hscrl.off) >= 1.0F) {
         reg->off[0] = reg->hscrl.off;
         reg->scrolled = 1;
       }
@@ -4192,15 +4207,15 @@ gui_lst_lay_center(struct gui_lst_lay *lay, int idx) {
 
   switch (lay->orient) {
     case GUI_HORIZONTAL: {
-      int mid_off = lay->slot[0] * idx + (lay->slot[0] >> 1);
+      int mid_off = (lay->slot[0] * idx) + (lay->slot[0] >> 1);
       return castd(max(0, mid_off - (lay->space[0] >> 1)));
     }
     case GUI_VERTICAL: {
-      int mid_off = lay->slot[1] * idx + (lay->slot[1] >> 1);
+      int mid_off = (lay->slot[1] * idx) + (lay->slot[1] >> 1);
       return castd(max(0, mid_off - (lay->space[1] >> 1)));
     }
   }
-  return 0.0f;
+  return 0.0F;
 }
 static double
 gui_lst_lay_fit_start(struct gui_lst_lay *lay, int idx) {
@@ -4213,7 +4228,7 @@ gui_lst_lay_fit_start(struct gui_lst_lay *lay, int idx) {
     case GUI_VERTICAL:
       return castd(lay->slot[1] * idx);
   }
-  return 0.0f;
+  return 0.0F;
 }
 static double
 gui_lst_lay_fit_end(struct gui_lst_lay *lay, int idx) {
@@ -4223,24 +4238,23 @@ gui_lst_lay_fit_end(struct gui_lst_lay *lay, int idx) {
   assert(lay);
   switch (lay->orient) {
     case GUI_HORIZONTAL:
-      return castd(lay->slot[0] * (idx + 1) - lay->space[0]);
+      return castd((lay->slot[0] * (idx + 1)) - lay->space[0]);
     case GUI_VERTICAL:
-      return castd(lay->slot[1] * (idx + 1) - lay->space[1]);
+      return castd((lay->slot[1] * (idx + 1)) - lay->space[1]);
   }
-  return 0.0f;
+  return 0.0F;
 }
 static double
 gui_lst_lay_clamp(struct gui_lst_lay *lay, int idx) {
   assert(lay);
   assert(idx >= 0);
-
   if (idx <= lay->off_idx) {
     return gui_lst_lay_fit_start(lay, idx);
-  } else if (lay->off_idx + lay->page_cnt <= idx) {
-    return gui_lst_lay_fit_end(lay, idx);
-  } else {
-    return lay->offset;
   }
+  if (lay->off_idx + lay->page_cnt <= idx) {
+    return gui_lst_lay_fit_end(lay, idx);
+  }
+  return lay->offset;
 }
 
 /* ---------------------------------------------------------------------------
@@ -4336,8 +4350,12 @@ gui_lst_ctl_proc(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
   if (!ctl->has_focus) {
     return;
   }
-  int cur_inc = 0, cur_dec = 0;
-  int view_inc = 0, view_dec = 0;
+
+  int cur_inc = 0;
+  int cur_dec = 0;
+  int view_inc = 0;
+  int view_dec = 0;
+
   if (ctx->pass == GUI_RENDER && ctl->show_cursor && ctl->cur_vis) {
     /* draw list item cursor */
     const struct gui_box *box = &ctl->cur_box;
@@ -4843,7 +4861,7 @@ gui_lst_end(struct gui_ctx *ctx, struct gui_lst *lst) {
     unsigned long *tmp = lst->sel.bitset;
     lst->sel.bitset = 0;
 
-    gui_lst_elm_begin(ctx, lst, &elm, &elm, 0xdeadbeefdeadbeef, 0);
+    gui_lst_elm_begin(ctx, lst, &elm, &elm, GUI_LST_ELM_TRAIL_ID, 0);
     gui_lst_elm_end(ctx, lst, &elm, &elm);
     lst->sel.bitset = tmp;
   }
@@ -5038,9 +5056,9 @@ gui_tree_node_icon(struct gui_ctx *ctx, struct gui_panel *pan,
   gui_panel_end(ctx, pan, parent);
   gui_panel_cur_hov(ctx, pan, SYS_CUR_HAND);
 
-  struct gui_input in = {0};
-  gui_input(&in, ctx, pan, GUI_BTN_LEFT);
-  return (in.mouse.btn.left.pressed);
+  struct gui_input pin = {0};
+  gui_input(&pin, ctx, pan, GUI_BTN_LEFT);
+  return (pin.mouse.btn.left.pressed);
 }
 static void
 gui_tree_node_begin(struct gui_ctx *ctx, struct gui_tree_node *node,
@@ -5082,9 +5100,9 @@ gui_tree_node_end(struct gui_ctx *ctx, struct gui_tree_node *node,
 
   gui_panel_end(ctx, &node->pan, parent);
   if (!node->changed) {
-    struct gui_input in = {0};
-    gui_input(&in, ctx, &node->pan, GUI_BTN_LEFT);
-    if (in.mouse.btn.left.doubled) {
+    struct gui_input pin = {0};
+    gui_input(&pin, ctx, &node->pan, GUI_BTN_LEFT);
+    if (pin.mouse.btn.left.doubled) {
       node->open = !node->open;
       node->changed = 1;
     }
@@ -5143,7 +5161,7 @@ gui_split_lay_add(struct gui_split_lay *bld, int type, int val, const int *con) 
   bld->toc.slot[(dst << 1) + 0] = type == GUI_LAY_SLOT_DYN ? -val : val;
   bld->toc.slot[(dst << 1) + 1] = bld->sep_size;
   bld->toc.cons[(dst << 2) + 0] = max(0, con[0]);
-  bld->toc.cons[(dst << 2) + 1] = con[1] < 0 ? 16 * 1024 : con[1];
+  bld->toc.cons[(dst << 2) + 1] = con[1] < 0 ? GUI_SPLIT_MAX_SIZE : con[1];
   bld->toc.cons[(dst << 2) + 2] = bld->sep_size;
   bld->toc.cons[(dst << 2) + 3] = bld->sep_size;
 }
@@ -5157,7 +5175,7 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
               const struct gui_split_lay_cfg *cfg) {
   int cnt = !cfg->total ? cfg->cnt : cfg->total;
   int stride = cfg->size ? cfg->size : szof(struct gui_split_lay_slot);
-  const unsigned char *p = cast(const unsigned char*, cfg->slots) + cfg->off;
+  const unsigned char *ptr = cast(const unsigned char*, cfg->slots) + cfg->off;
 
   struct gui_split_lay bld = {0};
   gui_split_lay_begin(&bld, state, cnt, ctx->cfg.sep);
@@ -5166,8 +5184,8 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
     if (cfg->fltr && bit_tst(cfg->fltr, idx) == 0) {
       continue;
     }
-    const struct gui_split_lay_slot *s = cast(const void*, p + stride * idx);
-    gui_split_lay_add(&bld, s->type, s->size, s->con);
+    const struct gui_split_lay_slot *slt = cast(const void*, ptr + (stride * idx));
+    gui_split_lay_add(&bld, slt->type, slt->size, slt->con);
   }
   gui_split_lay_end(&bld);
 }
@@ -5175,9 +5193,11 @@ static void
 gui__split_gen(struct gui_box *item, struct gui_split *spt, const int *siz) {
   switch (spt->orient) {
     case GUI_VERTICAL:
+      assert(spt->idx < spt->cnt);
       *item = gui_cut_top(&spt->lay, siz[spt->idx], 0);
       break;
     case GUI_HORIZONTAL:
+      assert(spt->idx < spt->cnt);
       *item = gui_cut_lhs(&spt->lay, siz[spt->idx], 0);
       break;
   }
@@ -5186,7 +5206,8 @@ gui__split_gen(struct gui_box *item, struct gui_split *spt, const int *siz) {
 static void
 gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
                 struct gui_panel *parent, enum gui_split_type typ,
-                enum gui_orient orient, int *items, int *state) {
+                enum gui_orient orient, int *items, int item_cnt,
+                int *state, int state_cnt) {
   assert(ctx);
   assert(spt);
   assert(items);
@@ -5197,6 +5218,10 @@ gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
   int siz = 0;
   struct gui_split_toc toc = {0};
   gui__split_toc(&toc, state);
+
+  assert(item_cnt >= toc.lay_cnt);
+  assert(item_cnt >= GUI_SPLIT_COL(toc.col_cnt));
+  assert(state_cnt >= GUI_SPLIT_CAP(toc.col_cnt));
 
   spt->sidx = 2;
   spt->typ = typ;
@@ -5224,20 +5249,21 @@ gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
       spt->cnt != toc.seps[0]) {
     /* calculate separator positions from slot definitions */
     gui_solve(items, siz, toc.slot, toc.lay_cnt, 0, toc.cons, &spt->sol);
-    int *def = toc.seps + 1;
     toc.seps[0] = spt->cnt;
     toc.seps[1] = siz;
     toc.seps[2] = items[0];
+
+    int *sep = &toc.seps[1];
     for (int i = 1; i < cnt_half; i++) {
-      def[i + 1] = def[i] + items[(i - 1) * 2 + 1] + items[i * 2];
+      sep[i + 1] = sep[i] + items[((i - 1) * 2) + 1] + items[i * 2];
     }
   } else {
     /* restore panel size from separator positions */
     const int *def = toc.seps + 1;
     for (int i = 0, off = 0; i < cnt_half; ++i) {
       items[i * 2] = def[i + 1] - off;
-      items[i * 2 + 1] = toc.slot[i * 2 + 1];
-      off = def[i + 1] + items[i * 2 + 1];
+      items[(i * 2) + 1] = toc.slot[(i * 2) + 1];
+      off = def[i + 1] + items[(i * 2) + 1];
     }
   }
   const int lay_siz = toc.seps[cnt_half + 1];
@@ -5273,12 +5299,12 @@ gui_split_sep(struct gui_ctx *ctx, struct gui_split *spt,
       int prv = spt->sidx > 2 ? toc.seps[spt->sidx - 1] : 0;
       int fst = toc.seps[spt->sidx] - prv;
       int fci = (spt->sidx - 2) * 2;
-      const int *fc = toc.cons + fci * 2;
+      const int *fc = toc.cons + (fci * 2);
 
       int nxt = spt->sidx + 1 < (cnt_half) + 2 ? toc.seps[spt->sidx + 1] : sep_pos;
       int sec = nxt - toc.seps[spt->sidx];
-      int sci = (spt->sidx - 2) * 2 + 2;
-      const int *sc = toc.cons + sci * 2;
+      int sci = ((spt->sidx - 2) * 2) + 2;
+      const int *sc = toc.cons + (sci * 2);
       if (!between(fst, fc[0], fc[1]) || !between(sec, sc[0], sc[1])) {
         toc.seps[spt->sidx] = sep_pos;
       }
@@ -5341,7 +5367,8 @@ gui_tbl_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
   tbl->hdr = &tbl->spt.pan;
 }
 static void
-gui_tbl_hdr_begin(struct gui_ctx *ctx, struct gui_tbl *tbl, int *items, int *state) {
+gui_tbl_hdr_begin(struct gui_ctx *ctx, struct gui_tbl *tbl, int *items,
+                  int item_cnt, int *state, int state_cnt) {
   assert(ctx);
   assert(tbl);
 
@@ -5356,7 +5383,8 @@ gui_tbl_hdr_begin(struct gui_ctx *ctx, struct gui_tbl *tbl, int *items, int *sta
   int offy = math_floori(tbl->reg.off[1]);
   tbl->spt.box.x = gui_min_ext(pan->box.x.min, pan->box.x.ext + offx);
   tbl->spt.box.y = gui_min_ext(pan->box.y.min + offy, ctx->cfg.item);
-  gui_split_begin(ctx, &tbl->spt, pan, GUI_SPLIT_EXP, GUI_HORIZONTAL, items, state);
+  gui_split_begin(ctx, &tbl->spt, pan, GUI_SPLIT_EXP, GUI_HORIZONTAL, items,
+                  item_cnt, state, state_cnt);
 }
 static void
 gui_tbl_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
@@ -5377,6 +5405,8 @@ gui_tbl_hdr_slot_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
   assert(slot);
 
   gui_btn_end(ctx, slot, &tbl->spt.pan);
+  tbl->idx++;
+
   if (tbl->idx < tbl->cnt) {
     gui_split_sep(ctx, &tbl->spt, lay, state);
   }
@@ -5389,7 +5419,6 @@ gui_tbl_hdr_slot_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
       tbl->sort.order = 0;
     }
   }
-  tbl->idx++;
 }
 static void
 gui_tbl_hdr_slot(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
@@ -5436,7 +5465,8 @@ gui_tbl_lst_cfg_init(struct gui_ctx *ctx, struct gui_tbl_lst_cfg *cfg,
 }
 static void
 gui__tbl_lst_cfg_init(struct gui_lst_cfg *ret, const struct gui_ctx *ctx,
-                      const struct gui_tbl_lst_cfg *cfg, int w, double off) {
+                      const struct gui_tbl_lst_cfg *cfg, int width, double off) {
+
   gui_lst_cfg_init(ret, cfg->total_cnt, off);
   int lst_pad = cfg->lay.pad[0] < 0 ? ctx->cfg.lst_pad[0] : ret->lay.pad[0];
 
@@ -5445,7 +5475,7 @@ gui__tbl_lst_cfg_init(struct gui_lst_cfg *ret, const struct gui_ctx *ctx,
   ret->lay.pad[1] = cfg->lay.pad[1];
   ret->lay.gap[0] = cfg->lay.gap[0];
   ret->lay.gap[1] = cfg->lay.gap[1];
-  ret->lay.item[0] = w;
+  ret->lay.item[0] = width;
   ret->lay.item[0] -= lst_pad * 2;
   ret->lay.item[1] = cfg->lay.item_size;
   ret->lay.scrl_mult = cfg->lay.scrl_mult;
@@ -5484,9 +5514,9 @@ gui_tbl_lst_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui_lst_begin(ctx, &tbl->lst, &lst_cfg);
   gui_reg_apply_lst(&tbl->reg, &tbl->lst, cfg->lay.scrl_mult);
 
-  int cx = lst.x.min + math_floori(tbl->reg.off[0]);
-  int cy = tbl->lst.box.y.min + math_floori(tbl->lst.lay.offset) + cfg->lay.pad[1];
-  gui_clip_begin(&tbl->clip, ctx, cx, cy, cx + lst.x.ext, cy + lst.y.ext);
+  int winx = lst.x.min + math_floori(tbl->reg.off[0]);
+  int winy = tbl->lst.box.y.min + math_floori(tbl->lst.lay.offset) + cfg->lay.pad[1];
+  gui_clip_begin(&tbl->clip, ctx, winx, winy, winx + lst.x.ext, winy + lst.y.ext);
 
   tbl->lst.begin = tbl->lst.view.begin;
   tbl->lst.end = tbl->lst.view.end;
@@ -5739,6 +5769,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     tab->bdy.y = gui_min_max(tab->hdr.y.max + gap, tab->box.y.max);
     tab->bdy.y = gui_shrink(&tab->bdy.y, ctx->cfg.pan_gap[1]);
   } break;
+
   case GUI_TAB_HDR_BOT: {
     tab->hdr.x = tab->box.x;
     tab->hdr.y = gui_max_ext(tab->box.y.max, ctx->cfg.item);
@@ -5760,12 +5791,12 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     tab->btn.box.x = gui_min_ext(tab->off, ctx->cfg.scrl);
     gui_btn_begin(ctx, &tab->btn, &tab->pan);
     {
-      struct sys *s = ctx->sys;
-      int iw = math_roundi(5.0f * s->dpi_scale);
-      int ih = math_roundi(3.0f * s->dpi_scale);
+      struct sys *sys = ctx->sys;
+      int iwidth = math_roundi(5.0F * sys->dpi_scale);
+      int iheight = math_roundi(3.0F * sys->dpi_scale);
 
       struct gui_panel arr = {0};
-      arr.box = gui_box_mid_ext(&tab->btn.pan.box, iw, ih);
+      arr.box = gui_box_mid_ext(&tab->btn.pan.box, iwidth, iheight);
       gui_arrow(ctx, &arr, &tab->btn.pan, GUI_SOUTH);
     }
     gui_btn_end(ctx, &tab->btn, &tab->pan);
@@ -5811,49 +5842,49 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   assert(tab);
   assert(slot);
 
-  const struct gui_box *p = &slot->box;
+  const struct gui_box *box = &slot->box;
   switch(tab->hdr_pos) {
   case GUI_TAB_HDR_TOP: {
-    int top = p->y.min + ((!is_act) ? 1 : 0);
-    int height = p->y.ext - ((!is_act) ? 1 : 0);
+    int top = box->y.min + ((!is_act) ? 1 : 0);
+    int height = box->y.ext - ((!is_act) ? 1 : 0);
 
     gui_drw_line_style(ctx, 1);
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
-    gui_drw_box(ctx, p->x.min, top, p->x.max, top + height);
+    gui_drw_box(ctx, box->x.min, top, box->x.max, top + height);
 
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-    gui_drw_hln(ctx, top, p->x.min, p->x.max - 1);
+    gui_drw_hln(ctx, top, box->x.min, box->x.max - 1);
     if (!is_act) {
-      gui_drw_hln(ctx, p->y.max, p->x.min, p->x.max);
+      gui_drw_hln(ctx, box->y.max, box->x.min, box->x.max);
     }
     if (tab->idx == 0 || (tab->idx - 1) != tab->sel.idx) {
-      gui_drw_vln(ctx, p->x.min, top, p->y.max);
+      gui_drw_vln(ctx, box->x.min, top, box->y.max);
     }
     if (tab->sel.idx != (tab->idx + 1)) {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-      gui_drw_vln(ctx, p->x.max - 1, top, p->y.max);
+      gui_drw_vln(ctx, box->x.max - 1, top, box->y.max);
     }
   } break;
   case GUI_TAB_HDR_BOT: {
-    int bot = p->y.max + ((!is_act) ? 1 : 0);
-    int height = p->y.ext - ((!is_act) ? 1 : 0);
+    int bot = box->y.max + ((!is_act) ? 1 : 0);
+    int height = box->y.ext - ((!is_act) ? 1 : 0);
 
     gui_drw_line_style(ctx, 1);
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
-    gui_drw_box(ctx, p->x.min, bot, p->x.max, bot - height);
+    gui_drw_box(ctx, box->x.min, bot, box->x.max, bot - height);
 
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-    gui_drw_hln(ctx, bot, p->x.min, p->x.max - 1);
+    gui_drw_hln(ctx, bot, box->x.min, box->x.max - 1);
     if (!is_act) {
-      gui_drw_hln(ctx, p->y.min, p->x.min, p->x.max);
+      gui_drw_hln(ctx, box->y.min, box->x.min, box->x.max);
     }
     if (tab->idx == 0 || (tab->idx - 1) != tab->sel.idx) {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_LIGHT]);
-      gui_drw_vln(ctx, p->x.min, bot, p->y.min);
+      gui_drw_vln(ctx, box->x.min, bot, box->y.min);
     }
     if (tab->sel.idx != (tab->idx + 1)) {
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-      gui_drw_vln(ctx, p->x.max - 1, p->y.min, bot);
+      gui_drw_vln(ctx, box->x.max - 1, box->y.min, bot);
     }
   } break;}
 }
@@ -6178,10 +6209,10 @@ gui_graph_node_hdr_end(struct gui_ctx *ctx, struct gui_graph_node *node,
   if (hdr->moved) {
     int dpx = hdr->in.mouse.btn.left.drag_pos[0];
     int dpy = hdr->in.mouse.btn.left.drag_pos[1];
-    int dx = hdr->in.mouse.pos[0] - dpx;
-    int dy = hdr->in.mouse.pos[1] - dpy;
-    hdr->pos[0] = casti(ctx->drag_state[0]) + dx;
-    hdr->pos[1] = casti(ctx->drag_state[1]) + dy;
+    int dstx = hdr->in.mouse.pos[0] - dpx;
+    int dsty = hdr->in.mouse.pos[1] - dpy;
+    hdr->pos[0] = casti(ctx->drag_state[0]) + dstx;
+    hdr->pos[1] = casti(ctx->drag_state[1]) + dsty;
   }
 }
 static void
@@ -6191,509 +6222,6 @@ gui_graph_node_end(struct gui_ctx *ctx, struct gui_graph_node *node,
   assert(node);
   assert(parent);
   gui_panel_end(ctx, &node->pan, parent);
-}
-
-/* -----------------------------------------------------------------------------
- *                              Min-Max Solver
- * -----------------------------------------------------------------------------
- */
-static enum gui_minmax_solver_result
-gui_minmax_solve(struct gui_minmax_solver_solution *sol,
-                 const struct gui_minmax_solver_param *param) {
-  assert(sol);
-  assert(param);
-  assert(param->scaler > 0.0f);
-  assert(param->pref_rng_siz[0] < param->pref_rng_siz[1]);
-
-  static const float dflt_rng_steps[] = {1.0f, 2.0f, 5.0f};
-  enum gui_minmax_solver_result ret = GUI_MINMAX_OPT;
-  enum gui_minmax_solver_dir {
-    GUI_MINMAX_INIT,
-    GUI_MINMAX_DEC,
-    GUI_MINMAX_INC,
-  } solve_dir = GUI_MINMAX_INIT;
-
-  sol->time_basis = 1.0f;
-  sol->rng_step_idx = 0u;
-  sol->rng_steps = param->rng_steps ? param->rng_steps : dflt_rng_steps;
-  sol->rng_step_cnt = param->rng_steps ? param->rng_steps_cnt : cntof(dflt_rng_steps);
-  sol->rng_val_step = sol->rng_steps[sol->rng_step_idx];
-  sol->rng_cnt = math_ceili((param->total_val + sol->rng_val_step-1)/sol->rng_val_step);
-
-  float total_siz = param->total_siz;
-  while (sol->rng_cnt && total_siz > param->pref_rng_siz[0]) {
-    float norm_time_rng = total_siz / max(1.0f, castf(sol->rng_cnt));
-    float nxt_time_siz = norm_time_rng * param->scaler;
-    if (nxt_time_siz < param->pref_rng_siz[0]) {
-      if (sol->rng_step_idx + 1 >= sol->rng_step_cnt) {
-        sol->time_basis *= 10.0f;
-      }
-      sol->rng_step_idx = (sol->rng_step_idx + 1) % sol->rng_step_cnt;
-      if (solve_dir == GUI_MINMAX_INIT) {
-        solve_dir = GUI_MINMAX_INC;
-      } else if (solve_dir == GUI_MINMAX_DEC) {
-        ret = GUI_MINMAX_PESSIMAL;
-        /* prevent endless loop */
-        double prv_dt = math_abs(sol->rng_val_step - param->pref_rng_siz[1]);
-        double cur_dt = math_abs(nxt_time_siz - param->pref_rng_siz[0]);
-        if (prv_dt > cur_dt) {
-          sol->rng_val_step = sol->rng_steps[sol->rng_step_idx] * sol->time_basis;
-          sol->rng_cnt = math_ceili(param->total_val/sol->rng_val_step);
-          sol->rng_siz = total_siz / max(1.0f, castf(sol->rng_cnt)) * param->scaler;
-          break;
-        }
-        break;
-      }
-    } else if (nxt_time_siz > param->pref_rng_siz[1]) {
-      if (sol->rng_step_idx == 0) {
-        sol->time_basis *= 0.1f;
-      }
-      sol->rng_step_idx = (sol->rng_step_idx + sol->rng_step_cnt-1) % sol->rng_step_cnt;
-      if (solve_dir == GUI_MINMAX_INIT) {
-        solve_dir = GUI_MINMAX_DEC;
-      } else if (solve_dir == GUI_MINMAX_INC) {
-        ret = GUI_MINMAX_PESSIMAL;
-        /* prevent endless loop */
-        double prv_dt = math_abs(sol->rng_val_step - param->pref_rng_siz[0]);
-        double cur_dt = math_abs(nxt_time_siz - param->pref_rng_siz[1]);
-        if (prv_dt > cur_dt) {
-          sol->rng_val_step = sol->rng_steps[sol->rng_step_idx ] * sol->time_basis;
-          sol->rng_cnt = math_ceili(param->total_val/sol->rng_val_step);
-          sol->rng_siz = total_siz / max(1.0f, castf(sol->rng_cnt)) * param->scaler;
-          break;
-        }
-        break;
-      } else {
-        sol->rng_siz = nxt_time_siz;
-        break;
-      }
-    }
-    sol->rng_val_step = sol->rng_steps[sol->rng_step_idx] * sol->time_basis;
-    sol->rng_cnt = math_ceili(param->total_val/sol->rng_val_step);
-  }
-  return ret;
-}
-
-/* ---------------------------------------------------------------------------
- *                                Zoom
- * ---------------------------------------------------------------------------
- */
-static inline void
-gui_conv_view_to_area_pnt(int *ret, const int *pnt, float scaler,
-                          const float *restrict off) {
-  assert(ret);
-  assert(pnt);
-  assert(off);
-
-  ret[0] = math_roundi((castf(pnt[0]) + off[0]) / scaler);
-  ret[1] = math_roundi((castf(pnt[1]) + off[1]) / scaler);
-}
-static inline void
-gui_zoom_pnt(int *ret, const int *pnt, float old_scale, float new_scale,
-             const float *restrict off) {
-  assert(ret);
-  assert(pnt);
-  assert(off);
-
-  int tmp[2]; gui_conv_view_to_area_pnt(tmp, pnt, old_scale, off);
-  ret[0] = math_roundi(castf(tmp[0]) * new_scale) - pnt[0];
-  ret[1] = math_roundi(castf(tmp[1]) * new_scale) - pnt[1];
-}
-
-/* ---------------------------------------------------------------------------
- *                                Time Line
- * ---------------------------------------------------------------------------
- */
-static void
-gui_tml_begin(struct gui_ctx *ctx, struct gui_tml *tml,
-              struct gui_panel *parent) {
-  assert(tml);
-  assert(ctx);
-  assert(parent);
-
-  tml->pan.box = tml->box;
-  gui_panel_begin(ctx, &tml->pan, parent);
-  if (ctx->pass == GUI_RENDER && tml->pan.state != GUI_HIDDEN) {
-    gui_clip_begin(&tml->clip_rect, ctx, gui_unbox(&tml->box));
-  }
-  tml->zoom_scaler = (tml->zoom_scaler == 0.0f) ? 0.2f : tml->zoom_scaler;
-  tml->scale = math_exp(tml->zoom);
-  tml->total_time = max(tml->end_time, tml->total_time);
-  tml->abs_track_off = tml->box.x.min;
-  tml->cur_time = time_mod(tml->cur_time, tml->end_time);
-  if (tml->scale_rng[0] == 0 && tml->scale_rng[1] == 0) {
-    tml->scale_rng[0] = 0.25f;
-    tml->scale_rng[1] = 16.0f;
-  }
-  /* setup snap and visual frame time */
-  if (tml->snap_time <= 0) {
-    if (tml->frame_time > 0) {
-      tml->snap_time = tml->frame_time;
-    } else {
-      tml->snap_time = time_60fps;
-      tml->frame_time = time_30fps;
-    }
-  }
-  if (tml->frame_time <= 0) {
-    if (tml->snap_time > 0) {
-      tml->frame_time = tml->snap_time;
-    } else {
-      tml->snap_time = time_60fps;
-      tml->frame_time = time_30fps;
-    }
-  }
-}
-static void
-gui_tml_end(struct gui_ctx *ctx, struct gui_tml *tml,
-                  struct gui_panel *parent) {
-  assert(tml);
-  assert(ctx);
-  assert(parent);
-  assert(tml->has_hdr);
-
-  struct sys *sys = ctx->sys;
-  if (ctx->pass == GUI_INPUT && sys->mouse.scrl[1] &&
-    tml->pan.is_hov && (sys->keymod & SYS_KEYMOD_CTRL)) {
-    /* zoom mouse wheel scrolling input handling */
-    float zoom = tml->zoom + castf(sys->mouse.scrl[1]) * tml->zoom_scaler;
-    float new_scale = clamp(tml->scale_rng[0], math_exp(zoom), tml->scale_rng[1]);
-    tml->zoom = math_log(new_scale);
-
-    float off[2] = {tml->off, 0.0f};
-    int at[2]; cpy2(at, tml->pan.rel_mouse_pos);
-    int new_off[2]; gui_zoom_pnt(new_off, at, tml->scale, new_scale, off);
-
-    zero2(sys->mouse.scrl);
-    tml->off = castf(new_off[0]);
-    tml->scale = new_scale;
-    tml->off_mod = 1;
-    tml->zoomed = 1;
-  }
-  if (ctx->pass == GUI_RENDER && tml->pan.state != GUI_HIDDEN) {
-    struct gui_clip clipped;
-    struct gui_box clip = tml->pan.box;
-    clip.x = gui_min_max(tml->abs_rng_begin_off, tml->abs_rng_end_off);
-    clip.y = gui_min_ext(tml->pan.box.y.min, tml->track_bot - tml->pan.box.y.max);
-    gui_clip_begin(&clipped, ctx, gui_unbox(&clip));
-    {
-      int cur_w = math_roundi(8.0f * sys->dpi_scale);
-      int cur_h = math_roundi(5.0f * sys->dpi_scale);
-      /* draw time line cursor */
-      if (tml->abs_mouse_cur_off >= tml->abs_rng_begin_off &&
-          tml->abs_mouse_cur_off < tml->abs_rng_end_off) {
-        struct gui_box cur = tml->box;
-        cur.x = gui_mid_ext(tml->abs_mouse_cur_off, cur_w);
-        cur.y = gui_min_ext(tml->box.y.min, cur_h);
-
-        gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-        gui_drw_box(ctx, gui_unbox(&cur));
-        gui_drw_line_style(ctx, 1);
-        gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-        gui_drw_vln(ctx, tml->abs_mouse_cur_off, tml->box.y.min, tml->box.y.max);
-      }
-      /* draw current time cursor */
-      if (tml->abs_cur_off >= tml->abs_rng_begin_off &&
-          tml->abs_cur_off < tml->abs_rng_end_off) {
-        struct gui_box cur = tml->box;
-        cur.x = gui_mid_ext(tml->abs_cur_off, cur_w);
-        cur.y = gui_min_ext(tml->box.y.min, cur_h);
-
-        gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
-        gui_drw_box(ctx, gui_unbox(&cur));
-        gui_drw_line_style(ctx, 1);
-        gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
-        gui_drw_vln(ctx, tml->abs_cur_off, tml->box.y.min, tml->box.y.max);
-      }
-      /* draw end line */
-      if (tml->abs_rng_end_off > tml->abs_end_off) {
-        gui_drw_line_style(ctx, 1);
-        gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW_SEAM]);
-        gui_drw_vln(ctx, tml->abs_end_off, tml->box.y.min, tml->box.y.max);
-      }
-    }
-    gui_clip_end(ctx, &clipped);
-    gui_clip_end(ctx, &tml->clip_rect);
-  }
-  gui_panel_end(ctx, &tml->pan, parent);
-}
-static int
-gui__pix_tm(long long time, long long frame, int frame_siz) {
-  assert(frame);
-  float t_val = sec_flt_time(time);
-  float t_ref = sec_flt_time(frame);
-  float frame_scaler = t_val / t_ref;
-  return math_roundi(frame_scaler * castf(frame_siz));
-}
-static long long
-gui__tm_pix(int pix, int frame, long long frame_time, long long end_time) {
-  assert(frame);
-  float frame_idx = castf(pix) / castf(frame);
-  float new_time_sec = frame_idx * sec_flt_time(frame_time);
-  long long new_time = time_flt_sec(new_time_sec);
-  return clamp(0, new_time, end_time);
-}
-static void
-gui_tml_hdr(struct gui_ctx *ctx, struct gui_tml *tml,
-             struct gui_tml_hdr *hdr) {
-  assert(tml);
-  assert(ctx);
-  assert(hdr);
-  struct sys *sys = ctx->sys;
-
-  tml->has_hdr = 1;
-  hdr->pan.box = hdr->box;
-  gui_panel_begin(ctx, &hdr->pan, &tml->pan);
-  {
-    /* calculate time line label steps */
-    struct gui_minmax_solver_param sol = {.scaler = tml->scale};
-    sol.total_val = sec_flt_time(tml->total_time);
-    sol.total_siz = castf(hdr->box.x.ext);
-    sol.rng_steps = hdr->rng_steps;
-    sol.rng_steps_cnt = hdr->rng_steps_cnt;
-    map2(sol.pref_rng_siz, castf, hdr->pref_rng_siz);
-
-    if (sol.pref_rng_siz[0] == 0 && sol.pref_rng_siz[1] == 0) {
-      sol.pref_rng_siz[0] = GUI_TML_MIN_PREF_RNG;
-      sol.pref_rng_siz[1] = GUI_TML_MAX_PREF_RNG;
-    }
-    gui_minmax_solve(&hdr->sol, &sol);
-    tml->rng_time_step = hdr->sol.rng_val_step;
-  }
-  /* calculate frame time pixel size */
-  tml->frame_cnt = casti(div_round_up(tml->total_time, tml->frame_time));
-  tml->frame_scaled_siz = math_roundi(castf(hdr->box.x.ext) / castf(tml->frame_cnt) * tml->scale);
-
-  /* calculate time range pixel size */
-  float rng_siz = tml->rng_time_step / sec_flt_time(tml->frame_time);
-  tml->rng_scaled_siz = math_roundi(rng_siz * castf(tml->frame_scaled_siz));
-  tml->rng_cnt = div_round_up(hdr->box.x.ext, tml->rng_scaled_siz);
-
-  /* calculate end, current and screen end pixel offset */
-  tml->end_off = gui__pix_tm(tml->end_time, tml->frame_time, tml->frame_scaled_siz);
-  tml->cur_off = gui__pix_tm(tml->cur_time, tml->frame_time, tml->frame_scaled_siz);
-  tml->abs_end_off = hdr->box.x.min + tml->end_off - math_roundi(tml->off);
-  tml->abs_cur_off = hdr->box.x.min + tml->cur_off - math_roundi(tml->off);
-
-  /* time cursor input handling */
-  gui_input(&hdr->cur_in, ctx, &hdr->pan, GUI_BTN_LEFT);
-  gui_panel_cur_hov(ctx, &hdr->pan, SYS_CUR_HAND);
-  if (hdr->cur_in.mouse.btn.left.pressed) {
-    int at = hdr->pan.rel_mouse_pos[0] + math_roundi(tml->off);
-    tml->cur_time = gui__tm_pix(at, tml->frame_scaled_siz, tml->frame_time, tml->end_time);
-    tml->cur_off = gui__pix_tm(tml->cur_time, tml->frame_time, tml->frame_scaled_siz);
-    tml->cur_time_mod = 1;
-  }
-  if (hdr->cur_in.mouse.btn.left.drag_begin) {
-    tml->cur_time_drag_begin = 1;
-    ctx->drag_state[0] = tml->cur_off;
-    sys->cursor = SYS_CUR_HAND;
-  }
-  if (hdr->cur_in.mouse.btn.left.dragged) {
-    int dx = hdr->cur_in.mouse.pos[0] - hdr->cur_in.mouse.btn.left.drag_pos[0];
-    int delta = casti(ctx->drag_state[0]) + dx;
-    tml->cur_time = gui__tm_pix(delta, tml->frame_scaled_siz, tml->frame_time, time_inf);
-    tml->cur_time = clamp(0ll, tml->cur_time, tml->end_time);
-    tml->cur_time_dragged = 1;
-    tml->cur_time_mod = 1;
-    sys->cursor = SYS_CUR_HAND;
-  }
-  if (hdr->cur_in.mouse.btn.left.drag_end) {
-    tml->cur_time_drag_end = 1;
-  }
-  /* draw header labels and separators */
-  if (ctx->pass == GUI_RENDER && hdr->pan.state != GUI_HIDDEN) {
-    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW_SEAM]);
-    gui_drw_box(ctx, gui_unbox(&hdr->pan.box));
-
-    struct gui_clip clipped;
-    gui_clip_begin(&clipped, ctx, gui_unbox(&hdr->box));
-    {
-      /* draw range time label */
-      int idx = math_floori(tml->off / castd(tml->rng_scaled_siz));
-      int off = idx * tml->rng_scaled_siz - math_roundi(tml->off);
-      for (int i = idx; i < idx + tml->rng_cnt && off < hdr->box.x.ext; ++i) {
-        struct gui_panel lbl = {0};
-        lbl.box.x = gui_min_max(off, hdr->box.x.max);
-        lbl.box.y = hdr->box.y;
-        gui_txtf(ctx, &lbl, &hdr->pan, 0, "%.3f", castf(i) * tml->rng_time_step);
-        off += tml->rng_scaled_siz;
-      }
-    }
-    gui_clip_end(ctx, &clipped);
-  }
-  /* safe positional values for later */
-  tml->track_bot = max(tml->track_bot, hdr->box.y.max);
-  tml->abs_cur_off = hdr->cur_in.mouse.pos[0];
-  tml->cur_time = gui__tm_pix(tml->cur_off, tml->frame_scaled_siz, tml->frame_time, time_inf);
-  tml->abs_rng_end_off = min(hdr->box.x.max, tml->box.x.max);
-  tml->abs_rng_begin_off = hdr->box.x.min;
-  tml->abs_cur_off = hdr->box.x.min + tml->cur_off - math_roundi(tml->off);
-  gui_panel_end(ctx, &hdr->pan, &tml->pan);
-}
-static int
-gui_tml_pos(const struct gui_tml *tml, int scrn_pos) {
-  assert(tml);
-  return math_roundi(((castf(scrn_pos) - castf(tml->abs_rng_begin_off)) / tml->scale) + (tml->off / tml->scale));
-}
-static void
-gui_tml_zoom(struct gui_tml *tml, int min, int max) {
-  assert(tml);
-  assert(min < max);
-  assert(tml->has_hdr);
-
-  int lo = min(min, max);
-  int hi = max(min, max);
-  int rng = hi - lo;
-  if (rng <= 0) {
-    return;
-  }
-  int tot = tml->abs_rng_end_off - tml->abs_rng_begin_off;
-  int mid = lo + (rng >> 1);
-  float new_scale = castf(tot) / castf(rng);
-
-  tml->scale = clamp(tml->scale_rng[0], new_scale, tml->scale_rng[1]);
-  tml->zoom = math_log(tml->scale);
-  tml->off = castf(math_roundi(castf(mid) * tml->scale)) - castf(tot >> 1);
-  tml->off_mod = 1;
-}
-static void
-gui_tml_zoom_tm(struct gui_tml *tml, long long min, long long max) {
-  assert(tml);
-  assert(min < max);
-  assert(tml->has_hdr);
-
-  int lo = gui__pix_tm(min, tml->frame_time, tml->frame_scaled_siz);
-  int hi = gui__pix_tm(max, tml->frame_time, tml->frame_scaled_siz);
-  int no_scale_lo = math_roundi(castf(lo) / tml->scale);
-  int no_scale_hi = math_roundi(castf(hi) / tml->scale);
-  gui_tml_zoom(tml, no_scale_lo, no_scale_hi);
-}
-static void
-gui_tml_trk_begin(struct gui_ctx *ctx, struct gui_tml *tml,
-                   struct gui_tml_trk *trk) {
-  assert(ctx);
-  assert(trk);
-  assert(tml);
-
-  trk->pan.box = trk->box;
-  gui_panel_begin(ctx, &trk->pan, &tml->pan);
-  tml->abs_track_off = trk->box.x.min;
-
-  if (ctx->pass == GUI_RENDER && trk->pan.state != GUI_HIDDEN) {
-    gui_clip_begin(&trk->clip_rect, ctx, gui_unbox(&trk->box));
-    gui_drw_col(ctx, ctx->cfg.col[GUI_COL_CONTENT]);
-    gui_drw_box(ctx, gui_unbox(&trk->box));
-
-    if (tml->frame_scaled_siz > 0) {
-      int off = math_roundi(tml->off);
-      int at = trk->box.x.min - (off % tml->frame_scaled_siz);
-      int idx = off / tml->frame_scaled_siz;
-
-      /* draw alternating frame blocks */
-      while (off < trk->box.x.max) {
-        struct gui_box blk = {.y = trk->box.y};
-        blk.x = gui_min_ext(at, tml->frame_scaled_siz);
-
-        int col = (idx & 0x01) ? GUI_COL_SHADOW: GUI_COL_CONTENT;
-        gui_drw_col(ctx, ctx->cfg.col[col]);
-        gui_drw_box(ctx, gui_unbox(&blk));
-        at += tml->frame_scaled_siz;
-        idx++;
-      }
-    }
-  }
-}
-static void
-gui_tml_trk_end(struct gui_ctx *ctx, struct gui_tml *tml,
-                 struct gui_tml_trk *trk) {
-  assert(ctx);
-  assert(trk);
-  assert(tml);
-
-  if (ctx->pass == GUI_RENDER &&
-      trk->pan.state != GUI_HIDDEN) {
-    gui_clip_end(ctx, &trk->clip_rect);
-  }
-  gui_panel_end(ctx, &trk->pan, &tml->pan);
-  tml->track_bot = max(tml->track_bot, trk->pan.box.y.max);
-
-  /* time line offset dragging input movement */
-  gui_input(&trk->in, ctx, &trk->pan, GUI_BTN_MIDDLE|GUI_BTN_RIGHT);
-  if (trk->in.mouse.btn.middle.drag_begin ||
-      trk->in.mouse.btn.right.drag_begin) {
-    tml->off_drag_begin = 1;
-  }
-  if (trk->in.mouse.btn.middle.dragged ||
-      trk->in.mouse.btn.right.dragged) {
-
-    int dx = trk->in.mouse.pos[0] - trk->in.mouse.btn.left.drag_pos[0];
-    tml->off = max(0.0f, tml->off - castf(dx));
-    tml->off_drag_mod = 1;
-    tml->off_mod = 1;
-  }
-  if (trk->in.mouse.btn.middle.drag_end ||
-      trk->in.mouse.btn.right.drag_end) {
-    tml->off_drag_end = 1;
-  }
-}
-static int
-gui__tml_pix_tm(const struct gui_tml *tml, const struct gui_tml_trk *trk,
-                 long long time) {
-  assert(tml);
-  assert(trk);
-  int pix = gui__pix_tm(time, tml->frame_time, tml->frame_scaled_siz);
-  return trk->box.x.min + pix - math_roundi(tml->off);
-}
-static long long
-gui__tml_tm_pix(const struct gui_tml *tml, const struct gui_tml_trk *trk,
-                 int pix) {
-  assert(tml);
-  assert(trk);
-  pix = pix - trk->box.x.min + math_roundi(tml->off);
-  return gui__tm_pix(pix, tml->frame_scaled_siz, tml->frame_time, tml->end_time);
-}
-static void
-gui_tml_trk_evt(struct gui_ctx *ctx, struct gui_tml *tml,
-                struct gui_tml_trk *trk, struct gui_tml_evt *evt,
-                unsigned long long uid) {
-  assert(ctx);
-  assert(trk);
-  assert(evt);
-  assert(tml);
-
-  int pix_pos = gui__tml_pix_tm(tml, trk, evt->time);
-  evt->pan.box.x = gui_min_ext(pix_pos, tml->frame_scaled_siz);
-  evt->pan.box.y = trk->box.y;
-  gui_panel_open(ctx, &evt->pan, &trk->pan, uid);
-  {
-    if (ctx->pass == GUI_RENDER && evt->pan.state != GUI_HIDDEN) {
-      gui_drw_col(ctx, evt->col);
-      gui_drw_box(ctx, gui_unbox(&evt->pan.box));
-    }
-  }
-  gui_panel_close(ctx, &evt->pan, &trk->pan);
-
-  /* time line event input movement */
-  gui_input(&evt->in, ctx, &evt->pan, GUI_BTN_LEFT);
-  evt->time_drag_begin = evt->in.mouse.btn.left.drag_begin;
-  evt->time_drag_end = evt->in.mouse.btn.left.drag_end;
-  if (evt->in.mouse.btn.left.dragged) {
-    long long new_tm = gui__tml_tm_pix(tml, trk, trk->in.mouse.pos[0]);
-    float snap_ms = castf(ms_time(tml->snap_time));
-
-    float old_ms = castf(ms_time(evt->time));
-    float new_ms = castf(ms_time(new_tm));
-    int old_slot = casti((old_ms + snap_ms * 0.5f) / snap_ms);
-    int new_slot = casti((new_ms + snap_ms * 0.5f) / snap_ms);
-
-    if (old_slot != new_slot) {
-      long long new_val = time_flt_sec((castf(new_slot) * snap_ms) / 1000.0f);
-      evt->time_mod_delta = time_sub(new_val, evt->time);
-      evt->time = min(new_val, tml->end_time);
-      evt->time_dragged = 1;
-      evt->time_mod = 1;
-    }
-  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -7011,19 +6539,6 @@ static const struct gui_api gui__api = {
       .end = gui_graph_node_hdr_end,
     },
   },
-  .tml = {
-    .begin = gui_tml_begin,
-    .end = gui_tml_end,
-    .hdr = gui_tml_hdr,
-    .pos = gui_tml_pos,
-    .zoom_px = gui_tml_zoom,
-    .zoom_tm = gui_tml_zoom_tm,
-    .trk = {
-      .begin = gui_tml_trk_begin,
-      .end = gui_tml_trk_end,
-      .evt = gui_tml_trk_evt,
-    }
-  }
 };
 static void
 gui_api(void *export, void *import) {

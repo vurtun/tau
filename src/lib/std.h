@@ -1,6 +1,3 @@
-#ifdef offsetof
-#undef offsetof
-#endif
 #ifdef min
 #undef min
 #undef max
@@ -43,9 +40,8 @@
 #define clamp01(v) clamp(0,v,1)
 
 #define zero(d, sz) memset(d, 0, (size_t)(sz))
-#define offsetof(st, m) ((int)((uintptr_t) & (((st *)0)->m)))
-#define containerof(ptr, type, member)\
-  (type*)((void*)((char*)(1?(ptr):&((type*)0)->member)-offsetof(type,member)))
+#define container_of(ptr, type, member)\
+  ((type *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
 #define div_round_up(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
 

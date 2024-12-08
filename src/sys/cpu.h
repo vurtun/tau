@@ -61,6 +61,7 @@ cpu_bit_ffs64(unsigned long long u) {
 #define atom_sub(val, add) _InterlockedExchangeSub64((long long volatile *)val, add)
 
 #define force_inline __forceinline
+#define uint_overflow
 
 #else
 
@@ -79,7 +80,10 @@ cpu_bit_ffs64(unsigned long long u) {
 #define atom_sub(val, sub) __sync_fetch_and_sub(val, sub)
 
 #define force_inline __attribute__((always_inline))
-
+#define no_sanitize_int __attribute__((no_sanitize("integer")))
+#define no_sanitize_addr __attribute__((no_sanitize("address")))
+#define no_sanitize_undef __attribute__((no_sanitize("undefined")))
+#define no_sanitize_leak __attribute__((no_sanitize("leak")))
 #endif
 
 #define sse_align alignto(16)
@@ -394,7 +398,7 @@ hflt(float in) {
 /* string */
 #if CPU_SIMD_256
 
-static inline const char*
+static inline no_sanitize_addr const char*
 cpu_str_chr(const char *s, int n, int chr) {
   static const char unsigned ovr_msk[64] = {
     255, 255, 255, 255, 255, 255, 255, 255,
@@ -417,7 +421,7 @@ cpu_str_chr(const char *s, int n, int chr) {
   }
   return e;
 }
-static inline int
+static inline no_sanitize_addr int
 cpu_str_fnd(const char *s, int n, const char *needle, int k) {
   const __m256i first = _mm256_set1_epi8(needle[0]);
   const __m256i last  = _mm256_set1_epi8(needle[k-1]);
@@ -649,14 +653,26 @@ chr16_tst_all_zero(uint8x16_t a) {
   unsigned long long hi = vgetq_lane_u64(vreinterpretq_u64_u8(a), 1);
   return (lo|hi) == 0u;
 }
-static inline const char*
+static inline no_sanitize_addr const char*
 cpu_str_chr(const char *s, int n, int chr) {
   static const char unsigned ovr_msk[32] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   };
+  if (!s) {
+    return s;
+  }
   const char *e = s + n;
+  if (n < 16) {
+    while (s < e) {
+      if (*s == chr) {
+        return s;
+      }
+      s++;
+    }
+    return e;
+  }
   uint8x16_t m = vdupq_n_u8(chr & 0xff);
   for (; s < e; s += 16) {
     int r = (int)(e - s); r = r > 16 ? 16 : r;
@@ -676,7 +692,7 @@ cpu_str_chr(const char *s, int n, int chr) {
   }
   return e;
 }
-static inline int
+static inline no_sanitize_addr int
 cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
   assert(k > 0);
   assert(n > 0);

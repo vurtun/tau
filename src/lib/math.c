@@ -58,7 +58,7 @@ math_log(float x) {
 static double
 math_abs(double x) {
   union bit_castd u = {x};
-  u.i &= -1ULL / 2;
+  u.i &= ~0ULL / 2;
   return u.f;
 }
 static inline int

@@ -567,6 +567,7 @@ app_run(struct sys *sys) {
   assert(sys);
   switch (sys->op) {
   case SYS_SETUP: {
+    /* setup OS window */
     sys->win.title = "Tau";
     sys->win.x = -1;
     sys->win.y = -1;

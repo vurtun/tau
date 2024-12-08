@@ -9,10 +9,10 @@ static unsigned char *res__dout;
 
 static unsigned
 res__decompress_len(unsigned char *input) {
-    return (unsigned int)((input[8] << 24) +
-            (input[9] << 16) + (input[10] << 8) + input[11]);
+  return (unsigned int)((input[8u] << 24u) + (input[9u] << 16u) +
+      (input[10u] << 8u) + input[11u]);
 }
-static void
+static void no_sanitize_int
 res__match(unsigned char *data, unsigned int length) {
   /* INVERSE of memmove... write each byte before copying the next...*/
   assert(res__dout + length <= res__barrier);

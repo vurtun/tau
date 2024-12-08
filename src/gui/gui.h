@@ -1,5 +1,11 @@
 #define GUI_VERSION 1
 
+#define GUI_MAX_TM_BUF 128
+#define GUI_MAX_FMT_BUF 1024
+#define GUI_MAX_NUM_BUF 128
+#define GUI_LST_ELM_TRAIL_ID (0xdeadbeefdeadbeefULL)
+#define GUI_SPLIT_MAX_SIZE (16*1024)
+
 /* input */
 enum gui_keys {
   GUI_KEY_ACT,
@@ -631,7 +637,7 @@ struct gui_tree_node {
 };
 
 /* Widget: Splitter */
-#define GUI_SPLIT_CAP(n) ((n) * 8 + 4)
+#define GUI_SPLIT_CAP(n) ((n) * 8 + 3)
 #define GUI_SPLIT_COL(n) ((n) << 1)
 struct gui_split_toc {
   int col_cnt;
@@ -816,116 +822,6 @@ struct gui_graph_node_hdr {
   int pos[2];
 };
 
-/* Utility: Min-Max Solver */
-enum gui_minmax_solver_result {
-  GUI_MINMAX_OPT,
-  GUI_MINMAX_PESSIMAL
-};
-struct gui_minmax_solver_param {
-  float total_val;
-  float total_siz;
-  float pref_rng_siz[2];
-  const float *rng_steps;
-  int rng_steps_cnt;
-  float scaler;
-};
-struct gui_minmax_solver_solution {
-  float time_basis;
-  const float *rng_steps;
-  int rng_step_idx;
-  int rng_step_cnt;
-  float rng_val_step;
-  float rng_siz;
-  int rng_cnt;
-};
-
-/* Widget: Time Line */
-#define GUI_TML_MIN_PREF_RNG 100
-#define GUI_TML_MAX_PREF_RNG 250
-struct gui_tml {
-  /* in */
-  struct gui_box box;
-  float off;
-  float zoom;
-  long long cur_time;
-  long long total_time;
-  long long end_time;
-
-  /* opt */
-  float zoom_scaler;
-  long long frame_time;
-  long long snap_time;
-  float scale_rng[2];
-
-  /* out */
-  struct gui_panel pan;
-  unsigned off_drag_begin:1;
-  unsigned off_drag_mod:1;
-  unsigned off_drag_end:1;
-  unsigned off_mod:1;
-  unsigned zoomed:1;
-  unsigned cur_time_drag_begin:1;
-  unsigned cur_time_dragged:1;
-  unsigned cur_time_drag_end:1;
-  unsigned cur_time_mod:1;
-
-  /* intern */
-  unsigned has_hdr:1;
-  float scale;
-
-  int abs_mouse_cur_off;
-  int abs_cur_off;
-  int abs_rng_begin_off;
-  int abs_rng_end_off;
-  int abs_end_off;
-  int abs_track_off;
-
-  int frame_cnt;
-  int frame_scaled_siz;
-
-  float rng_time_step;
-  int rng_scaled_siz;
-  int rng_cnt;
-
-  int track_bot;
-  int end_off;
-  int cur_off;
-  struct gui_clip clip_rect;
-};
-struct gui_tml_hdr {
-  /* in */
-  struct gui_box box;
-  /* opt */
-  int pref_rng_siz[2];
-  const float *rng_steps;
-  int rng_steps_cnt;
-  /* out */
-  struct gui_panel pan;
-  struct gui_input cur_in;
-  struct gui_minmax_solver_solution sol;
-};
-struct gui_tml_trk {
-  /* in */
-  struct gui_box box;
-  /* out */
-  struct gui_panel pan;
-  struct gui_input in;
-  struct gui_clip clip_rect;
-};
-struct gui_tml_evt {
-  /* in */
-  long long time;
-  unsigned col;
-  /* out */
-  struct gui_panel pan;
-  struct gui_input in;
-  unsigned time_drag_begin:1;
-  unsigned time_dragged:1;
-  unsigned time_drag_end:1;
-  unsigned time_mod:1;
-  long long time_mod_delta;
-};
-
 /* Context */
 enum gui_pass {
   GUI_INPUT,
@@ -953,6 +849,31 @@ enum gui_col_scheme {
   GUI_COL_SCHEME_DARK,
   GUI_COL_SCHEME_STEAM,
   GUI_COL_SCHEME_GRAY,
+};
+enum {
+  GUI_CFG_SEP       = 6,
+  GUI_CFG_ITEM      = 22,
+  GUI_CFG_ELM       = 18,
+  GUI_CFG_TAB       = 120,
+  GUI_CFG_DEPTH     = 22,
+  GUI_CFG_BTN_PAD   = 20,
+  GUI_CFG_GRID      = 40,
+  GUI_CFG_PAN_PADX  = 4,
+  GUI_CFG_PAN_PADY  = 4,
+  GUI_CFG_PAN_GAPX  = 4,
+  GUI_CFG_PAN_GAPY  = 4,
+  GUI_CFG_GRP_OFF   = 10,
+  GUI_CFG_GRP_PAD   = 7,
+  GUI_CFG_LAY_PADX  = 0,
+  GUI_CFG_LAY_PADY  = 2,
+  GUI_CFG_LST_PADX  = 4,
+  GUI_CFG_LST_PADY  = 3,
+  GUI_CFG_GAPX      = 4,
+  GUI_CFG_GAPY      = 3,
+  GUI_CFG_PADX      = 4,
+  GUI_CFG_PADY      = 3,
+  GUI_CFG_ICO       = 14,
+  GUI_CFG_SCRL      = 14,
 };
 struct gui_cfg {
   int depth;
@@ -1384,7 +1305,7 @@ struct gui_split_lay_api {
 };
 struct gui_split_api {
   struct gui_split_lay_api lay;
-  void (*begin)(struct gui_ctx *ctx, struct gui_split *spt, struct gui_panel *parent, enum gui_split_type typ, enum gui_orient orient, int *res, int *state);
+  void (*begin)(struct gui_ctx *ctx, struct gui_split *spt, struct gui_panel *parent, enum gui_split_type typ, enum gui_orient orient, int *res, int res_cnt, int *state, int state_cnt);
   void (*sep)(struct gui_ctx *ctx, struct gui_split *spt, const int *lay, int *split_state);
   void (*end)(struct gui_ctx *ctx, struct gui_split *spt, struct gui_panel *parent);
 };
@@ -1395,7 +1316,7 @@ struct gui_tbl_hdr_slot_api {
 };
 struct gui_tbl_hdr_api {
   struct gui_tbl_hdr_slot_api slot;
-  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, int *res, int *s);
+  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, int *res, int res_cnt, int *state, int state_cnt);
   void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl);
 };
 struct gui_tbl_lst_elm_col_pan_api {
@@ -1467,20 +1388,6 @@ struct gui_graph_node_api {
   void (*end)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_panel *parent);
   struct gui_graph_hdr_api hdr;
 };
-struct gui_time_line_track_api {
-  void(*begin)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk);
-  void(*end)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk);
-  void(*evt)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_trk *trk, struct gui_tml_evt *evt, unsigned long long id);
-};
-struct gui_time_line_api {
-  void(*begin)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_panel *parent);
-  void(*end)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_panel *parent);
-  void(*hdr)(struct gui_ctx *ctx, struct gui_tml *t, struct gui_tml_hdr *hdr);
-  int(*pos)(const struct gui_tml *t, int scrn_pos);
-  void(*zoom_px)(struct gui_tml *t, int min, int max);
-  void(*zoom_tm)(struct gui_tml *t, long long min, long long max);
-  struct gui_time_line_track_api trk;
-};
 struct gui_api {
   int version;
   void (*init)(struct gui_ctx *ctx, struct gui_args *args);
@@ -1519,7 +1426,6 @@ struct gui_api {
   struct gui_tab_ctl_api tab;
   struct gui_grid_api grid;
   struct gui_graph_node_api graph_node;
-  struct gui_time_line_api tml;
 };
 static void gui_api(void *export, void *import);
 

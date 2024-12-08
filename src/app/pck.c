@@ -179,9 +179,8 @@ static const struct file_tbl_col_def file_tbl_def[FILE_TBL_MAX] = {
  *                                  VIEW
  * -----------------------------------------------------------------------------
  */
-static int
+static int no_sanitize_int
 file_type(struct str ext) {
-  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
   unsigned hash = 0;
   unsigned idx = 0;
   switch (str_len(ext)) {
@@ -221,7 +220,6 @@ file_type(struct str ext) {
   assert(idx < cntof(file_defs));
   idx = min(idx, cntof(file_defs) -1);
   return (file_defs[idx].id == hash) ? casti(idx) : 0;
-  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static enum res_ico_id
 file_icon(int file_type) {
@@ -651,8 +649,8 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
     {
       /* header */
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
-      gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, lst->tbl.state);
-      for arr_loopn(i, file_tbl_def, tbl.cnt) {
+      gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, cntof(tbl_lay), lst->tbl.state, cntof(lst->tbl.state));
+      for arr_loopv(i, file_tbl_def) {
         assert(i < cntof(file_tbl_def));
         struct str title = file_tbl_def[i].title;
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_lay, lst->tbl.state, title);
@@ -697,7 +695,7 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
 
   if (chdir) {
     assert(dir < cntof(lst->page.elms));
-    struct file_elm *elm = lst->page.elms + dir;
+    struct file_elm *elm = &lst->page.elms[dir];
     if (elm->isdir) {
       char buf[MAX_FILE_PATH];
       struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));

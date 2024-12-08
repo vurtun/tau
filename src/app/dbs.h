@@ -32,7 +32,6 @@ enum {
   DB_TBL_FLTR_STR_BUF_SIZ     = (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR),
   DB_SQL_QRY_BUF_SIZ          = KB(16),
   DB_SQL_QRY_NAME_BUF_SIZ     = 128,
-
 };
 #define DB_FLTR_CNT_MSK   ((1u << castu(DB_MAX_FLTR_CNT))-1)
 #define DB_TBL_CNT_MSK    ((1u << castu(DB_TBL_CNT))-1)
