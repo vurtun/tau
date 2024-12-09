@@ -649,7 +649,7 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
     {
       /* header */
       int tbl_lay[GUI_TBL_COL(FILE_TBL_MAX)];
-      gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, cntof(tbl_lay), lst->tbl.state, cntof(lst->tbl.state));
+      gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_lay), arrv(lst->tbl.state));
       for arr_loopv(i, file_tbl_def) {
         assert(i < cntof(file_tbl_def));
         struct str title = file_tbl_def[i].title;

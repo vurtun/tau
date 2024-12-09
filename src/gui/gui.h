@@ -402,17 +402,9 @@ struct gui_grp {
 };
 
 /* Widget: Region */
-enum gui_reg_scrl {
-  GUI_REG_SCRL_DFLT   = 0,
-  GUI_REG_SCRL_VERT   = 0x01,
-  GUI_REG_SCRL_HORZ   = 0x02,
-  GUI_REG_SCRL_FULL   = GUI_REG_SCRL_VERT|GUI_REG_SCRL_HORZ,
-  GUI_REG_SCRL_NO
-};
 struct gui_reg {
   /* in */
   struct gui_box box;
-  unsigned scrl;
   /* out */
   struct gui_panel pan;
   int scrl_wheel;
@@ -521,7 +513,6 @@ struct gui_lst_sel {
   enum gui_lst_sel_on on;
   enum gui_lst_sel_hov hov;
   enum gui_lst_sel_behavior bhv;
-  unsigned long *bitset;
   int cnt;
   /* out: */
   enum gui_lst_sel_mod mut;

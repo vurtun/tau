@@ -61,7 +61,10 @@ cpu_bit_ffs64(unsigned long long u) {
 #define atom_sub(val, add) _InterlockedExchangeSub64((long long volatile *)val, add)
 
 #define force_inline __forceinline
-#define uint_overflow
+#define no_sanitize_int
+#define no_sanitize_addr
+#define no_sanitize_undef
+#define no_sanitize_leak
 
 #else
 

@@ -31,7 +31,8 @@ enum {
   APP_VIEW_CNT      = 8,
   APP_VIEW_PATH_BUF = (MAX_FILE_PATH * APP_VIEW_CNT),
 };
-#define APP_VIEW_CNT_MSK  ((1U<<castu(APP_VIEW_CNT))-1)
+#define APP_VIEW_CNT_MSK ((1U<<castu(APP_VIEW_CNT))-1)
+
 enum app_view_state {
   APP_VIEW_STATE_FILE,
   APP_VIEW_STATE_DB,
@@ -62,7 +63,6 @@ struct app {
   char db_mem[CFG_DB_MAX_MEMORY];
   char gui_mem[CFG_GUI_MAX_MEMORY];
 };
-
 static struct res_api res;
 static struct gui_api gui;
 static struct pck_api pck;

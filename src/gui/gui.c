@@ -1144,7 +1144,7 @@ gui_begin(struct gui_ctx *ctx) {
 
   /* tree */
   struct gui_panel *pan = &ctx->root;
-  pan->id = 14695981039346656037LLU;
+  pan->id = FNV1A64_HASH_INITIAL;
   if (ctx->pass == GUI_INPUT) {
     /* skip input pass when only mouse movement happend and not dragging */
     int no_move = !sys->mouse_mod || (sys->mouse_mod && !sys->mouse_grap);
@@ -1232,14 +1232,14 @@ gui_end(struct gui_ctx *ctx) {
       ctx->focus_last = 0;
       ctx->focus_next = 0;
 
-      struct sys *s = ctx->sys;
-      if (s->dnd.state != SYS_DND_NONE) {
-        gui_sys_dnd_end(ctx, s);
+      struct sys *sys = ctx->sys;
+      if (sys->dnd.state != SYS_DND_NONE) {
+        gui_sys_dnd_end(ctx, sys);
       }
       if (ctx->dnd_clr) {
         gui_dnd_clr(ctx);
       }
-      gui_input_end(ctx, &ctx->sys->mouse);
+      gui_input_end(ctx, &sys->mouse);
       mset(ctx->keys, 0, sizeof(ctx->keys));
     } break;
     case GUI_RENDER: {
@@ -2346,7 +2346,7 @@ gui_hscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
   gui_panel_begin(ctx, &bar->pan, parent);
   {
     bar->scrolled = 0;
-    bar->step = bar->step <= 0 ? bar->size * 0.1F : bar->step;
+    bar->step = (bar->step <= 0) ? bar->size * 0.1F : bar->step;
 
     /* decrement button */
     bar->btn_dec.box.x = gui_min_ext(bar->box.x.min, bar->box.y.ext);
@@ -2399,7 +2399,7 @@ gui_vscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
   bar->pan.box = bar->box;
   gui_panel_begin(ctx, &bar->pan, parent);
   {
-    bar->step = bar->step <= 0 ? bar->size * 0.1f : bar->step;
+    bar->step = (bar->step <= 0) ? bar->size * 0.1F : bar->step;
     bar->scrolled = 0;
 
     /* decrement button */
@@ -2653,8 +2653,9 @@ gui_txt_ed_redo(struct gui_txt_ed *edt) {
       ude->char_at = undo->undo_char_pnt;
       undo->undo_char_pnt = cast(short, undo->undo_char_pnt + ude->in_len);
       /* now save the characters */
-      for (int i = 0; i < ude->in_len; ++i)
+      for (int i = 0; i < ude->in_len; ++i) {
         undo->buf[ude->char_at + i] = edt->buf[ude->where + i];
+      }
     } else {
       ude->in_len = ude->del_len = 0;
     }
@@ -2761,9 +2762,11 @@ gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int posx, int posy, int row_h
   }
   if (idx >= str_len(edt->str)) {
     return str_len(edt->str);
-  } else if (posx < row.x[0]) {
+  }
+  if (posx < row.x[0]) {
     return idx;
-  } else if (posx < row.x[1]) {
+  }
+  if (posx < row.x[1]) {
     int off = idx;
     int prev_x = row.x[0];
     for (idx = 0; idx < row.char_cnt; ++idx) {
@@ -2771,21 +2774,18 @@ gui_txt_ed_loc_coord(const struct gui_txt_ed *edt, int posx, int posy, int row_h
       if (posx < prev_x + width) {
         if (posx < prev_x + width / 2) {
           return off + idx;
-        } else {
-          return off + idx + 1;
         }
-      } else {
-        prev_x += width;
+        return off + idx + 1;
       }
+      prev_x += width;
     }
   }
   unsigned rune = 0;
   utf_at(&rune, edt->str, idx + row.char_cnt - 1);
   if (rune == '\n') {
     return idx + row.char_cnt - 1;
-  } else {
-    return idx + row.char_cnt;
   }
+  return idx + row.char_cnt;
 }
 static void
 gui_txt_ed_clk(struct gui_txt_ed *edt, int posx, int posy, int row_h,
@@ -3551,9 +3551,9 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *val) {
   ctx->txt_state.buf[last] = 0;
   switch (val->typ) {
     case GUI_SPIN_INT: {
-      char *ep = 0;
-      long num = strtol(ctx->txt_state.buf, &ep, 10);
-      if (*ep == '\0' && ep != ctx->txt_state.buf) {
+      char *eptr = 0;
+      long num = strtol(ctx->txt_state.buf, &eptr, 10);
+      if (*eptr == '\0' && eptr != ctx->txt_state.buf) {
         val->num.i = clamp(val->min.i, casti(num), val->max.i);
         mod = 1;
       }
@@ -3757,11 +3757,11 @@ gui_spin(struct gui_ctx *ctx, struct gui_spin *spin, struct gui_panel *parent,
     edit_pan.box.x = gui_min_max(spin->box.x.min + pad, spin->box.x.max - pad);
     edit_pan.box.y = gui_min_max(spin->box.y.min + 2, spin->box.y.max - 2);
 
-    const unsigned long long id = fnv1au64(ctx->id, spin->pan.id);
-    if (ctx->focused == id) {
+    const unsigned long long uid = fnv1au64(ctx->id, spin->pan.id);
+    if (ctx->focused == uid) {
       /* focused edit field */
       struct gui_txt_ed *ted = &ctx->txt_ed_state;
-      if (ctx->prev_focused != id) {
+      if (ctx->prev_focused != uid) {
         gui_spin_focus(ctx, val, ted);
       }
       gui_edit_field(ctx, &edt, &edit_pan, &spin->pan, ted);
@@ -3829,7 +3829,7 @@ gui_spin_flt(struct gui_ctx *ctx, struct gui_spin *ctl,
   val.inc.f = inc == 0.0F ? 1.0F : inc;
   val.num.f = *num;
 
-  if ((min == max) && min == 0.0f) {
+  if ((min == max) && min == 0.0F) {
     val.min.f = -(1 << FLT_MANT_DIG);
     val.max.f = (1 << FLT_MANT_DIG);
     val.inc.f = 1.0F;
@@ -4003,9 +4003,7 @@ gui_reg_begin(struct gui_ctx *ctx, struct gui_reg *reg,
   reg->pan.box = reg->box;
   gui_panel_begin(ctx, &reg->pan, parent);
   mcpy(reg->off, off, sizeof(reg->off));
-  if (reg->scrl == GUI_REG_SCRL_DFLT) {
-    reg->scrl = GUI_REG_SCRL_FULL;
-  }
+
   /* calculate clip area */
   struct gui_box *box = &reg->pan.box;
   reg->space.x = gui_min_max(box->x.min, box->x.max - ctx->cfg.scrl);
@@ -4070,8 +4068,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
   reg->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
   reg->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
   reg->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
-
-  if (reg->scrl & GUI_REG_SCRL_VERT) {
+  {
     /* setup vertical scrollbar */
     reg->vscrl.min_size = ctx->cfg.scrl;
     reg->vscrl.total = castd(pan->max[1] - pan->box.y.min);
@@ -4103,10 +4100,8 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
       reg->off[1] = 0;
     }
     reg->max_off[1] = reg->vscrl.total - reg->vscrl.size;
-  } else {
-    reg->off[1] = 0;
   }
-  if (reg->scrl & GUI_REG_SCRL_HORZ) {
+  {
     /* setup horizontal scrollbar */
     reg->hscrl.off = reg->off[0];
     reg->hscrl.min_size = ctx->cfg.scrl;
@@ -4123,8 +4118,6 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
       reg->off[0] = 0;
     }
     reg->max_off[0] = reg->hscrl.total - reg->hscrl.size;
-  } else {
-    reg->off[0] = 0;
   }
   if (off) {
     mcpy(off, reg->off, sizeof(reg->off));
@@ -4539,9 +4532,7 @@ gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,
 
   struct gui_panel item = {.box = *box};
   gui_panel_id(ctx, &item, parent, uid);
-  if (sel->bitset && sel->mode == GUI_LST_SEL_MULTI) {
-    is_sel = bit_tst(sel->bitset, lay->idx - 1);
-  } else if (sel->mode == GUI_LST_SEL_SINGLE && sel->src == GUI_LST_SEL_SRC_INT) {
+  if (sel->mode == GUI_LST_SEL_SINGLE && sel->src == GUI_LST_SEL_SRC_INT) {
     is_sel = is_sel || (ctl->has_focus && ctx->lst_state.cur_idx == ctl->idx - 1);
   }
   struct gui_lst_elm_state state;
@@ -4634,29 +4625,6 @@ gui_lst_sel_proc(struct gui_ctx *ctx, struct gui_lst_sel *sel,
   sel->begin_idx = clamp(0, sel->begin_idx, total);
   sel->end_idx = clamp(0, sel->end_idx, total);
 
-  /* modify bitset by selection set */
-  if (sel->mod) {
-    if (sel->bitset) {
-      if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
-        bit_fill(sel->bitset, 0, total);
-        sel->cnt = 0;
-      }
-      for (int i = sel->begin_idx; i < sel->end_idx; ++i) {
-        switch (sel->op) {
-          case GUI_LST_SEL_OP_SET:
-            if (!bit_set(sel->bitset, i)) {
-              sel->cnt++;
-            }
-            break;
-          case GUI_LST_SEL_OP_CLR:
-            if (bit_clr(sel->bitset, i)) {
-              sel->cnt--;
-            }
-            break;
-        }
-      }
-    }
-  }
   /* key handler */
   if (ctl->has_focus) {
     sel->cpy = !!bit_tst_clr(ctx->keys, GUI_KEY_LST_CPY);
@@ -4761,7 +4729,6 @@ gui_lst_begin(struct gui_ctx *ctx, struct gui_lst *lst,
   lst->sel.mode = cfg->sel.mode;
   lst->sel.on = cfg->sel.on;
   lst->sel.hov = cfg->sel.hov;
-  lst->sel.bitset = cfg->sel.bitset;
   lst->sel.cnt = cfg->sel.cnt;
 
   lst->view.total_cnt = cfg->total_cnt;
@@ -4858,12 +4825,9 @@ gui_lst_end(struct gui_ctx *ctx, struct gui_lst *lst) {
     /* dummy focus list element */
     struct gui_panel elm = {0};
     lst->lay.idx = gbl->cur_idx;
-    unsigned long *tmp = lst->sel.bitset;
-    lst->sel.bitset = 0;
 
     gui_lst_elm_begin(ctx, lst, &elm, &elm, GUI_LST_ELM_TRAIL_ID, 0);
     gui_lst_elm_end(ctx, lst, &elm, &elm);
-    lst->sel.bitset = tmp;
   }
   gui_lst_ctl_proc(ctx, &lst->ctl, &lst->lay, lst->view.total_cnt);
   gui_lst_sel_proc(ctx, &lst->sel, &lst->ctl, lst->view.total_cnt);
@@ -5173,6 +5137,11 @@ gui_split_lay_end(struct gui_split_lay *bld) {
 static void
 gui_split_lay(int *state, const struct gui_ctx *ctx,
               const struct gui_split_lay_cfg *cfg) {
+
+  assert(ctx);
+  assert(cfg);
+  assert(state);
+
   int cnt = !cfg->total ? cfg->cnt : cfg->total;
   int stride = cfg->size ? cfg->size : szof(struct gui_split_lay_slot);
   const unsigned char *ptr = cast(const unsigned char*, cfg->slots) + cfg->off;
@@ -5299,13 +5268,13 @@ gui_split_sep(struct gui_ctx *ctx, struct gui_split *spt,
       int prv = spt->sidx > 2 ? toc.seps[spt->sidx - 1] : 0;
       int fst = toc.seps[spt->sidx] - prv;
       int fci = (spt->sidx - 2) * 2;
-      const int *fc = toc.cons + (fci * 2);
+      const int *fcn = toc.cons + (fci * 2);
 
       int nxt = spt->sidx + 1 < (cnt_half) + 2 ? toc.seps[spt->sidx + 1] : sep_pos;
       int sec = nxt - toc.seps[spt->sidx];
       int sci = ((spt->sidx - 2) * 2) + 2;
-      const int *sc = toc.cons + (sci * 2);
-      if (!between(fst, fc[0], fc[1]) || !between(sec, sc[0], sc[1])) {
+      const int *scn = toc.cons + (sci * 2);
+      if (!between(fst, fcn[0], fcn[1]) || !between(sec, scn[0], scn[1])) {
         toc.seps[spt->sidx] = sep_pos;
       }
     }
@@ -5405,9 +5374,7 @@ gui_tbl_hdr_slot_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
   assert(slot);
 
   gui_btn_end(ctx, slot, &tbl->spt.pan);
-  tbl->idx++;
-
-  if (tbl->idx < tbl->cnt) {
+  if (tbl->idx+1 < tbl->cnt) {
     gui_split_sep(ctx, &tbl->spt, lay, state);
   }
   if (slot->clk) {
@@ -5419,6 +5386,7 @@ gui_tbl_hdr_slot_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
       tbl->sort.order = 0;
     }
   }
+  tbl->idx++;
 }
 static void
 gui_tbl_hdr_slot(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
@@ -5489,7 +5457,6 @@ gui__tbl_lst_cfg_init(struct gui_lst_cfg *ret, const struct gui_ctx *ctx,
   ret->sel.on = cfg->sel.on;
   ret->sel.cnt = cfg->sel.cnt;
   ret->sel.hov = cfg->sel.hov;
-  ret->sel.bitset = cfg->sel.bitset;
 
   ret->fltr.bitset = cfg->fltr.bitset;
   ret->fltr.on = cfg->fltr.on;

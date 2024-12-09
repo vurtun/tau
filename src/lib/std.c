@@ -734,8 +734,6 @@ is_punct(long c) {
  *                                  String
  * ---------------------------------------------------------------------------
  */
-#define rng(b,e,n) rng__mk(rng__bnd(b,n), rng__bnd(e,n), n)
-
 // clang-format off
 #define cstrn(s) casti(strlen(s))
 #define str(p,r) (struct str){.ptr = p, .rng = r}

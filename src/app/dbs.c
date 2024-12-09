@@ -1335,7 +1335,7 @@ ui_db_tbl_fltr_lst_tbl_hdr(struct db_tbl_fltr_state *fltr, struct gui_tbl *tbl,
   assert(fltr);
   assert(tbl_cols);
 
-  gui.tbl.hdr.begin(ctx, tbl, tbl_cols, col_cnt, fltr->tbl.state, cntof(fltr->tbl.state));
+  gui.tbl.hdr.begin(ctx, tbl, tbl_cols, col_cnt, arrv(fltr->tbl.state));
   {
     /* enable/disable all filters toggle */
     int all_set = db_tbl_fltr_enabled(fltr);
@@ -1678,7 +1678,7 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
       }
       /* header */
       int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_ROW_COLS)];
-      gui.tbl.hdr.begin(ctx, &tbl, tbl_lay, cntof(tbl_lay), stbl->row.ui.state, cntof(stbl->row.ui.state));
+      gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_lay), arrv(stbl->row.ui.state));
       for looprn(i, stbl->row.cols, DB_MAX_TBL_ROW_COLS) {
 
         assert(i >= stbl->col.rng.lo);
@@ -1798,7 +1798,7 @@ ui_db_tbl_view_dsp_layout(struct db_state *sdb, struct db_view *vdb,
     {
       /* header */
       int tbl_cols[GUI_TBL_COL(DB_TBL_DISP_COL_MAX)];
-      gui.tbl.hdr.begin(ctx, &tbl, tbl_cols, cntof(tbl_cols), stbl->col.ui.state, cntof(stbl->col.ui.state));
+      gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_cols), arrv(stbl->col.ui.state));
       if (ui_tbl_hdr_elm_lock(ctx, &tbl, tbl_cols, stbl->col.ui.state, !!stbl->col.state)) {
 
         switch (stbl->col.state) {
@@ -2024,7 +2024,7 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
       /* header */
       const struct db_tbl_col_def *col = 0;
       int tbl_cols[GUI_TBL_COL(DB_TREE_COL_MAX)];
-      gui.tbl.hdr.begin(ctx, &tbl, tbl_cols, cntof(tbl_cols), sinfo->tbl.state, cntof(sinfo->tbl.state));
+      gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_cols), arrv(sinfo->tbl.state));
       for arr_eachv(col, db_tree_col_def) {
         gui.tbl.hdr.slot.txt(ctx, &tbl, tbl_cols, sinfo->tbl.state, col->title);
       }
