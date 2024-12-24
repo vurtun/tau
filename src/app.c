@@ -232,7 +232,7 @@ app_init(struct app *app, struct sys *sys) {
   res.init(&app->res, sys);
   {
     struct gui_args args = {0};
-    args.scale = castu(sys->dpi_scale * castf(1 << 16));
+    args.scale = castu(sys->dpi_scale * castf(1 << 16u));
     if (sys->has_style){
       args.scm = GUI_COL_SCHEME_SYS;
     } else {
@@ -392,7 +392,7 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       struct gui_panel elm = {0};
       struct app_view *view = &app->views[idx];
       unsigned long long tab_id = hash_ptr(view);
-      gui.lst.reg.elm.txt(ctx, &reg, &elm, tab_id, 0, strv("Open"), 0);
+      gui.lst.reg.elm.txt(ctx, &reg, &elm, gui_id64(tab_id), 0, strv("Open"), 0);
 
       struct gui_input pin = {0};
       gui.pan.input(&pin, ctx, &elm, GUI_BTN_LEFT);
@@ -440,7 +440,7 @@ ui_app_view_tab_slot(struct app *app, struct app_view *view,
   assert(view);
 
   int ret = 0;
-  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, hash_ptr(view));
+  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, gui_id_ptr(view));
   if (app->tab_cnt > 1 && tab->idx == tab->sel.idx) {
     ret = ui_app_view_tab_slot_close(ctx, slot, &hdr->pan, title, ico);
   } else {

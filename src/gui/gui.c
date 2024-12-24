@@ -2,6 +2,10 @@
  *                                Utility
  * ---------------------------------------------------------------------------
  */
+#define GUI_INIT_HASH_LO FNV1A32_HASH_INITIAL
+#define GUI_INIT_HASH_HI (0xC0E785u)
+#define GUI_ID_INIT (struct gui_id){.lo = GUI_INIT_HASH_LO, .hi = GUI_INIT_HASH_HI}
+
 #define gui_inbox(px, py, box) \
   (between(px, (box)->x.min, (box)->x.max) && between(py, (box)->y.min, (box)->y.max))
 #define gui_contains(a, b) \
@@ -10,6 +14,26 @@
   ((bnd)->x.min < (x1) && (bnd)->x.max > (x0) &&  \
    (bnd)->y.min < (y1) && (bnd)->y.max > (y0))
 
+static inline struct gui_id
+gui__hash(void *data, int len, struct gui_id hash) {
+  struct gui_id ret;
+  ret.lo = fnv1a32(data, len, hash.hi);
+  ret.hi = fnv1a32(&ret.lo, szof(ret.lo), hash.lo);
+  return ret;
+}
+static inline struct gui_id
+gui_gen_id(struct gui_id uid, struct gui_id pid) {
+  struct gui_id ret = gui__hash(&uid, szof(uid), pid);
+  return ret;
+}
+static inline int
+gui_id_eq(struct gui_id lhs, struct gui_id rhs) {
+  return lhs.lo == rhs.lo && lhs.hi == rhs.hi;
+}
+static inline int
+gui_id_neq(struct gui_id lhs, struct gui_id rhs) {
+  return !gui_id_eq(lhs, rhs);
+}
 static struct gui_bnd
 gui_min_max(int vmin, int vmax) {
   struct gui_bnd ret;
@@ -623,8 +647,8 @@ gui_panel_hot(struct gui_ctx *ctx, struct gui_panel *pan,
 
   const struct sys *sys = ctx->sys;
   const struct gui_box *box = &pan->box;
-  pan->is_focused = pan->id == ctx->focused;
-  if (pan->focusable && ctx->first_id == ctx->root.id) {
+  pan->is_focused = !!gui_id_eq(pan->id, ctx->focused);
+  if (pan->focusable && gui_id_eq(ctx->first_id, ctx->root.id)) {
     ctx->first_id = pan->id;
   }
   int in_box = gui_inbox(sys->mouse.pos[0], sys->mouse.pos[1], box);
@@ -660,13 +684,13 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
 
   /* enter and left */
   pin->is_hot = pan->is_hot;
-  pin->entered = pan->id == ctx->hot && pan->id != ctx->prev_hot;
-  pin->exited = pan->id != ctx->hot && pan->id == ctx->prev_hot;
+  pin->entered = gui_id_eq(pan->id, ctx->hot) && gui_id_neq(pan->id, ctx->prev_hot);
+  pin->exited = gui_id_neq(pan->id, ctx->hot) && gui_id_eq(pan->id, ctx->prev_hot);
 
   /* (un)focus */
-  pin->is_focused = pan->id == ctx->focused;
-  pin->gained_focus = (pan->id == ctx->focused && pan->id != ctx->prev_focused);
-  pin->lost_focus = pan->id != ctx->focused && pan->id == ctx->prev_focused;
+  pin->is_focused = !!gui_id_eq(pan->id, ctx->focused);
+  pin->gained_focus = !!gui_id_eq(pan->id, ctx->focused) && gui_id_neq(pan->id, ctx->prev_focused);
+  pin->lost_focus = !!gui_id_neq(pan->id, ctx->focused) && gui_id_eq(pan->id, ctx->prev_focused);
 
   /* mouse pointer */
   struct sys_mouse *mouse = &sys->mouse;
@@ -682,11 +706,11 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
   /* keyboard */
   pin->txt = sys->txt;
   pin->keys = sys->keys;
-  if (pan->id == ctx->focused) {
+  if (gui_id_eq(pan->id, ctx->focused)) {
     ctx->focus_next = bit_tst_clr(ctx->keys, GUI_KEY_NEXT_WIDGET) ? 1 : 0;
     if (bit_tst_clr(ctx->keys, GUI_KEY_PREV_WIDGET)) {
       ctx->focused = ctx->prev_id;
-      if (ctx->prev_id == ctx->root.id) {
+      if (gui_id_eq(ctx->prev_id, ctx->root.id)) {
         ctx->focus_last = 1;
       }
     }
@@ -710,15 +734,15 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
       continue;
     }
     /* (un)grab */
-    btn->grabbed = pan->id == ctx->btn[i].active && pan->id == ctx->btn[i].origin;
-    btn->gained_grab = pan->id == ctx->btn[i].active && pan->id != ctx->btn[i].prev_active;
-    btn->lost_grab = pan->id != ctx->btn[i].active && pan->id == ctx->btn[i].prev_active;
+    btn->grabbed = gui_id_eq(pan->id, ctx->btn[i].active) && gui_id_eq(pan->id, ctx->btn[i].origin);
+    btn->gained_grab = gui_id_eq(pan->id, ctx->btn[i].active) && gui_id_neq(pan->id, ctx->btn[i].prev_active);
+    btn->lost_grab = gui_id_eq(pan->id, ctx->btn[i].active) && gui_id_eq(pan->id, ctx->btn[i].prev_active);
 
     /* dragging */
     btn->drag_begin = btn->pressed;
     if (mouse->pos_delta[0] || mouse->pos_delta[1]) {
-      if (pan->id == ctx->btn[i].active &&
-          ctx->btn[i].active == ctx->btn[i].origin) {
+      if (gui_id_eq(pan->id, ctx->btn[i].active) &&
+          gui_id_eq(ctx->btn[i].active, ctx->btn[i].origin)) {
         btn->drag_pos[0] = ctx->btn[i].drag_pos[0];
         btn->drag_pos[1] = ctx->btn[i].drag_pos[1];
         btn->dragged = 1;
@@ -731,7 +755,7 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
       int dy = ctx->btn[i].drag_pos[1];
 
       btn->clk = gui_inbox(dx, dy, box) && pan->is_hot;
-      if (ctx->btn[i].origin == pan->id) {
+      if (gui_id_eq(ctx->btn[i].origin, pan->id)) {
         ctx->btn[i].origin = ctx->root.id;
         btn->drag_end = 1;
       }
@@ -748,7 +772,7 @@ gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *pan) {
     ret = GUI_HIDDEN;
   } else if (ctx->disabled) {
     ret = GUI_DISABLED;
-  } else if ((pan->id == ctx->focused) && !ctx->focus_next) {
+  } else if ((gui_id_eq(pan->id, ctx->focused)) && !ctx->focus_next) {
     ret = GUI_FOCUSED;
   } else {
     ret = GUI_NORMAL;
@@ -787,11 +811,11 @@ gui_focus_drw(struct gui_ctx *ctx, const struct gui_box *box, int pad) {
 }
 static void
 gui_panel_open(struct gui_ctx *ctx, struct gui_panel *pan,
-               struct gui_panel *parent, unsigned long long uid) {
+               struct gui_panel *parent, struct gui_id uid) {
   assert(pan);
   assert(ctx);
 
-  pan->id = parent ? fnv1au64(uid, parent->id) : uid;
+  pan->id = parent ? gui_gen_id(uid, parent->id) : uid;
   pan->max[0] = pan->max[1] = 0;
   pan->is_hot = pan->is_hov = 0;
   pan->is_focused = 0;
@@ -807,7 +831,7 @@ gui_panel_open(struct gui_ctx *ctx, struct gui_panel *pan,
   }
   gui_panel_hot(ctx, pan, parent);
   pan->state = gui_panel_state(ctx, pan);
-  pan->has_focus = pan->id == ctx->focused;
+  pan->has_focus = !!gui_id_eq(pan->id, ctx->focused);
   pan->is_focused = pan->has_focus;
 }
 static void
@@ -828,11 +852,16 @@ gui_panel_close(struct gui_ctx *ctx, struct gui_panel *pan,
 static void
 gui_panel_begin(struct gui_ctx *ctx, struct gui_panel *pan,
                 struct gui_panel *parent) {
-  gui_panel_open(ctx, pan, parent, (ctx)->id++);
+  assert(ctx);
+  assert(pan);
+  assert(parent);
+
+  gui_panel_open(ctx, pan, parent, ctx->id);
+  ctx->id.lo++;
 }
 static void
 gui_panel_id(struct gui_ctx *ctx, struct gui_panel *pan,
-             struct gui_panel *parent, unsigned long long uid) {
+             struct gui_panel *parent, struct gui_id uid) {
   assert(pan);
   assert(ctx);
   assert(parent);
@@ -1152,7 +1181,7 @@ gui_begin(struct gui_ctx *ctx) {
 
   /* tree */
   struct gui_panel *pan = &ctx->root;
-  pan->id = FNV1A64_HASH_INITIAL;
+  pan->id = GUI_ID_INIT;
   if (ctx->pass == GUI_INPUT) {
     /* skip input pass when only mouse movement happend and not dragging */
     int no_move = !sys->mouse_mod || (sys->mouse_mod && !sys->mouse_grap);
@@ -1226,7 +1255,9 @@ static int
 gui_end(struct gui_ctx *ctx) {
   assert(ctx);
   assert(ctx->disabled == 0);
-  ctx->id = 0;
+
+  ctx->id.lo = 0;
+  ctx->id.hi = GUI_INIT_HASH_LO;
   switch (ctx->pass) {
     case GUI_FINISHED: break;
     case GUI_INPUT: {
@@ -1313,7 +1344,7 @@ gui_dnd_src_begin(struct gui_dnd_src *ret, struct gui_ctx *ctx,
   return 1;
 }
 static void
-gui_dnd_src_set(struct gui_ctx *ctx, unsigned long long type, const void *data,
+gui_dnd_src_set(struct gui_ctx *ctx, struct gui_id type, const void *data,
                 int len, int cond) {
   assert(ctx);
   assert(ctx->dnd_in);
@@ -1363,12 +1394,12 @@ gui_dnd_dst_begin(struct gui_ctx *ctx, struct gui_panel *pan) {
   return 1;
 }
 static struct gui_dnd_paq*
-gui_dnd_dst_get(struct gui_ctx *ctx, unsigned long long type) {
+gui_dnd_dst_get(struct gui_ctx *ctx, struct gui_id type) {
   assert(ctx);
   assert(ctx->dnd_in);
   assert(ctx->dnd_act);
   assert(ctx->dnd_set);
-  if (ctx->dnd_paq.type != type) {
+  if (gui_id_neq(ctx->dnd_paq.type, type)) {
     return 0;
   }
   return &ctx->dnd_paq;
@@ -3361,7 +3392,7 @@ gui_edit_field_drw(struct gui_ctx *ctx, struct gui_edit_box *box,
   struct gui_clip clip = {0};
   gui_clip_begin(&clip, ctx, gui_unbox(&pan->box));
   {
-    box->active = (pan->id == ctx->focused);
+    box->active = !!gui_id_eq(pan->id, ctx->focused);
     if (box->active && gui_txt_ed_has_sel(edt)) {
       gui_edit_field_drw_txt_sel(ctx, pan, edt, cur_off, txt_ext);
     } else {
@@ -3414,7 +3445,7 @@ gui_edit_field_input(struct gui_ctx *ctx, struct gui_edit_box *box,
     box->unfocused = 1;
   }
   /* input handling */
-  box->active = pan->id == ctx->focused;
+  box->active = !!gui_id_eq(pan->id, ctx->focused);
   if (box->active) {
     int key = 0;
     box->mod = !!gui_txt_ed_on_key(&key, edt, ctx);
@@ -3453,7 +3484,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   gui_panel_begin(ctx, pan, parent);
   {
     /* calculate cursor offset  */
-    if (pan->id == ctx->focused) {
+    if (gui_id_eq(pan->id, ctx->focused)) {
       gui_txt_ed_clamp(edt);
     }
     int cur_ext[2];
@@ -3547,16 +3578,17 @@ gui_edit(struct gui_ctx *ctx, struct gui_edit_box *edt,
 static struct str
 gui_edit_box(struct gui_ctx *ctx, struct gui_edit_box *box,
              struct gui_panel *parent, char *buf, int cap, struct str str) {
+
   assert(buf);
   assert(ctx);
   assert(box);
   assert(parent);
 
   struct gui_txt_ed *edt = &ctx->txt_ed_tmp_state;
-  const unsigned long long uid = fnv1au64(ctx->id, parent->id);
-  if (ctx->focused == uid) {
+  struct gui_id uid = gui_gen_id(ctx->id, parent->id);
+  if (gui_id_eq(ctx->focused, uid)) {
     edt = &ctx->txt_ed_state;
-    if (ctx->prev_focused != uid) {
+    if (gui_id_neq(ctx->prev_focused, uid)) {
       gui_txt_ed_init(edt, buf, cap, str);
     }
   } else {
@@ -3847,11 +3879,11 @@ gui_spin(struct gui_ctx *ctx, struct gui_spin *spin, struct gui_panel *parent,
     edit_pan.box.x = gui_min_max(spin->box.x.min + pad, spin->box.x.max - pad);
     edit_pan.box.y = gui_min_max(spin->box.y.min + 2, spin->box.y.max - 2);
 
-    const unsigned long long uid = fnv1au64(ctx->id, spin->pan.id);
-    if (ctx->focused == uid) {
+    struct gui_id uid = gui_gen_id(ctx->id, spin->pan.id);
+    if (gui_id_eq(ctx->focused, uid)) {
       /* focused edit field */
       struct gui_txt_ed *ted = &ctx->txt_ed_state;
-      if (ctx->prev_focused != uid) {
+      if (gui_id_neq(ctx->prev_focused, uid)) {
         gui_spin_focus(ctx, val, ted);
       }
       gui_edit_field(ctx, &edt, &edit_pan, &spin->pan, ted);
@@ -4366,7 +4398,7 @@ gui_lst_ctl_focus(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
 static void
 gui_lst_ctl_elm(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
                 const struct gui_lst_lay *lst, const struct gui_box *box,
-                struct gui_panel *parent, unsigned long long uid) {
+                struct gui_panel *parent, struct gui_id uid) {
   assert(ctx);
   assert(ctl);
   assert(lst);
@@ -4378,7 +4410,7 @@ gui_lst_ctl_elm(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
   ctl->owner_id = parent->id;
 
   int item_idx = lst->idx - 1;
-  int focused = parent->id == ctx->lst_state.owner && ctx->lst_state.focused;
+  int focused = gui_id_eq(parent->id, ctx->lst_state.owner) && ctx->lst_state.focused;
   if (ctl->idx++ == 0) {
     ctl->has_focus = parent->is_focused;
     if (!ctl->has_focus) {
@@ -4388,7 +4420,7 @@ gui_lst_ctl_elm(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
       }
     } else if (bit_tst_clr(ctx->keys, GUI_KEY_PREV_WIDGET)) {
       ctx->focused = ctx->prev_id;
-      if (ctx->prev_id == ctx->root.id) {
+      if (gui_id_eq(ctx->prev_id, ctx->root.id)) {
         ctx->focus_last = 1;
       }
     }
@@ -4421,7 +4453,9 @@ gui_lst_ctl_proc(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
   total = max(0, total - 1);
 
   struct gui_lst_state *lst = &ctx->lst_state;
-  if (lst->focused && !ctl->has_focus && ctl->owner_id == lst->owner) {
+  if (lst->focused && !ctl->has_focus &&
+      gui_id_eq(ctl->owner_id, lst->owner)) {
+
     ctl->lost_focus = 1;
     ctl->has_focus = 0;
 
@@ -4611,7 +4645,7 @@ static void
 gui_lst_sel_elm(struct gui_ctx *ctx, struct gui_lst_sel *sel,
                 const struct gui_lst_lay *lay, const struct gui_lst_ctl *ctl,
                 struct gui_box *box, struct gui_panel *parent, int is_sel,
-                unsigned long long uid) {
+                struct gui_id uid) {
   assert(ctx);
   assert(sel);
   assert(lay);
@@ -4883,7 +4917,7 @@ gui_lst_nxt(const struct gui_lst *lst, int idx) {
 static void
 gui_lst_elm_begin(struct gui_ctx *ctx, struct gui_lst *lst,
                   struct gui_panel *pan, struct gui_panel *parent,
-                  unsigned long long uid, int sel) {
+                  struct gui_id uid, int sel) {
   assert(ctx);
   assert(pan);
   assert(lst);
@@ -4974,7 +5008,7 @@ gui_lst_reg_nxt(const struct gui_lst_reg *lag, int idx) {
 }
 static void
 gui_lst_reg_elm_begin(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                      struct gui_panel *pan, unsigned long long uid, int sel) {
+                      struct gui_panel *pan, struct gui_id uid, int sel) {
   assert(lag);
   assert(ctx);
   assert(pan);
@@ -4990,7 +5024,7 @@ gui_lst_reg_elm_end(struct gui_ctx *ctx, struct gui_lst_reg *lag,
 }
 static void
 gui_lst_reg_elm_txt(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                     struct gui_panel *elm, unsigned long long uid, int is_sel,
+                     struct gui_panel *elm, struct gui_id uid, int is_sel,
                      struct str txt, const struct gui_align *align) {
   assert(ctx);
   assert(lag);
@@ -5004,7 +5038,7 @@ gui_lst_reg_elm_txt(struct gui_ctx *ctx, struct gui_lst_reg *lag,
 }
 static void
 gui_lst_reg_elm_txt_ico(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                     struct gui_panel *elm, unsigned long long uid, int is_sel,
+                     struct gui_panel *elm, struct gui_id uid, int is_sel,
                      struct str txt, enum res_ico_id ico_id) {
   assert(ctx);
   assert(lag);
@@ -5590,7 +5624,7 @@ gui_tbl_lst_begin_def(struct gui_ctx *ctx, struct gui_tbl *tbl, int total_cnt) {
 }
 static void
 gui_tbl_lst_elm_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
-                      struct gui_panel *elm, unsigned long long uid, int sel) {
+                      struct gui_panel *elm, struct gui_id uid, int sel) {
   assert(ctx);
   assert(tbl);
   assert(elm);
@@ -5951,7 +5985,7 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
 static void
 gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                        struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
-                       unsigned long long uid) {
+                       struct gui_id uid) {
   assert(ctx);
   assert(tab);
   assert(slot);
@@ -5981,7 +6015,7 @@ gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 
   struct gui_input ins = {0};
   pin = !pin ? &ins : pin;
-  slot->id = fnv1au64(hdr->id, tab->pan.id);
+  slot->id = gui_gen_id(hdr->id, tab->pan.id);
   gui_panel_hot(ctx, slot, &tab->pan);
   gui_input(pin, ctx, slot, GUI_BTN_LEFT);
 
@@ -6023,15 +6057,16 @@ gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     }
   }
   if (ctx->pass == GUI_RENDER &&
-      slot->id == ctx->focused && !ctx->focus_next) {
+      gui_id_eq(slot->id, ctx->focused) &&
+      !ctx->focus_next) {
     gui_focus_drw(ctx, &hdr->slot, 0);
   }
   tab->idx++;
 }
 static void
-gui_tab_hdr_slot_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                    struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
-                    unsigned long long uid, struct str txt) {
+gui_tab_hdr_slot(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                 struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+                 struct gui_id uid, struct str txt) {
   assert(ctx);
   assert(tab);
   assert(hdr);
@@ -6043,34 +6078,15 @@ gui_tab_hdr_slot_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   gui_tab_hdr_slot_end(ctx, tab, hdr, slot, 0);
 }
 static void
-gui_tab_hdr_slot(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                 struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
+gui_tab_hdr_item(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
+                 struct gui_tab_ctl_hdr *hdr, struct gui_id uid,
                  struct str txt) {
   assert(ctx);
   assert(tab);
   assert(hdr);
-  gui_tab_hdr_slot_id(ctx, tab, hdr, slot, str_hash(txt), txt);
-}
-static void
-gui_tab_hdr_item_id(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                    struct gui_tab_ctl_hdr *hdr, unsigned long long uid,
-                    struct str txt) {
-  assert(ctx);
-  assert(tab);
-  assert(hdr);
 
   struct gui_panel slot = {0};
-  gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, uid, txt);
-}
-static void
-gui_tab_hdr_item(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                 struct gui_tab_ctl_hdr *hdr, struct str txt) {
-  assert(ctx);
-  assert(tab);
-  assert(hdr);
-
-  struct gui_panel slot = {0};
-  gui_tab_hdr_slot_id(ctx, tab, hdr, &slot, str_hash(txt), txt);
+  gui_tab_hdr_slot(ctx, tab, hdr, &slot, uid, txt);
 }
 static void
 gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
@@ -6579,11 +6595,9 @@ static const struct gui_api gui__api = {
       .slot = {
         .begin = gui_tab_hdr_slot_begin,
         .end = gui_tab_hdr_slot_end,
-        .txt_id = gui_tab_hdr_slot_id,
         .txt = gui_tab_hdr_slot,
       },
       .item = {
-        .txt_id = gui_tab_hdr_item_id,
         .txt = gui_tab_hdr_item,
       },
     },

@@ -608,7 +608,7 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   static const struct gui_align algn = {GUI_HALIGN_RIGHT, GUI_VALIGN_MID};
   static const unsigned dir_col = col_rgb_hex(0xeecd4a);
   unsigned long long elm_id = str_hash(elm->name);
-  gui.tbl.lst.elm.begin(ctx, tbl, pan, elm_id, is_sel);
+  gui.tbl.lst.elm.begin(ctx, tbl, pan, gui_id64(elm_id), is_sel);
   {
     struct gui_cfg_stk stk[1] = {0};
     confine gui_cfg_pushu_on_scope(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, elm->isdir) {
@@ -764,7 +764,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     struct str info = str_fmtsn(buf, cntof(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
     confine gui_disable_on_scope(&gui, ctx, lst->page_cnt == 1) {
       struct gui_panel slot = {0};
-      gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, info);
+      gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, gui_id64(str_hash(info)), info);
       gui.tooltip(ctx, &slot, info);
     }
   }

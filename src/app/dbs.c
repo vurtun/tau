@@ -1403,7 +1403,7 @@ ui_db_tbl_fltr_lst_view(struct db_state *sdb, struct db_view *vdb,
         struct db_tbl_fltr_elm *item = &fltr->elms[idx];
 
         struct gui_panel elm = {0};
-        gui.tbl.lst.elm.begin(ctx, &tbl, &elm, (uintptr_t)item, 0);
+        gui.tbl.lst.elm.begin(ctx, &tbl, &elm, gui_id_ptr(item), 0);
         {
           /* columns */
           int is_enabled = item->enabled;
@@ -1506,7 +1506,7 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
       assert(idx < cntof(view->rowid));
 
       struct gui_panel elm = {0};
-      unsigned long long id = hash_lld(view->rowid[idx]);
+      struct gui_id id = gui_id64(hash_lld(view->rowid[idx]));
       gui.lst.reg.elm.begin(ctx, &reg, &elm, id, 0);
       {
         struct gui_panel lbl = {.box = elm.box};
@@ -1752,7 +1752,7 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
 
         struct gui_panel item = {0};
         long long rowid = vtbl->row.rowids[idx];
-        unsigned long long id = hash_lld(rowid);
+        struct gui_id id = gui_id64(hash_lld(rowid));
 
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, id, 0);
         for loopn(j, stbl->row.cols.cnt, DB_MAX_TBL_ROW_COLS) {
@@ -1841,7 +1841,7 @@ ui_db_tbl_view_dsp_layout(struct db_state *sdb, struct db_view *vdb,
 
         struct gui_panel item = {0};
         unsigned long long key = hash_lld(col->rowid);
-        gui.tbl.lst.elm.begin(ctx, &tbl, &item, key, 0);
+        gui.tbl.lst.elm.begin(ctx, &tbl, &item, gui_id64(key), 0);
         {
           int dis = stbl->col.state == DB_TBL_COL_STATE_LOCKED;
           int is_act = (dis || tbl_has(&stbl->col.sel, key));
@@ -1929,7 +1929,7 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
         for arr_loopv(i, tabs) {
           struct gui_panel slot = {0};
           assert(i < cntof(tabs));
-          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, tabs[i].hash);
+          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, gui_id64(tabs[i].hash));
           gui.ico.box(ctx, &slot, &hdr.pan, tabs[i].ico, tabs[i].name);
           gui.tab.hdr.slot.end(ctx, &tab, &hdr, &slot, 0);
         }
@@ -2058,8 +2058,9 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
         struct str elm_sql = str_buf_get(&vinfo->buf, elm->sql);
 
         struct gui_panel item = {0};
-        int is_sel = tbl_has(&vinfo->sel, hash_lld(elm->rowid));
-        gui.tbl.lst.elm.begin(ctx, &tbl, &item, hash_lld(elm->rowid), is_sel);
+        unsigned long long hash = hash_lld(elm->rowid);
+        int is_sel = tbl_has(&vinfo->sel, hash);
+        gui.tbl.lst.elm.begin(ctx, &tbl, &item, gui_id64(hash), is_sel);
         {
           gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, elm_name, types[sinfo->sel_tab].ico);
           gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, types[sinfo->sel_tab].type, 0);
@@ -2133,7 +2134,8 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
         int dis = !(sinfo->tab_act & (1U << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
           struct gui_panel slot = {0};
-          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, str_hash(def->title));
+          struct gui_id iid = gui_id64(str_hash(def->title));
+          gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, iid);
           gui.ico.box(ctx, &slot, &hdr.pan, def->ico, def->title);
           gui.tab.hdr.slot.end(ctx, &tab, &hdr, &slot, 0);
         }
@@ -2171,7 +2173,7 @@ ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   assert(title.ptr);
 
   struct gui_panel slot = {0};
-  gui.tab.hdr.slot.begin(ctx, tab, hdr, &slot, str_hash(title));
+  gui.tab.hdr.slot.begin(ctx, tab, hdr, &slot, gui_id64(str_hash(title)));
   gui.ico.box(ctx, &slot, &hdr->pan, ico, title);
   gui.tab.hdr.slot.end(ctx, tab, hdr, &slot, 0);
 }
@@ -2258,8 +2260,7 @@ ui_db_explr_tab_slot(struct db_state *sdb, struct db_tbl_state *stbl,
   assert(slot);
 
   int ret = 0;
-  unsigned long long tab_id = hash_lld(stbl->rowid);
-  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, tab_id);
+  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, gui_id64(hash_lld(stbl->rowid)));
   if (sdb->tab_cnt > 1 && tab->idx == tab->sel.idx) {
     ret = ui_db_explr_tab_slot_close(ctx, slot, &hdr->pan, title, ico);
   } else {
@@ -2325,7 +2326,7 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx, struct gui_panel *
       struct gui_panel elm = {0};
       unsigned long long hin = cast(unsigned long long, i);
       unsigned long long id = fnv1au64(hin, FNV1A64_HASH_INITIAL);
-      gui.lst.reg.elm.txt_ico(ctx, &reg, &elm, id, 0, title, ico);
+      gui.lst.reg.elm.txt_ico(ctx, &reg, &elm, gui_id64(id), 0, title, ico);
 
       struct gui_input pin = {0};
       gui.pan.input(&pin, ctx, &elm, GUI_BTN_LEFT);
