@@ -55,7 +55,7 @@ struct file_list_view {
   int page_cnt;
   struct file_list_page page;
 
-  double off[2];
+  int off[2];
   struct file_tbl_ui tbl;
 
   struct str nav_path;

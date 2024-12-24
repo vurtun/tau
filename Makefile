@@ -21,16 +21,17 @@ debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough
 debug: CFLAGS += -Wno-direct-ivar-access
 debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions -Wno-pre-c11-compat
 debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE -DDEBUG
-debug: CFLAGS += -DSQLITE_DEBUG
+debug: CFLAGS += -Wno-reserved-macro-identifier -Wno-reserved-identifier -DSQLITE_DEBUG
 debug: CFLAGS += -fsanitize=address,undefined,leak,integer
 debug: OBJCFLAGS = -g -Weverything -Wno-covered-switch-default
 debug: OBJCFLAGS += -Wno-padded -Wno-comma -Wno-double-promotion -Wno-float-equal
 debug: OBJCFLAGS += -Wno-unused-macros -Wno-unused-local-typedef
+debug: OBJCFLAGS += -Wno-nullability-completeness
 debug: OBJCFLAGS += -Wno-unused-function -Wimplicit-int-conversion -Wimplicit-fallthrough
 debug: OBJCFLAGS += -Wno-atomic-implicit-seq-cst -Wno-deprecated-declarations
 debug: OBJCFLAGS += -DDEBUG_MODE -std=c99 -pedantic -Wno-deprecated-declarations
 debug: OBJCFLAGS += -Wno-declaration-after-statement -Wno-direct-ivar-access
-debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions
+debug: OBJCFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions -Wno-reserved-macro-identifier -Wno-reserved-identifier
 debug: OBJCFLAGS += -DDEBUG -DSQLITE_DEBUG
 debug: CC = clang
 debug: $(BIN)

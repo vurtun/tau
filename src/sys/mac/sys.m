@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE
 
 /* std */
-#include <assert.h>
 #include <stddef.h>
 #include <ctype.h>
 #include <errno.h>
@@ -17,15 +16,9 @@
 /* os */
 #include <dirent.h>
 #include <fcntl.h>
-#include <locale.h>
-#include <sys/mman.h>
-#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <unistd.h>
 #include <time.h>
-#include <dlfcn.h>
-#include <ucontext.h>
 
 #import <Cocoa/Cocoa.h>
 
@@ -928,7 +921,7 @@ sys__mac_dnd_str(NSArray *strs, enum sys_dnd_state state) {
   NSData *utf8Data = [str dataUsingEncoding:NSUTF8StringEncoding];
   int len = cast(int, [utf8Data length]);
 
-  g_sys.dnd.str = str(cast(const char*, [utf8Data bytes]), {len});
+  g_sys.dnd.str = strn(cast(const char*, [utf8Data bytes]), len);
   g_sys.dnd.state = state;
   g_sys.dnd_mod = 1;
   sys__mac_on_frame();

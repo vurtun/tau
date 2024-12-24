@@ -74,7 +74,7 @@ struct db_tbl_fltr_elm {
 struct db_tbl_fltr_ui {
   int cnt;
   int state[GUI_TBL_CAP(DB_TBL_FLTR_MAX)];
-  double off[2];
+  int off[2];
 };
 struct db_tbl_fltr_state {
   enum db_tbl_fltr_ui_view state;
@@ -88,7 +88,7 @@ struct db_tbl_fltr_state {
   /* ui */
   struct db_tbl_fltr_ui tbl;
   struct db_tbl_fltr_ui tbl_col;
-  double off[2];
+  int off[2];
   unsigned rev;
   struct rng elm_rng;
   int sel_col;
@@ -104,7 +104,7 @@ enum db_tree_col_sel {
 };
 struct db_tree_tbl_state {
   int state[GUI_TBL_CAP(DB_TREE_COL_MAX)];
-  double off[2];
+  int off[2];
 };
 #define DB_TBL_MAP(TYPE)                                \
   TYPE(TBL,       "table",    "Tables",   RES_ICO_TABLE)\
@@ -143,7 +143,7 @@ enum db_tbl_view_state {
 };
 struct db_tbl_ui_state {
   int state[GUI_TBL_CAP(DB_MAX_TBL_ROW_COLS)];
-  double off[2];
+  int off[2];
 };
 enum db_tbl_ui_disp_state_col {
   DB_TBL_DISP_COL_ACT,
@@ -157,7 +157,7 @@ enum db_tbl_ui_disp_state_col {
 };
 struct db_tbl_ui_col_state {
   int state[GUI_TBL_CAP(DB_TBL_DISP_COL_MAX)];
-  double off[2];
+  int off[2];
 };
 struct db_tbl_col_lst_state {
   enum db_tbl_col_state state;
@@ -203,7 +203,7 @@ struct db_state {
 
   struct db_tbl_state tbls[DB_TBL_CNT];
   struct db_info_state info;
-  double tbl_lst_off[2];
+  int tbl_lst_off[2];
 
   unsigned unused;
   unsigned char tabs[DB_TBL_CNT];

@@ -61,9 +61,11 @@ res__decompress_token(unsigned char *i) {
 }
 static unsigned
 res__adler32(unsigned int adler32, unsigned char *buffer, unsigned int buflen) {
-  const unsigned long ADLER_MOD = 65521;
-  unsigned long s1 = adler32 & 0xffff, s2 = adler32 >> 16;
-  unsigned long i, blocklen = buflen % 5552;
+  const unsigned long ADLER_MOD = 65521u;
+  unsigned long s1 = adler32 & 0xffffu;
+  unsigned long s2 = adler32 >> 16u;
+  unsigned long blocklen = buflen % 5552;
+  unsigned long i;
   while (buflen) {
     for (i=0; i + 7 < blocklen; i += 8) {
       s1 += buffer[0]; s2 += s1;
@@ -80,16 +82,20 @@ res__adler32(unsigned int adler32, unsigned char *buffer, unsigned int buflen) {
       s1 += *buffer++; s2 += s1;
     }
     s1 %= ADLER_MOD; s2 %= ADLER_MOD;
-    buflen -= (unsigned int)blocklen;
+    buflen -= castu(blocklen);
     blocklen = 5552;
   }
-  return (unsigned int)(s2 << 16) + (unsigned int)s1;
+  return castu(s2 << 16) + castu(s1);
 }
 static unsigned
 res__decompress(unsigned char *output, unsigned char *i, unsigned int length) {
   unsigned int olen;
-  if (res__in4(0) != 0x57bC0000) return 0;
-  if (res__in4(4) != 0)          return 0; /* error! stream is > 4GB */
+  if (res__in4(0) != 0x57bC0000) {
+    return 0;
+  }
+  if (res__in4(4) != 0) {
+    return 0; /* error! stream is > 4GB */
+  }
   olen = res__decompress_len(i);
 
   res__barrier2 = i;
@@ -105,9 +111,12 @@ res__decompress(unsigned char *output, unsigned char *i, unsigned int length) {
     if (i == old_i) {
       if (*i == 0x05 && i[1] == 0xfa) {
         assert(res__dout == output + olen);
-        if (res__dout != output + olen) return 0;
-        if (res__adler32(1, output, olen) != (unsigned) res__in4(2))
+        if (res__dout != output + olen) {
           return 0;
+        }
+        if (res__adler32(1, output, olen) != (unsigned) res__in4(2)) {
+          return 0;
+        }
         return olen;
       } else {
         assert(0); /* NOTREACHED */
@@ -120,8 +129,8 @@ res__decompress(unsigned char *output, unsigned char *i, unsigned int length) {
   }
 }
 static unsigned
-res__decode_85_byte(char c) {
-  return (unsigned int)((c >= '\\') ? c-36 : c-35);
+res__decode_85_byte(char val) {
+  return (unsigned int)((val >= '\\') ? val-36 : val-35);
 }
 static void
 res__decode_85(unsigned char* dst, const unsigned char* src) {
@@ -463,28 +472,27 @@ struct res__bake_cfg {
   float ico_ttf_pnt_siz;
 };
 static int
-res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *s) {
-  int w = 256;
-  int h = 512;
-
+res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *sys) {
+  int width = 256;
+  int height = 512;
 retry:;
-  unsigned char *img = calloc(castsz(w), castsz(h));
+  unsigned char *img = calloc(castsz(width), castsz(height));
   {
     fnt_pack_context pc;
-    fnt_PackBegin(&pc, img, w, h, 0, 1, 0);
+    fnt_PackBegin(&pc, img, width, height, 0, 1, 0);
     int ok0 = fnt_PackFontRange(&pc, cfg->txt_ttf_fnt, 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
     int ok1 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
     int ok2 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
     fnt_PackEnd(&pc);
 
     if (!ok0 || !ok1 || !ok2) {
-      w *= 2;
-      h *= 2;
+      width *= 2;
+      height *= 2;
       free(img);
       goto retry;
     }
   }
-  fnt->texid = s->gfx.tex.load(s, GFX_PIX_FMT_R8, img, w, h);
+  fnt->texid = sys->gfx.tex.load(sys, GFX_PIX_FMT_R8, img, width, height);
   free(img);
   return 0;
 }
@@ -494,58 +502,59 @@ retry:;
  * ---------------------------------------------------------------------------
  */
 static int*
-res__run_cache_slot(struct res_run_cache *c, unsigned long long h) {
-  int slot = casti(h & castull(c->hmsk));
-  assert(slot < c->hcnt);
-  return &c->htbl[slot];
+res__run_cache_slot(struct res_run_cache *rrc, unsigned long long hash) {
+  int slot = casti(hash & castull(rrc->hmsk));
+  assert(slot < rrc->hcnt);
+  return &rrc->htbl[slot];
 }
 static struct res_fnt_run*
-res__run_cache_get(struct res_run_cache *c, int i) {
-  assert(i < c->run_cnt);
-  return &c->runs[i];
+res__run_cache_get(struct res_run_cache *rrc, int i) {
+  assert(i < rrc->run_cnt);
+  return &rrc->runs[i];
 }
 static struct res_fnt_run*
-res__run_cache_sen(struct res_run_cache *c) {
-  return c->runs;
+res__run_cache_sen(struct res_run_cache *rrc) {
+  return rrc->runs;
 }
 #ifdef DEBUG_MODE
 static void
-res__run_cache_val_lru(struct res_run_cache *c, int expct_cnt_chng) {
-  int i, run_cnt = 0;
-  struct res_fnt_run *sen = res__run_cache_sen(c);
+res__run_cache_val_lru(struct res_run_cache *rrc, int expct_cnt_chng) {
+  int i;
+  int run_cnt = 0;
+  struct res_fnt_run *sen = res__run_cache_sen(rrc);
   int last_ordering = sen->ordering;
   for (i = sen->lru_nxt; i != 0; ) {
-    struct res_fnt_run *run = res__run_cache_get(c, i);
+    struct res_fnt_run *run = res__run_cache_get(rrc, i);
     assert(run->ordering < last_ordering);
     last_ordering = run->ordering;
     i = run->lru_nxt;
     run_cnt++;
   }
-  if((c->last_lru_cnt + expct_cnt_chng) != run_cnt) {
+  if((rrc->last_lru_cnt + expct_cnt_chng) != run_cnt) {
     assert(0);
   }
-  c->last_lru_cnt = run_cnt;
+  rrc->last_lru_cnt = run_cnt;
 }
 #else
 #define res__run_cache_val_lru(...)
 #endif
 static void
-res__run_cache_recycle_lru(struct res_run_cache *c) {
-  struct res_fnt_run *sen = res__run_cache_sen(c);
+res__run_cache_recycle_lru(struct res_run_cache *rrc) {
+  struct res_fnt_run *sen = res__run_cache_sen(rrc);
   assert(sen->lru_prv);
 
   int idx = sen->lru_prv;
-  struct res_fnt_run *run = res__run_cache_get(c, idx);
-  struct res_fnt_run *prv = res__run_cache_get(c, run->lru_prv);
+  struct res_fnt_run *run = res__run_cache_get(rrc, idx);
+  struct res_fnt_run *prv = res__run_cache_get(rrc, run->lru_prv);
   prv->lru_nxt = 0;
   sen->lru_prv = run->lru_prv;
-  res__run_cache_val_lru(c, -1);
+  res__run_cache_val_lru(rrc, -1);
 
   /* find location of entry in hash chain */
-  int *nxt_idx = res__run_cache_slot(c, run->hash);
+  int *nxt_idx = res__run_cache_slot(rrc, run->hash);
   while (*nxt_idx != idx) {
     assert(*nxt_idx);
-    struct res_fnt_run *nxt_run = res__run_cache_get(c, *nxt_idx);
+    struct res_fnt_run *nxt_run = res__run_cache_get(rrc, *nxt_idx);
     nxt_idx = &nxt_run->nxt;
   }
   /* remove lru run from hash chain and place into free chain */
@@ -553,18 +562,18 @@ res__run_cache_recycle_lru(struct res_run_cache *c) {
   *nxt_idx = run->nxt;
   run->nxt = sen->nxt;
   sen->nxt = idx;
-  c->stats.recycle_cnt++;
+  rrc->stats.recycle_cnt++;
 }
 static int
-res__run_cache_free_entry(struct res_run_cache *c) {
-  struct res_fnt_run *sen = res__run_cache_sen(c);
+res__run_cache_free_entry(struct res_run_cache *rrc) {
+  struct res_fnt_run *sen = res__run_cache_sen(rrc);
   if (!sen->nxt) {
-    res__run_cache_recycle_lru(c);
+    res__run_cache_recycle_lru(rrc);
   }
   int ret = sen->nxt;
   assert(ret);
 
-  struct res_fnt_run *run = res__run_cache_get(c, ret);
+  struct res_fnt_run *run = res__run_cache_get(rrc, ret);
   sen->nxt = run->nxt;
   run->nxt = 0;
 
@@ -579,17 +588,17 @@ struct res_run_cache_tbl_fnd_res {
   int idx;
 };
 static struct res_run_cache_tbl_fnd_res
-res__run_cache_tbl_fnd(struct res_run_cache *c, unsigned long long hash) {
+res__run_cache_tbl_fnd(struct res_run_cache *rrc, unsigned long long hash) {
   struct res_run_cache_tbl_fnd_res ret = {0};
-  ret.slot = res__run_cache_slot(c, hash);
+  ret.slot = res__run_cache_slot(rrc, hash);
   ret.idx = *ret.slot;
   while (ret.idx) {
-    struct res_fnt_run *it = res__run_cache_get(c, ret.idx);
-    if (it->hash == hash) {
-      ret.run = it;
+    struct res_fnt_run *itr = res__run_cache_get(rrc, ret.idx);
+    if (itr->hash == hash) {
+      ret.run = itr;
       break;
     }
-    ret.idx = it->nxt;
+    ret.idx = itr->nxt;
   }
   return ret;
 }
@@ -598,50 +607,50 @@ struct res_run_cache_fnd_res {
   struct res_fnt_run *run;
 };
 static struct res_run_cache_fnd_res
-res_run_cache_fnd(struct res_run_cache *c, unsigned long long h) {
+res_run_cache_fnd(struct res_run_cache *rrc, unsigned long long hash) {
   struct res_run_cache_fnd_res ret = {0};
-  struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(c, h);
+  struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(rrc, hash);
   if (fnd.run) {
-    struct res_fnt_run *prv = res__run_cache_get(c, fnd.run->lru_prv);
-    struct res_fnt_run *nxt = res__run_cache_get(c, fnd.run->lru_nxt);
+    struct res_fnt_run *prv = res__run_cache_get(rrc, fnd.run->lru_prv);
+    struct res_fnt_run *nxt = res__run_cache_get(rrc, fnd.run->lru_nxt);
     prv->lru_nxt = fnd.run->lru_nxt;
     nxt->lru_prv = fnd.run->lru_prv;
-    res__run_cache_val_lru(c, -1);
-    c->stats.hit_cnt++;
+    res__run_cache_val_lru(rrc, -1);
+    rrc->stats.hit_cnt++;
   } else {
-    fnd.idx = res__run_cache_free_entry(c);
+    fnd.idx = res__run_cache_free_entry(rrc);
     assert(fnd.idx);
-    fnd.run = res__run_cache_get(c, fnd.idx);
+    fnd.run = res__run_cache_get(rrc, fnd.idx);
     fnd.run->nxt = *fnd.slot;
-    fnd.run->hash = h;
+    fnd.run->hash = hash;
     *fnd.slot = fnd.idx;
-    c->stats.miss_cnt++;
+    rrc->stats.miss_cnt++;
     ret.is_new = 1;
   }
-  struct res_fnt_run *sen = res__run_cache_sen(c);
+  struct res_fnt_run *sen = res__run_cache_sen(rrc);
   assert(fnd.run != sen);
   fnd.run->lru_nxt = sen->lru_nxt;
   fnd.run->lru_prv = 0;
 
-  struct res_fnt_run *lru_nxt = res__run_cache_get(c, sen->lru_nxt);
+  struct res_fnt_run *lru_nxt = res__run_cache_get(rrc, sen->lru_nxt);
   lru_nxt->lru_prv = fnd.idx;
   sen->lru_nxt = fnd.idx;
 #ifdef DEBUG_MODE
   fnd.run->ordering = sen->ordering++;
-  res__run_cache_val_lru(c, 1);
+  res__run_cache_val_lru(rrc, 1);
 #endif
   ret.run = fnd.run;
   return ret;
 }
 static void
-res_run_cache_init(struct res_run_cache *c) {
-  assert(ispow2(cntof(c->htbl)));
-  c->hcnt = cntof(c->htbl);
-  c->hmsk = cntof(c->htbl) - 1;
-  c->run_cnt = cntof(c->runs);
-  for arr_loopv(i, c->runs) {
-    struct res_fnt_run *run = res__run_cache_get(c, i);
-    run->nxt = ((i + 1) < c->run_cnt) ? run->nxt = i + 1 : 0;
+res_run_cache_init(struct res_run_cache *rrc) {
+  assert(ispow2(cntof(rrc->htbl)));
+  rrc->hcnt = cntof(rrc->htbl);
+  rrc->hmsk = cntof(rrc->htbl) - 1;
+  rrc->run_cnt = cntof(rrc->runs);
+  for arr_loopv(i, rrc->runs) {
+    struct res_fnt_run *run = res__run_cache_get(rrc, i);
+    run->nxt = ((i + 1) < rrc->run_cnt) ? run->nxt = i + 1 : 0;
   }
 }
 
@@ -650,31 +659,35 @@ res_run_cache_init(struct res_run_cache *c) {
  * ---------------------------------------------------------------------------
  */
 static void
-res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
-  int n = 0, ext = 0;
-  struct res_fnt *fnt = &r->fnt;
-  run->len = 0;
+res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
+  assert(rss);
+  assert(run);
 
+  struct res_fnt *fnt = &rss->fnt;
+  int cnt = 0;
+  int ext = 0;
+
+  run->len = 0;
   unsigned rune = 0;
-  for utf_loop(&rune, it, rest, txt) {
+  for utf_loop(&rune, itr, rest, txt) {
     assert(run->len < RES_FNT_MAX_RUN);
     rune = rune >= RES_GLYPH_SLOTS ? '?': rune;
-    fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
-    n += str_len(it);
+    fnt_packedchar *gly = &fnt->glyphs[rune & 0xFF];
+    cnt += str_len(itr);
 
-    assert(g->x1 >= g->x0 && g->x1 - g->x0 < UCHAR_MAX);
-    assert(g->y1 >= g->y0 && g->y1 - g->y0 < UCHAR_MAX);
-    assert(g->xoff >= SCHAR_MIN && g->xoff <= SCHAR_MAX);
-    assert(g->yoff >= SCHAR_MIN && g->yoff <= SCHAR_MAX);
+    assert(gly->x1 >= gly->x0 && gly->x1 - gly->x0 < UCHAR_MAX);
+    assert(gly->y1 >= gly->y0 && gly->y1 - gly->y0 < UCHAR_MAX);
+    assert(gly->xoff >= SCHAR_MIN && gly->xoff <= SCHAR_MAX);
+    assert(gly->yoff >= SCHAR_MIN && gly->yoff <= SCHAR_MAX);
 
-    run->off[run->len] = cast(unsigned char, n);
-    ext += math_ceili(g->xadvance);
-    run->ext[run->len * 2 + 0] = cast(unsigned char, g->x1 - g->x0);
-    run->ext[run->len * 2 + 1] = cast(unsigned char, g->y1 - g->y0);
-    run->coord[run->len * 2 + 0] = g->x0;
-    run->coord[run->len * 2 + 1] = g->y0;
-    run->pad[run->len * 2 + 0] = cast(signed char, math_roundi(g->xoff));
-    run->pad[run->len * 2 + 1] = cast(signed char, math_roundi(g->yoff));
+    run->off[run->len] = cast(unsigned char, cnt);
+    ext += math_ceili(gly->xadvance);
+    run->ext[run->len * 2 + 0] = cast(unsigned char, gly->x1 - gly->x0);
+    run->ext[run->len * 2 + 1] = cast(unsigned char, gly->y1 - gly->y0);
+    run->coord[run->len * 2 + 0] = gly->x0;
+    run->coord[run->len * 2 + 1] = gly->y0;
+    run->pad[run->len * 2 + 0] = cast(signed char, math_roundi(gly->xoff));
+    run->pad[run->len * 2 + 1] = cast(signed char, math_roundi(gly->yoff));
 
     run->adv[run->len++] = cast(unsigned short, ext);
     if (run->len >= RES_FNT_MAX_RUN || rune == ' ') {
@@ -683,32 +696,32 @@ res_fnt_fill_run(struct res *r, struct res_fnt_run *run, struct str txt) {
   }
 }
 static void
-res_fnt_ext(int *ext, struct res *r, struct str txt) {
+res_fnt_ext(int *ext, struct res *rss, struct str txt) {
   assert(ext);
-  assert(r);
+  assert(rss);
 
   ext[0] = 0;
-  ext[1] = r->fnt.txt_height;
+  ext[1] = rss->fnt.txt_height;
   if (!str_len(txt)) {
     return;
   }
-  for str_tok(it, _, txt, strv(" ")) {
-    unsigned long long h = FNV1A64_HASH_INITIAL;
-    int n = div_round_up(str_len(it), 16);
-    struct str blk = it;
-    for loop(i,n) {
+  for str_tok(itr, _, txt, strv(" ")) {
+    unsigned long long hash = FNV1A64_HASH_INITIAL;
+    int cnt = div_round_up(str_len(itr), 16);
+    struct str blk = itr;
+    for loop(i,cnt) {
       struct str seg = str_lhs(blk, 16);
-      h = str__hash(seg, h);
+      hash = str__hash(seg, hash);
 
-      struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
+      struct res_run_cache_fnd_res ret = res_run_cache_fnd(&rss->run_cache, hash);
       struct res_fnt_run *run = ret.run;
       if (ret.is_new) {
-        res_fnt_fill_run(r, run, seg);
+        res_fnt_fill_run(rss, run, seg);
       }
       ext[0] += run->adv[run->len-1];
       blk = str_cut_lhs(&blk, run->off[run->len-1]);
     }
-    ext[0] += r->fnt.space_adv * (!!str_len(_));
+    ext[0] += rss->fnt.space_adv * (!!str_len(_));
   }
 }
 static void
@@ -810,61 +823,61 @@ res_run_glyph(struct res_glyph *ret, const struct res_fnt_run *run,
   ret->adv = run->adv[i];
 }
 static const struct res_fnt_run*
-res_lay_nxt(struct res_fnt_run_it *it, struct res *r) {
-  assert(r);
-  assert(it);
-  if (it->i == it->n) {
-    it->at = str_split_cut(&it->rest, strv(" "));
-    it->n = div_round_up(str_len(it->at), 16);
-    it->h = FNV1A64_HASH_INITIAL;
-    it->blk = it->at;
-    it->i = 0;
+res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
+  assert(rss);
+  assert(itr);
+  if (itr->i == itr->n) {
+    itr->at = str_split_cut(&itr->rest, strv(" "));
+    itr->n = div_round_up(str_len(itr->at), 16);
+    itr->h = FNV1A64_HASH_INITIAL;
+    itr->blk = itr->at;
+    itr->i = 0;
   }
-  if (!str_len(it->at)) {
+  if (!str_len(itr->at)) {
     return 0;
   }
-  it->seg = str_lhs(it->blk, 16);
-  it->h = str__hash(it->seg, it->h);
+  itr->seg = str_lhs(itr->blk, 16);
+  itr->h = str__hash(itr->seg, itr->h);
 
-  struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, it->h);
+  struct res_run_cache_fnd_res ret = res_run_cache_fnd(&rss->run_cache, itr->h);
   struct res_fnt_run *run = ret.run;
   if (ret.is_new) {
-    res_fnt_fill_run(r, run, it->seg);
+    res_fnt_fill_run(rss, run, itr->seg);
   }
-  it->blk = str_cut_lhs(&it->blk, run->off[run->len-1]);
-  it->i++;
+  itr->blk = str_cut_lhs(&itr->blk, run->off[run->len-1]);
+  itr->i++;
   return run;
 }
 static const struct res_fnt_run*
-res_lay_begin(struct res_fnt_run_it *it, struct res *r, struct str txt) {
-  assert(it);
-  assert(r);
+res_lay_begin(struct res_fnt_run_it *itr, struct res *rss, struct str txt) {
+  assert(itr);
+  assert(rss);
 
-  mset(it, 0, szof(*it));
-  it->rest = txt;
-  return res_lay_nxt(it, r);
+  mset(itr, 0, szof(*itr));
+  itr->rest = txt;
+  return res_lay_nxt(itr, rss);
 }
 /* ---------------------------------------------------------------------------
  *                                System
  * ---------------------------------------------------------------------------
  */
 static void
-res_init(struct res *r, struct sys *s) {
+res_init(struct res *rss, struct sys *sys) {
   static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f,
-    22.0f, 24.0f, 26.0f, 28.0f};
-  float pnt_siz = math_floor(s->fnt_pnt_size * s->dpi_scale);
+    22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f, 36.0f, 38.0f, 40.0f, 42.0f};
+  float pnt_siz = math_floor(sys->fnt_pnt_size * sys->dpi_scale);
 
-  double best_d = 10000.0;
-  r->fnt_pnt_size = 16.0f;
+  double best_diff = 10000.0;
+  rss->fnt_pnt_size = 16.0f;
   for arr_loopv(i, fnt_pnt_siz) {
-    float n = pnt_siz - fnt_pnt_siz[i];
-    double d = math_abs(n);
-    if (d < best_d) {
-      r->fnt_pnt_size = fnt_pnt_siz[i];
-      best_d = d;
+    float delta = pnt_siz - fnt_pnt_siz[i];
+    double diff = math_abs(delta);
+    if (diff < best_diff) {
+      rss->fnt_pnt_size = fnt_pnt_siz[i];
+      best_diff = diff;
     }
   }
-  r->sys = s;
+  rss->sys = sys;
   {
     int fnt_siz = 0;
     void *txt_ttf_mem = res_default_fnt(&fnt_siz);
@@ -872,33 +885,33 @@ res_init(struct res *r, struct sys *s) {
     {
       struct res__bake_cfg cfg = {0};
       cfg.txt_ttf_fnt = txt_ttf_mem;
-      cfg.txt_ttf_pnt_siz = r->fnt_pnt_size;
+      cfg.txt_ttf_pnt_siz = rss->fnt_pnt_size;
       cfg.ico_ttf_fnt = ico_ttf_mem;
-      cfg.ico_ttf_pnt_siz = r->fnt_pnt_size;
-      res__bake_fnt(&r->fnt, &cfg, s);
+      cfg.ico_ttf_pnt_siz = rss->fnt_pnt_size;
+      res__bake_fnt(&rss->fnt, &cfg, sys);
     }
-    r->fnt.space_adv = math_roundi(r->fnt.glyphs[' '].xadvance);
-    r->fnt.txt_height = math_ceili(r->fnt_pnt_size);
-    r->fnt.ico_height = math_ceili(r->fnt_pnt_size);
+    rss->fnt.space_adv = math_roundi(rss->fnt.glyphs[' '].xadvance);
+    rss->fnt.txt_height = math_ceili(rss->fnt_pnt_size);
+    rss->fnt.ico_height = math_ceili(rss->fnt_pnt_size);
 
     free(txt_ttf_mem);
     free(ico_ttf_mem);
   }
-  res_run_cache_init(&r->run_cache);
+  res_run_cache_init(&rss->run_cache);
 }
 static void
-res_shutdown(struct res *r) {
-  struct sys *s = r->sys;
-  s->gfx.tex.del(s, r->fnt.texid);
+res_shutdown(struct res *rss) {
+  struct sys *sys = rss->sys;
+  sys->gfx.tex.del(sys, rss->fnt.texid);
 }
 static void
-res_ico_ext(int *ret, const struct res *r, enum res_ico_id ico) {
+res_ico_ext(int *ret, const struct res *rss, enum res_ico_id ico) {
   assert(ret);
-  assert(r);
+  assert(rss);
 
-  const fnt_packedchar *g = &r->fnt.glyphs[ico];
+  const fnt_packedchar *g = &rss->fnt.glyphs[ico];
   ret[0] = math_roundi(g->xadvance);
-  ret[1] = r->fnt.ico_height;
+  ret[1] = rss->fnt.ico_height;
 }
 
 /* ---------------------------------------------------------------------------

@@ -511,7 +511,6 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
       !rng_has_inclv(&stbl->col.rng, rhs)) {
     db_tbl_qry_cols(sdb, vdb, stbl, vtbl, lhs, rhs, 0);
   }
-
   int rend = max(stbl->row.cols.cnt, stbl->col.rng.total) - stbl->row.cols.cnt;
   stbl->row.cols.lo = min(low, rend);
   stbl->row.cols.hi = stbl->row.cols.lo + stbl->row.cols.cnt;
@@ -1031,7 +1030,7 @@ db_free(struct db_state *sdb) {
   assert(sdb);
   /* cleanup tabs */
   assert(sdb->tab_cnt >= 0);
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+  assert(sdb->tab_cnt <= cntof(sdb->tabs));
   for arr_loopn(i, sdb->tabs, sdb->tab_cnt) {
     assert(i < DB_TBL_CNT);
     int idx = sdb->tabs[i];
@@ -2324,8 +2323,8 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx, struct gui_panel *
         title = tbl->title;
       }
       struct gui_panel elm = {0};
-      unsigned long long n = cast(unsigned long long, i);
-      unsigned long long id = fnv1au64(n, FNV1A64_HASH_INITIAL);
+      unsigned long long hin = cast(unsigned long long, i);
+      unsigned long long id = fnv1au64(hin, FNV1A64_HASH_INITIAL);
       gui.lst.reg.elm.txt_ico(ctx, &reg, &elm, id, 0, title, ico);
 
       struct gui_input pin = {0};

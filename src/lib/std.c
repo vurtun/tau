@@ -736,11 +736,11 @@ is_punct(long c) {
  */
 // clang-format off
 #define cstrn(s) casti(strlen(s))
-#define str(p,r) (struct str){.ptr = p, .rng = r}
+#define str(p,r) (struct str){.ptr = (p), .rng = (r)}
 #define strn(s,n) str(s,rngn(n))
 #define str0(s) str(s,rngn(cstrn(s)))
 #define strv(s) (struct str){.ptr = (s),.rng ={0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
-#define strf(s) s.rng.cnt, str_beg(s)
+#define strf(s) (s).rng.cnt, str_beg(s)
 #define str_nil (struct str){0,rngn(0)}
 #define str_inv (struct str){0,rng_inv}
 #define str_len(s) rng_cnt(&(s).rng)
@@ -1374,9 +1374,9 @@ str_buf__clr(char *mem, int *cnt) {
 // clang-format on
 
 static inline unsigned long long
-tbl__hash(unsigned long long k) {
-  unsigned long long h = k & 0x7fffffffffffffffllu;
-  return h | (h == 0);
+tbl__hash(unsigned long long key) {
+  unsigned long long hsh = key & 0x7fffffffffffffffllu;
+  return hsh | (hsh == 0);
 }
 static void
 tbl__swap(void *a, void *b, void *tmp, int siz) {
@@ -1386,47 +1386,53 @@ tbl__swap(void *a, void *b, void *tmp, int siz) {
 }
 static inline long long
 tbl__store(unsigned long long *keys, void *vals, int *cnt,
-           unsigned long long i, unsigned long long h,
+           unsigned long long idx, unsigned long long hsh,
            void* val, int val_siz) {
 
   assert(cnt);
   assert(keys);
 
-  keys[i] = h;
+  keys[idx] = hsh;
   if (vals) {
-    unsigned long long off = (unsigned long long)val_siz * i;
+    unsigned long long off = (unsigned long long)val_siz * idx;
     mcpy((unsigned char*)vals + off, val, val_siz);
   }
   *cnt += 1;
-  return castll(i);
+  return castll(idx);
 }
 static long long
 tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
-         unsigned long long key, void *v, int val_siz) {
+         unsigned long long key, void *val, int val_siz) {
 
   assert(keys);
   assert(cnt);
 
-  unsigned long long h = tbl__hash(key);
-  unsigned long long n = castull(cap);
-  unsigned long long i = h % n, b = i, dist = 0;
+  unsigned long long hsh = tbl__hash(key);
+  unsigned long long siz = castull(cap);
+  unsigned long long idx = hsh % siz;
+  unsigned long long beg = idx;
+  unsigned long long dist = 0;
   do {
-    unsigned long long k = keys[i];
-    if (!k) return tbl__store(keys, vals, cnt, i, h, v, val_siz);
-    unsigned long long d = tbl__dist(k, n, i);
-    if (d++ > dist++) continue;
-    if (tbl__is_del(k)) {
-      return tbl__store(keys, vals, cnt, i, h, v, val_siz);
+    unsigned long long slot = keys[idx];
+    if (!slot) {
+      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
     }
-    iswap(h, keys[i]);
+    unsigned long long d = tbl__dist(slot, siz, idx);
+    if (d++ > dist++) {
+      continue;
+    }
+    if (tbl__is_del(slot)) {
+      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
+    }
+    iswap(hsh, keys[idx]);
     if (vals) {
       void *tmp_val = (unsigned char*)vals + cap * val_siz;
-      void *cur_val = (unsigned char*)vals + i * (unsigned long long)val_siz;
-      tbl__swap(cur_val, v, tmp_val, val_siz);
+      void *cur_val = (unsigned char*)vals + idx * (unsigned long long)val_siz;
+      tbl__swap(cur_val, val, tmp_val, val_siz);
     }
     dist = d;
-  } while ((i = ((i + 1) % n)) != b);
-  return castll(n);
+  } while ((idx = ((idx + 1) % siz)) != beg);
+  return castll(siz);
 }
 static int
 tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {

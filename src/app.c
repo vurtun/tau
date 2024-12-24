@@ -51,7 +51,7 @@ struct app {
   struct db_view db;
 
   /* views */
-  double tab_lst_off[2];
+  int tab_lst_off[2];
   unsigned unused;
   unsigned char show_tab_lst;
   unsigned char sel_tab;
@@ -232,7 +232,7 @@ app_init(struct app *app, struct sys *sys) {
   res.init(&app->res, sys);
   {
     struct gui_args args = {0};
-    args.scale = sys->dpi_scale;
+    args.scale = castu(sys->dpi_scale * castf(1 << 16));
     if (sys->has_style){
       args.scm = GUI_COL_SCHEME_SYS;
     } else {
@@ -301,13 +301,14 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   view->file_path = pck.ui(app->path_buf + view->path_buf_off, MAX_FILE_PATH,
     &app->fs, ctx, pan, parent);
   if (str_is_val(view->file_path)) {
+    struct sys *sys = ctx->sys;
     dbs.setup(&view->db, &app->gui, view->file_path);
     view->state = APP_VIEW_STATE_DB;
 
     int new_view = app_view_new(app);
     app_view_setup(app, new_view);
     app_tab_add(app, new_view);
-    ctx->sys->repaint = 1;
+    sys->repaint = 1;
   }
 }
 static void
@@ -595,7 +596,7 @@ app_run(struct sys *sys) {
   case SYS_RUN: {
     /* user interface */
     assert(sys->app);
-    struct app *app = (struct app*)sys->app;
+    struct app *app = cast(struct app*, sys->app);
     if (sys->style_mod) {
       gui.color_scheme(&app->gui, CFG_COLOR_SCHEME);
     }

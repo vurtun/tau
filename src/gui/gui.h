@@ -250,7 +250,7 @@ struct gui_lay_sol {
   int fix_cnt;
   int dyn_siz;
   int dyn_cnt;
-  float weight;
+  unsigned weight;
 };
 enum gui_lay_type {
   GUI_LAY_ROW,
@@ -338,20 +338,20 @@ enum gui_dir {
 struct gui_scrl {
   struct gui_box box;     /* in */
   int min[2];             /* in */
-  double total[2];        /* in */
-  double size[2];         /* in */
-  double off[2];          /* in-out */
+  int total[2];        /* in */
+  int size[2];         /* in */
+  int off[2];          /* in-out */
   struct gui_panel pan;   /* out */
   unsigned scrolled : 1;  /* out */
 };
 struct gui_scrl_bar {
   /* in: */
   struct gui_box box;
-  double step;
+  int step;
   int min_size;
-  double total;
-  double size;
-  double off;
+  int total;
+  int size;
+  int off;
   /* out: */
   struct gui_panel pan;
   struct gui_btn btn_inc;
@@ -362,7 +362,9 @@ struct gui_scrl_bar {
 /* Widget: Spin */
 enum gui_spin_val_typ {
   GUI_SPIN_INT,
+#ifdef GUI_USE_FLT
   GUI_SPIN_FLT
+#endif
 };
 union gui_spin_dat {
   float f;
@@ -408,13 +410,13 @@ struct gui_reg {
   /* out */
   struct gui_panel pan;
   int scrl_wheel;
-  double off[2];
+  int off[2];
   struct gui_box space;
   struct gui_scrl_bar vscrl;
   struct gui_scrl_bar hscrl;
   unsigned scrolled : 1;
   /* internal */
-  double max_off[2];
+  int max_off[2];
   struct gui_clip clip_rect;
   unsigned background;
 };
@@ -426,7 +428,7 @@ struct gui_lst_lay {
   struct gui_box box;
   int pad[2], gap[2];
   int item[2];
-  double offset;
+  int offset;
   /* out */
   int space[2];
   int slot[2];
@@ -559,7 +561,7 @@ struct gui_lst_lay_cfg {
   enum gui_orient orient;
   int pad[2], gap[2];
   int item[2];
-  double offset;
+  int offset;
   int scrl_mult;
 };
 struct gui_lst_ctl_cfg {
@@ -786,7 +788,7 @@ struct gui_grid {
   /* out */
   struct gui_panel pan;
   struct gui_box space;
-  double off[2];
+  int off[2];
   unsigned scrolled : 1;
   /* internal */
   struct gui_clip clip;
@@ -944,7 +946,7 @@ struct gui_dnd_src_arg {
   enum gui_mouse_btn_id drag_btn;
 };
 struct gui_args {
-  float scale;
+  unsigned scale; /* fixed point 16:16 */
   enum gui_col_scheme scm;
 };
 struct gui_ctx {
@@ -957,6 +959,7 @@ struct gui_ctx {
   struct gui_cfg cfg;
   unsigned long keys[bits_to_long(GUI_KEY_CNT)];
   struct gui_box box;
+  unsigned dpi_scale;
   int it;
 
   unsigned disabled;
@@ -978,6 +981,8 @@ struct gui_ctx {
   /* draw */
   int vtx_buf_siz;
   int idx_buf_siz;
+  int vtx_buf_req_siz;
+  int idx_buf_req_siz;
   void *vtx_buf;
   void *idx_buf;
   int line_size;
@@ -997,7 +1002,7 @@ struct gui_ctx {
   /* persistent state */
   struct gui_clip clip;
   struct gui_btn_state btn[GUI_MOUSE_BTN_CNT];
-  double drag_state[2];
+  int drag_state[2];
   struct gui_lst_state lst_state;
   struct gui_txt_ed txt_ed_tmp_state;
   struct gui_txt_ed txt_ed_state;
@@ -1146,7 +1151,7 @@ struct gui_dnd_api {
 };
 struct gui_cfg_api {
   void (*init)(struct gui_cfg *cfg);
-  void (*scale)(struct gui_cfg *out, const struct gui_cfg *in, float dpi_scale);
+  void (*scale)(struct gui_cfg *out, const struct gui_cfg *in, unsigned dpi_scale);
   int (*pushi)(struct gui_cfg_stk *stk, void *ptr, int val);
   int (*pushi_on)(struct gui_cfg_stk *stk, void *ptr, int val, int cond);
   int (*pushu)(struct gui_cfg_stk *stk, void *ptr, unsigned val);
@@ -1226,18 +1231,18 @@ struct gui_grp_api {
   void (*end)(struct gui_ctx *ctx, struct gui_grp *grp, struct gui_panel *parent);
 };
 struct gui_reg_api {
-  void (*begin)(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent, const double *off);
+  void (*begin)(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent, const int *off);
   void (*apply_lst)(struct gui_reg *d, const struct gui_lst *lst, int row_mult);
-  void (*end)(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent, double *off);
+  void (*end)(struct gui_ctx *ctx, struct gui_reg *d, struct gui_panel *parent, int *off);
 };
 struct gui_lst_lay_api {
   void (*init)(struct gui_lst_lay *lst);
   void (*gen)(struct gui_box *box, struct gui_lst_lay *lst);
   void (*apply_view)(struct gui_lst_lay *lst, const struct gui_lst_view *v);
-  double (*ctr)(struct gui_lst_lay *lay, int idx);
-  double (*fit_start)(struct gui_lst_lay *lay, int idx);
-  double (*fit_end)(struct gui_lst_lay *lay, int idx);
-  double (*clamps)(struct gui_lst_lay *lay, int idx);
+  int (*ctr)(struct gui_lst_lay *lay, int idx);
+  int (*fit_start)(struct gui_lst_lay *lay, int idx);
+  int (*fit_end)(struct gui_lst_lay *lay, int idx);
+  int (*clamps)(struct gui_lst_lay *lay, int idx);
 };
 struct gui_lst_ctl_api {
   void (*elm)(struct gui_ctx *ctx, struct gui_lst_ctl *ctl, const struct gui_lst_lay *lst, const struct gui_box *box, struct gui_panel *parent, unsigned long long id);
@@ -1258,14 +1263,14 @@ struct gui_lst_reg_elm_api {
   void (*txt_ico)(struct gui_ctx *ctx, struct gui_lst_reg *reg, struct gui_panel *elm, unsigned long long id, int is_sel, struct str txt, enum res_ico_id icon_id);
 };
 struct gui_lst_reg_api {
-  void (*begin)(struct gui_ctx *ctx, struct gui_lst_reg *la, struct gui_panel *parent, const struct gui_lst_cfg *cfg, const double *off);
+  void (*begin)(struct gui_ctx *ctx, struct gui_lst_reg *la, struct gui_panel *parent, const struct gui_lst_cfg *cfg, const int *off);
   int (*nxt)(const struct gui_lst_reg *la, int idx);
   struct gui_lst_reg_elm_api elm;
   void (*ctr)(struct gui_lst_reg *la, int idx);
   void (*fit_start)(struct gui_lst_reg *la, int idx);
   void (*fit_end)(struct gui_lst_reg *la, int idx);
   void (*clamp)(struct gui_lst_reg *la, int idx);
-  void (*end)(struct gui_ctx *ctx, struct gui_lst_reg *la, struct gui_panel *parent, double *off);
+  void (*end)(struct gui_ctx *ctx, struct gui_lst_reg *la, struct gui_panel *parent, int *off);
 };
 struct gui_lst_api {
   struct gui_lst_lay_api lay;
@@ -1275,9 +1280,9 @@ struct gui_lst_api {
   struct gui_lst_reg_api reg;
 
   void (*view)(struct gui_lst_view *v, const struct gui_lst_lay *lay);
-  void (*cfg)(struct gui_lst_cfg *cfg, int total_cnt, double off);
+  void (*cfg)(struct gui_lst_cfg *cfg, int total_cnt, int off);
   void (*begin)(struct gui_ctx *ctx, struct gui_lst *lst, const struct gui_lst_cfg *cfg);
-  void (*begin_def)(struct gui_ctx *ctx, struct gui_lst *lst, int total_cnt, double off);
+  void (*begin_def)(struct gui_ctx *ctx, struct gui_lst *lst, int total_cnt, int off);
   int (*nxt)(const struct gui_lst *lst, int idx);
   void (*end)(struct gui_ctx *ctx, struct gui_lst *lst);
   void (*set_sel_idx)(struct gui_ctx *ctx, struct gui_lst *lst, int idx);
@@ -1339,8 +1344,8 @@ struct gui_tbl_lst_api {
 struct gui_tbl_api {
   struct gui_tbl_hdr_api hdr;
   struct gui_tbl_lst_api lst;
-  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *parent, const double *off, const struct gui_tbl_sort *sort);
-  void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *parent, double *off);
+  void (*begin)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *parent, const int *off, const struct gui_tbl_sort *sort);
+  void (*end)(struct gui_ctx *ctx, struct gui_tbl *tbl, struct gui_panel *parent, int *off);
   void (*lay)(int *state, const struct gui_ctx *ctx, const struct gui_split_lay_cfg *cfg);
 };
 struct gui_tab_ctl_hdr_slot_api {
@@ -1366,8 +1371,8 @@ struct gui_tab_ctl_api {
   void (*end)(struct gui_ctx *ctx, struct gui_tab_ctl *tab, struct gui_panel *parent);
 };
 struct gui_grid_api {
-  void (*begin)(struct gui_ctx *ctx, struct gui_grid *g, struct gui_panel *parent, const double *off);
-  void (*end)(struct gui_ctx *ctx, struct gui_grid *g, struct gui_panel *parent, double *off);
+  void (*begin)(struct gui_ctx *ctx, struct gui_grid *g, struct gui_panel *parent, const int *off);
+  void (*end)(struct gui_ctx *ctx, struct gui_grid *g, struct gui_panel *parent, int *off);
 };
 struct gui_graph_hdr_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_graph_node *n, struct gui_graph_node_hdr *hdr);
