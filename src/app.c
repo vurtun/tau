@@ -28,10 +28,10 @@
 #include "app.h"
 
 enum {
-  APP_VIEW_CNT      = 8,
-  APP_VIEW_PATH_BUF = (MAX_FILE_PATH * APP_VIEW_CNT),
+  APP_VIEW_CNT            = 8,
+  APP_VIEW_PATH_BUF       = (MAX_FILE_PATH * APP_VIEW_CNT),
 };
-#define APP_VIEW_CNT_MSK ((1U<<castu(APP_VIEW_CNT))-1)
+#define APP_VIEW_CNT_MSK  ((1U<<castu(APP_VIEW_CNT))-1)
 
 enum app_view_state {
   APP_VIEW_STATE_FILE,
@@ -82,43 +82,116 @@ static struct db_api dbs;
 /* -----------------------------------------------------------------------------
  *                                  App
  * ---------------------------------------------------------------------------*/
+/*@
+  @requires \valid(app);
+  @requires app->unused > 0;
+  @requires app->tab_cnt < APP_VIEW_CNT;
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+  @assigns app->unused;
+
+  @ensures \result >= 0;
+  @ensures \result < APP_VIEW_CNT;
+  @ensures \result < sizeof(app->views)/sizeof(app->views[0]);
+  @ensures app->unused < \old(app->unused);
+*/
 static int
 app_view_new(struct app *app) {
   assert(app);
+  assert(app->tab_cnt < APP_VIEW_CNT);
   assert(app->unused > 0);
+  assert(app->unused <= APP_VIEW_CNT_MSK);
 
   int idx = cpu_bit_ffs32(app->unused);
+  assert(idx >= 0);
+  assert(idx < 32);
+  assert(idx < APP_VIEW_CNT);
+  assert(idx < cntof(app->views));
+  assert((app->unused & (1u << castu(idx))) != 0U);
+
+  /* @assert idx >= 0; */
+  /* @assert idx < 32; */
+  /* @assert idx < APP_VIEW_CNT; */
+  /* @assert (app->unused & (1 << idx)) != 0; */
+
+  unsigned old_unused = app->unused;
   app->unused &= ~(1U << castu(idx));
   mset(app->views + idx, 0, szof(app->views[0]));
+  /* @assert (app->unused & (1 << idx)) == 0; */
+
+  assert(app->unused < old_unused);
+  assert((app->unused & (1 << idx)) == 0U);
   return idx;
 }
+/*@
+  @requires \valid(app);
+  @requires idx >= 0;
+  @requires idx < APP_VIEW_CNT;
+  @requires idx < sizeof(app->views)/sizeof(app->views[0]);
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+  @requires !(app->unused & (1U << idx));
+
+  @assigns app->unused;
+  @assigns app->views[idx];
+
+  @ensures (app->unused | (1 << idx)) == \old(app->unused);
+  @ensures app->unused > \old(app->unused);
+*/
 static void
 app_view_del(struct app *app, int idx) {
   assert(app);
   assert(idx >= 0);
+  assert(idx < APP_VIEW_CNT);
   assert(idx < cntof(app->views));
+
+  assert(app->unused <= APP_VIEW_CNT_MSK);
   assert(!(app->unused & (1U << castu(idx))));
+  unsigned old_unused = app->unused;
 
   struct app_view *view = &app->views[idx];
   app->unused |= (1U << castu(idx));
   view->file_path = str_nil;
+
+  assert(app->unused == (old_unused|(1u << castu(idx))));
+  assert(app->unused > old_unused);
 }
+/*@
+  @requires \valid(app);
+  @requires idx >= 0;
+  @requires idx < APP_VIEW_CNT;
+  @requires idx < sizeof(app->views)/sizeof(app->views[0]);
+  @requires !(app->unused & (1U << idx));
+  @assigns app->views[idx];
+*/
 static void
 app_view_setup(struct app *app, int idx) {
   assert(app);
   assert(idx >= 0);
+  assert(idx < APP_VIEW_CNT);
   assert(idx < cntof(app->views));
   assert(!(app->unused & (1U << castu(idx))));
+  assert(app->unused <= APP_VIEW_CNT_MSK);
 
   struct app_view *view = &app->views[idx];
   view->state = APP_VIEW_STATE_FILE;
   view->last_state = view->state;
   view->path_buf_off = idx * MAX_FILE_PATH;
 }
+/*@
+  @requires \valid(app);
+  @requires idx >= 0;
+  @requires idx < APP_VIEW_CNT;
+  @requires idx < sizeof(app->views)/sizeof(app->views[0]);
+  @requires !(app->unused & (1U << idx));
+  @assigns app->views[idx];
+  @ensures \result <= 0;
+*/
 static int
 app_view_init(struct app *app, int idx, struct str path) {
   assert(app);
   assert(idx >= 0);
+  assert(idx < APP_VIEW_CNT);
   assert(idx < cntof(app->views));
   assert(!(app->unused & (1U << castu(idx))));
 
@@ -131,81 +204,320 @@ app_view_init(struct app *app, int idx, struct str path) {
   view->state = APP_VIEW_STATE_DB;
   return 0;
 }
+/*@
+  @requires \valid(app);
+  @requires app->tab_cnt >= 0;
+  @requires app->tab_cnt < APP_VIEW_CNT;
+  @requires app->tab_cnt < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires idx >= 0;
+  @requires idx <= 0xff;
+  @requires idx < APP_VIEW_CNT;
+  @requires idx < sizeof(app->views)/sizeof(app->views[0]);
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+  @requires !(app->unused & (1U << idx));
+
+  @assigns app->tabs[app->tab_cnt];
+  @assigns app->tab_cnt;
+
+  @ensures app->tab_cnt > \old(app->tab_cnt);
+  @ensures app->tab_cnt <= APP_VIEW_CNT;
+  @ensures app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @ensures \result >= 0;
+  @ensures \result < APP_VIEW_CNT;
+  @ensures \result < sizeof(app->tabs)/sizeof(app->tabs[0]);
+*/
 static int
 app_tab_add(struct app *app, int idx) {
   assert(app);
   assert(app->tab_cnt >= 0);
+  assert(app->tab_cnt <= APP_VIEW_CNT);
   assert(app->tab_cnt <= cntof(app->tabs));
 
   assert(idx >= 0);
   assert(idx <= 0xff);
+  assert(idx < APP_VIEW_CNT);
   assert(idx < cntof(app->views));
-  assert(!(app->unused & (1U << castu(idx))));
 
-  app->tabs[app->tab_cnt] = castb(idx);
-  return app->tab_cnt++;
+  assert(!(app->unused & (1U << castu(idx))));
+  assert(app->unused <= APP_VIEW_CNT_MSK);
+
+  int old_tab_cnt = app->tab_cnt;
+  int ret = app->tab_cnt++;
+  app->tabs[ret] = castb(idx);
+
+  assert(app->tab_cnt > old_tab_cnt);
+  assert(app->tab_cnt <= APP_VIEW_CNT);
+  assert(app->tab_cnt <= cntof(app->tabs));
+  return ret;
 }
+/*@
+  @requires \valid(app);
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt <= APP_VIEW_CNT;
+  @requires app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @requires tab_idx >= 0;
+  @requires tab_idx < app->tab_cnt;
+  @requires tab_idx < APP_VIEW_CNT;
+  @requires tab_idx < sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @requires !(app->unused & (1 << app->tabs[tab_idx]));
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+
+  @assigns app->tab_cnt;
+  @assigns app->sel_tab;
+
+  @ensures app->tab_cnt >= 0;
+  @ensures app->sel_tab >= 0;
+  @ensures app->sel_tab < app->tab_cnt;
+  @ensures app->sel_tab < APP_VIEW_CNT;
+  @ensures app->tab_cnt <= \old(app->tab_cnt);
+*/
 static void
 app_tab_rm(struct app *app, int tab_idx) {
   assert(app);
   assert(app->tab_cnt > 0);
+  assert(app->tab_cnt <= APP_VIEW_CNT);
   assert(app->tab_cnt <= app->tab_cnt);
 
   assert(tab_idx >= 0);
   assert(tab_idx < app->tab_cnt);
+  assert(tab_idx < APP_VIEW_CNT);
   assert(tab_idx < cntof(app->tabs));
 
+  assert(app->sel_tab < app->tab_cnt);
+  assert(app->sel_tab < APP_VIEW_CNT);
+  assert(app->sel_tab < cntof(app->tabs));
+
+  assert(!(app->unused & (1 << app->tabs[tab_idx])));
+  assert(app->unused <= APP_VIEW_CNT_MSK);
+
   arr_rm(app->tabs, tab_idx, app->tab_cnt);
-  app->tab_cnt--;
+  int old_tab_cnt = app->tab_cnt--;
   app->sel_tab = castb(clamp(0, app->sel_tab, app->tab_cnt-1));
+
+  assert(app->tab_cnt >= 0);
+  assert(app->sel_tab >= 0);
+  assert(app->sel_tab < app->tab_cnt);
+  assert(app->sel_tab < APP_VIEW_CNT);
+  assert(app->sel_tab < cntof(app->tabs));
+  assert(app->tab_cnt <= old_tab_cnt);
 }
+/*@
+  @requires \valid(app);
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt <= APP_VIEW_CNT;
+  @requires app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @requires tab_idx >= 0;
+  @requires tab_idx < app->tab_cnt;
+  @requires tab_idx < APP_VIEW_CNT;
+  @requires tab_idx < sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @requires !(app->unused & (1 << app->tabs[tab_idx]));
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+
+  @ensures app->tab_cnt >= 0;
+  @ensures app->sel_tab >= 0;
+  @ensures app->sel_tab < app->tab_cnt;
+  @ensures app->sel_tab < APP_VIEW_CNT;
+  @ensures app->sel_tab < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @ensures app->unused >= \old(app->unused);
+*/
 static void
 app_tab_close(struct app *app, int tab_idx) {
   assert(app);
   assert(app->tab_cnt > 0);
+  assert(app->tab_cnt <= APP_VIEW_CNT);
   assert(app->tab_cnt <= cntof(app->tabs));
 
   assert(tab_idx >= 0);
   assert(tab_idx < app->tab_cnt);
+  assert(tab_idx <= APP_VIEW_CNT);
   assert(tab_idx < cntof(app->tabs));
-  assert(!(app->unused & (1U << castu(tab_idx))));
 
+  assert(!(app->unused & (1U << castu(app->tabs[tab_idx]))));
+  assert(app->unused <= APP_VIEW_CNT_MSK);
+
+  unsigned old_unused = app->unused;
   app_view_del(app, app->tabs[tab_idx]);
   app_tab_rm(app, tab_idx);
+
+  assert(app->tab_cnt >= 0);
+  assert(app->sel_tab >= 0);
+  assert(app->sel_tab < app->tab_cnt);
+  assert(app->sel_tab < APP_VIEW_CNT);
+  assert(app->sel_tab < cntof(app->tabs));
+  assert(app->unused >= old_unused);
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(files);
+  @requires app->tab_cnt <= APP_VIEW_CNT;
+  @requires app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires file_cnt >= 0;
+  @requires file_cnt <= APP_VIEW_CNT;
+  @requires file_cnt <= APP_VIEW_CNT - app->tab_cnt;
+
+  @assigns app->sel_tab;
+  @assigns app->tab_cnt;
+  @assigns app->unused;
+
+  @ensures app->tab_cnt >= 0;
+  @ensures app->tab_cnt < APP_VIEW_CNT;
+  @ensures app->sel_tab >= 0;
+  @ensures app->sel_tab < app->tab_cnt;
+  @ensures app->sel_tab < APP_VIEW_CNT;
+  @ensures app->sel_tab < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @ensures app->unused <= \old(app->unused);
+*/
 static void
 app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   assert(app);
   assert(files);
+
+  assert(app->tab_cnt <= APP_VIEW_CNT);
+  assert(app->tab_cnt <= cntof(app->tabs));
+
   assert(file_cnt >= 0);
+  assert(file_cnt <= APP_VIEW_CNT);
+  assert(file_cnt <= APP_VIEW_CNT - app->tab_cnt);
 
   assert(app->tab_cnt >= 0);
   assert(app->tab_cnt <= cntof(app->tabs));
   assert(file_cnt <= cntof(app->tabs) - app->tab_cnt);
+  /* @assert app->tab_cnt < APP_VIEW_CNT; */
+  unsigned oldest_unused = app->unused;
 
-  /* open each database in new tab */
+  int num = cntof(app->tabs) - app->tab_cnt;
+  /* @assert num >= 0; */
+  assert(num >= 0);
+  int add_cnt = min(file_cnt, num);
+
+  /* @assert add_cnt <= file_cnt; */
+  /* @assert add_cnt <= num; */
+  /* @assert add_cnt >= 0; */
+  /* @assert add_cnt < APP_VIEW_CNT */
+
+  assert(add_cnt <= file_cnt);
+  assert(add_cnt <= num);
+  assert(add_cnt >= 0);
+  assert(add_cnt < APP_VIEW_CNT);
+  /*@
+   @loop invariant 0 <= i <= add_cnt;
+   @loop invariant 0 <= i <= file_cnt;
+   @loop invariant 0 <= i <= APP_VIEW_CNT;
+   @loop invariant app->unused >= 0;
+   @loop invariant app->unused <= APP_VIEW_CNT_MSK;
+   @loop assigns i;
+   @loop assigns app->sel_tab;
+   @loop variant add_cnt - i;
+  */
   for arr_loopn(i, app->tabs, file_cnt) {
+    /* open each database in new tab */
+    assert(i >= 0);
+    assert(i < file_cnt);
+    assert(i < APP_VIEW_CNT);
+    assert(i < cntof(app->tabs));
+
+    assert(app->unused >= 0);
+    assert(app->unused <= APP_VIEW_CNT_MSK);
+
+    unsigned old_unused = app->unused;
     int view = app_view_new(app);
+    assert(app->unused < old_unused);
+
     if (app_view_init(app, view, files[i]) < 0) {
       app_view_del(app, view);
+      assert(app->unused == old_unused);
       continue;
     }
-    app->sel_tab = castb(app_tab_add(app, view));
+    unsigned old_tab_cnt = app->tab_cnt;
+    int tab_idx = app_tab_add(app, view);
+    app->sel_tab = castb(tab_idx);
+
     if (!dbs.setup(&app->views[view].db, &app->gui, files[i])) {
       app_tab_close(app, app->sel_tab);
+      assert(app->tab_cnt == old_tab_cnt);
     }
   }
+  assert(app->tab_cnt >= 0);
+  assert(app->tab_cnt < APP_VIEW_CNT);
+  assert(app->unused <= oldest_unused);
+
+  assert(app->sel_tab >= 0);
+  assert(app->sel_tab < app->tab_cnt);
+  assert(app->sel_tab < APP_VIEW_CNT);
+  assert(app->sel_tab < cntof(app->tabs));
 }
+/*@
+  @requires \valid(app);
+  @requires app->tab_cnt <= APP_VIEW_CNT;
+  @requires app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @assigns app->sel_tab;
+
+  @ensures app->tab_cnt >= 0;
+  @ensures app->tab_cnt < \old(app->tab_cnt);
+  @ensures app->tab_cnt == \old(app->tab_cnt) + 1;
+
+  @ensures app->sel_tab >= 0;
+  @ensures app->sel_tab < app->tab_cnt;
+  @ensures app->sel_tab < APP_VIEW_CNT;
+  @ensures app->sel_tab < sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @ensures app->unused < \old(app->unused);
+  @ensures \result >= 0;
+  @ensures \result < APP_VIEW_CNT;
+  @ensures \result < sizeof(app->tabs)/sizeof(app->tabs[0]);
+*/
 static int
 app_tab_open(struct app *app) {
   assert(app);
   assert(app->unused > 0);
-  assert(app->tab_cnt <= cntof(app->tabs));
 
+  assert(app->tab_cnt >= 0);
+  assert(app->tab_cnt <= cntof(app->tabs));
+  assert(app->tab_cnt <= APP_VIEW_CNT);
+
+  unsigned old_unused = app->unused;
   int view = app_view_new(app);
-  app->sel_tab = castb(app_tab_add(app, view));
+  int tab_idx = app_tab_add(app, view);
+  app->sel_tab = castb(tab_idx);
+
+  assert(app->sel_tab >= 0);
+  assert(app->sel_tab < app->tab_cnt);
+  assert(app->sel_tab < APP_VIEW_CNT);
+  assert(app->sel_tab < cntof(app->tabs));
+
+  assert(app->unused < old_unused);
   return app->sel_tab;
 }
+/*@
+  @requires \valid(app);
+  @requires dst_idx >= 0;
+  @requires src_idx >= 0;
+
+  @requires dst_idx < app->tab_cnt;
+  @requires src_idx < app->tab_cnt;
+
+  @requires dst_idx < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires src_idx < sizeof(app->tabs)/sizeof(app->tabs[0]);
+
+  @requires app->tabs[dst_idx] < sizeof(app->views)/sizeof(app->views[0]);
+  @requires app->tabs[src_idx] < sizeof(app->views)/sizeof(app->views[0]);
+
+  @requires !(app->unused & (1U << castu(app->tabs[dst_idx])));
+  @requires !(app->unused & (1U << castu(app->tabs[src_idx])));
+
+  @assigns app->tabs[dst_idx];
+  @assigns app->tabs[src_idx];
+
+  @ensures app->tabs[dst_idx] == \old(app->tabs[src_idx]);
+  @ensures app->tabs[src_idx] == \old(app->tabs[dst_idx]);
+*/
 static void
 app_tab_swap(struct app *app, int dst_idx, int src_idx) {
   assert(app);
@@ -223,8 +535,26 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
 
   assert(!(app->unused & (1U << castu(app->tabs[dst_idx]))));
   assert(!(app->unused & (1U << castu(app->tabs[src_idx]))));
-  iswap(app->tabs[dst_idx], app->tabs[src_idx]);
+
+  int old_dst = app->tabs[dst_idx];
+  int old_src = app->tabs[src_idx];
+
+  app->tabs[src_idx] = castb(old_dst);
+  app->tabs[dst_idx] = castb(old_src);
+
+  assert(app->tabs[dst_idx] == old_src);
+  assert(app->tabs[src_idx] == old_dst);
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(sys);
+  @assigns app->tab_cnt;
+  @assigns app->unused;
+  @assigns app->tabs[0];
+  @ensures app->tab_cnt == 1;
+  @ensures app->tabs[0] == 0;
+  @ensures app->unused == APP_VIEW_CNT_MSK - 1u;
+ */
 static void
 app_init(struct app *app, struct sys *sys) {
   assert(sys);
@@ -259,17 +589,42 @@ app_init(struct app *app, struct sys *sys) {
 #ifdef DEBUG_MODE
   ut_str();
 #endif
+  assert(app->tab_cnt == 1);
+  assert(app->tabs[0] == 0);
+  assert(app->unused == APP_VIEW_CNT_MSK - 1u);
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(sys);
+  @requires app->tab_cnt >= 0;
+  @requires app->tab_cnt < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires app->unused >= 0;
+  @requires app->unused <= APP_VIEW_CNT_MSK;
+  @assigns app->tab_cnt;
+  @assigns app->unused;
+  @ensures app->unused == APP_VIEW_CNT_MSK;
+  @ensures app->tab_cnt == 0;
+ */
 static void
 app_shutdown(struct app *app, struct sys *sys) {
   assert(sys);
   assert(app);
 
   assert(app->tab_cnt >= 0);
-  assert(app->tab_cnt <= cntof(app->tabs));
+  assert(app->tab_cnt < cntof(app->tabs));
+  assert(app->unused <= APP_VIEW_CNT_MSK);
+
   for arr_loopn(i, app->tabs, app->tab_cnt) {
+    assert(i >= 0);
+    assert(i < app->tab_cnt);
+    assert(i < cntof(app->tabs));
+    assert(i < APP_VIEW_CNT);
+
     int idx = app->tabs[i];
     assert(idx < APP_VIEW_CNT);
+    assert(idx < cntof(app->views));
+    assert(!(app->unused & (1U << castu(idx))));
+
     struct app_view *view = &app->views[idx];
     if (view->db.con) {
       dbs.del(&view->db);
@@ -289,6 +644,25 @@ app_shutdown(struct app *app, struct sys *sys) {
  *                                  GUI
  *
  * -----------------------------------------------------------------------------
+ */
+/*@
+  @requires \valid(app);
+  @requires \valid(view);
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires \valid(parent);
+  @requires \valid(ctx->sys);
+
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires app->unused >= 0;
+  @requires app->unused < APP_VIEW_CNT_MSK;
+
+  @assigns app->tab_cnt;
+  @assigns app->unused;
+
+  @ensures app->unused <= \old(app->unused);
+  @ensures app->tab_cnt >= \old(app->tab_cnt);
  */
 static void
 ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
@@ -311,6 +685,18 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
     sys->repaint = 1;
   }
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(view);
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires \valid(parent);
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires app->unused >= 0;
+  @requires app->unused < APP_VIEW_CNT_MSK;
+  @assigns \nothing;
+ */
 static void
 ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent) {
@@ -333,6 +719,14 @@ ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   }
   gui.pan.end(ctx, pan, parent);
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires app->tab_cnt > 0;
+  @requires app->unused >= 0;
+  @assigns \nothing;
+ */
 static void
 ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
   assert(app);
@@ -364,6 +758,20 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
     gui.dnd.dst.end(ctx);
   }
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires \valid(parent);
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt <= APP_VIEW_CNT;
+  @requires app->tab_cnt <= sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires app->unused >= 0;
+  @assigns \nothing;
+  @ensures \result >= -1;
+  @ensures \result < APP_VIEW_CNT;
+  @ensures \result < sizeof(app->tabs)/sizeof(app->tabs[0]);
+ */
 static int
 ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
                     struct gui_panel *parent) {
@@ -403,6 +811,13 @@ ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.end(ctx, pan, parent);
   return ret;
 }
+/*@
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires \valid(parent);
+  @assigns \nothing;
+  @ensures \result == 0 || \result == 1;
+ */
 static int
 ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
                            struct gui_panel *parent, struct str title,
@@ -426,6 +841,17 @@ ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
   gui.pan.end(ctx, pan, parent);
   return ret;
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(view);
+  @requires \valid(ctx);
+  @requires \valid(tab);
+  @requires \valid(hdr);
+  @requires \valid(slot);
+  @requires app->unused >= 0;
+  @assigns \nothing;
+  @ensures \result == 0 || \result == 1;
+ */
 static int
 ui_app_view_tab_slot(struct app *app, struct app_view *view,
                      struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -449,6 +875,17 @@ ui_app_view_tab_slot(struct app *app, struct app_view *view,
   gui.tab.hdr.slot.end(ctx, tab, hdr, slot, 0);
   return ret;
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(view);
+  @requires \valid(ctx);
+  @requires \valid(tab);
+  @requires \valid(hdr);
+  @requires \valid(slot);
+  @requires app->unused >= 0;
+  @assigns \nothing;
+  @ensures \result == 0 || \result == 1;
+ */
 static int
 ui_app_view_tab(struct app *app, struct app_view *view,
                 struct gui_ctx *ctx, struct gui_tab_ctl *tab,
@@ -468,6 +905,25 @@ ui_app_view_tab(struct app *app, struct app_view *view,
   }
   return ui_app_view_tab_slot(app, view, ctx, tab, hdr, slot, title, ico);
 }
+/*@
+  @requires \valid(app);
+  @requires \valid(ctx);
+  @requires \valid(pan);
+  @requires \valid(parent);
+
+  @requires app->tab_cnt > 0;
+  @requires app->tab_cnt < APP_VIEW_CNT;
+  @requires app->tab_cnt < sizeof(app->tabs)/sizeof(app->tabs[0]);
+  @requires app->unused >= 0;
+  @requires app->unused < APP_VIEW_CNT_MSK;
+
+  @assigns app->sel_tab;
+  @assigns app->show_tab_lst;
+
+  @ensures app->show_tab_lst == 0 || app->show_tab_lst == 1;
+  @ensures app->sel_tab < cntof(app->tabs);
+  @ensures app->sel_tab < APP_VIEW_CNT;
+ */
 static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
