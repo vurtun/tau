@@ -55,34 +55,40 @@ $(BIN): src/sys/mac/sys.o src/app.o
 
 else # UNIX
 
-CFLAGS = -std=c99 -pedantic -DUSE_SIMD_256 -D_DEFAULT_SOURCE -msse4.1 -mavx2
+CFLAGS = -std=c99 -pedantic -DUSE_SIMD_128 -D_DEFAULT_SOURCE
 CFLAGS += -D_POSIX_C_SOURCE=200809L
 
-SYSLIBS = -L /usr/X11/lib -L /usr/local/lib -lX11 -ldl -lXext
+SYSLIBS = -L /usr/X11/lib -L /usr/local/lib -lX11 -lvulkan
 SYSINCL = -I /usr/X11/include -I /usr/local/include
 
 .PHONY: debug
-debug: CFLAGS += -g -Weverything -Wno-missing-noreturn -Wno-covered-switch-default
-debug: CFLAGS += -Wno-padded -Wno-comma -Wno-missing-field-initializers
-debug: CFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch -Wno-switch-enum
-debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef -Wno-format-nonliteral
-debug: CFLAGS += -Wc++-compat -Wno-unused-function
+debug: CFLAGS += -g -Weverything -Wno-covered-switch-default
+debug: CFLAGS += -Wno-padded -Wno-declaration-after-statement
+debug: CFLAGS += -Wno-double-promotion -Wno-float-equal -Wno-switch-default
+debug: CFLAGS += -Wno-unused-macros -Wno-unused-local-typedef
+debug: CFLAGS += -Wc++-compat -Wno-unused-function -Wsign-conversion
 debug: CFLAGS += -Wimplicit-int-conversion -Wimplicit-fallthrough
-debug: CFLAGS += -Wno-atomic-implicit-seq-cst
+debug: CFLAGS += -Wno-direct-ivar-access
+debug: CFLAGS += -Wno-unsafe-buffer-usage -Wno-c11-extensions
+debug: CFLAGS += -Wno-deprecated-declarations -DDEBUG_MODE -DDEBUG
+debug: CFLAGS += -Wno-reserved-macro-identifier -Wno-reserved-identifier -DSQLITE_DEBUG
+debug: CFLAGS += -fsanitize=address,undefined,leak,integer
 debug: CC = clang
 debug: $(BIN)
 
 .PHONY: release
-release: CFLAGS += -Wall -Wextra -O2 -fwhole-program -flto -DRELEASE_MODE
+release: CFLAGS += -Wall -Wextra -O2 -flto -fwrapv
+release: CFLAGS += -DRELEASE_MODE -fstack-protector-all -Werror
 release: CC = clang
 release: $(BIN)
 
-$(BIN): src/sys/sys_x11.o src/app.o
+$(BIN): src/sys/x11/sys.o src/app.o
 	rm -r -f bin
 	@mkdir -p bin
 	rm src/app.o
-	$(CC) $(CFLAGS) -c src/sys/sys_x11.m -o src/sys/sys_x11.o $(SYSLIBS) $(SYSINCL)
-	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/sys_x11.o $(SYSLIBS) $(SYSINCL)
+	$(CC) $(CFLAGS) -c src/sys/x11/sys.c -o src/sys/x11/sys.o $(SYSLIBS) $(SYSINCL)
+	$(CC) $(CFLAGS) -o bin/$(BIN) src/app.c src/sys/x11/sys.o $(SYSLIBS) $(SYSINCL)
+	rm src/sys/x11/sys.o
 
 endif
 

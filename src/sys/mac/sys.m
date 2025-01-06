@@ -159,29 +159,29 @@ struct sys_file_path {
   char buf[MAX_FILE_PATH];
 };
 static int
-sys__file_path_push(struct sys_file_path *p, struct str path) {
-  assert(p);
+sys__file_path_push(struct sys_file_path *sfp, struct str path) {
+  assert(sfp);
   if (str_len(path) + 1 < MAX_FILE_PATH) {
-    mcpy(p->buf, str_beg(path), str_len(path));
-    p->buf[str_len(path)] = 0;
-    p->ospath = p->buf;
+    mcpy(sfp->buf, str_beg(path), str_len(path));
+    sfp->buf[str_len(path)] = 0;
+    sfp->ospath = sfp->buf;
   } else {
-    p->ospath = calloc(1, castsz(str_len(path) + 1));
-    if (!p->ospath) {
+    sfp->ospath = calloc(1, castsz(str_len(path) + 1));
+    if (!sfp->ospath) {
       return 0;
     }
-    mcpy(p->ospath, str_beg(path), str_len(path));
-    p->ospath[str_len(path)] = 0;
+    mcpy(sfp->ospath, str_beg(path), str_len(path));
+    sfp->ospath[str_len(path)] = 0;
   }
   return 1;
 }
 static void
-sys__file_path_pop(struct sys_file_path *p) {
-  assert(p);
-  if (p->ospath != p->buf) {
-    free(p->ospath);
+sys__file_path_pop(struct sys_file_path *sfp) {
+  assert(sfp);
+  if (sfp->ospath != sfp->buf) {
+    free(sfp->ospath);
   }
-  mset(p, 0, szof(*p));
+  mset(sfp, 0, szof(*sfp));
 }
 static unsigned
 sys__file_perm(mode_t perm) {
@@ -198,18 +198,18 @@ sys__file_perm(mode_t perm) {
   return mod;
 }
 static int
-sys_file_info(struct sys *s, struct sys_file_info *info, struct str path) {
-  assert(s);
-  unused(s);
+sys_file_info(struct sys *sys, struct sys_file_info *info, struct str path) {
+  assert(sys);
+  unused(sys);
   assert(info);
 
   struct stat stats;
-  struct sys_file_path fp;
-  if (!sys__file_path_push(&fp, path)) {
+  struct sys_file_path sfp;
+  if (!sys__file_path_push(&sfp, path)) {
     return 0;
   }
-  int res = stat(fp.ospath, &stats);
-  sys__file_path_pop(&fp);
+  int res = stat(sfp.ospath, &stats);
+  sys__file_path_pop(&sfp);
   if (res < 0) {
     return 0;
   }
@@ -236,75 +236,75 @@ sys_file_info(struct sys *s, struct sys_file_info *info, struct str path) {
  * ---------------------------------------------------------------------------
  */
 static int
-sys_dir_exists(struct sys *s, struct str path) {
-  assert(s);
-  struct sys_file_path fp;
-  if (!sys__file_path_push(&fp, path)) {
+sys_dir_exists(struct sys *sys, struct str path) {
+  assert(sys);
+  struct sys_file_path sfp;
+  if (!sys__file_path_push(&sfp, path)) {
     return 0;
   }
   struct stat stats;
-  int res = stat(fp.ospath, &stats);
-  sys__file_path_pop(&fp);
+  int res = stat(sfp.ospath, &stats);
+  sys__file_path_pop(&sfp);
   if (res < 0 || !S_ISDIR(stats.st_mode)) {
     return 0;
   }
   return 1;
 }
 static void
-sys__dir_free(struct sys *s, struct sys_dir_iter *it) {
-  assert(s);
-  assert(it);
-  if (!it->valid) {
+sys__dir_free(struct sys *sys, struct sys_dir_iter *itr) {
+  assert(sys);
+  assert(itr);
+  if (!itr->valid) {
     return;
   }
-  it->valid = 0;
-  it->err = 0;
-  closedir(it->handle);
+  itr->valid = 0;
+  itr->err = 0;
+  closedir(itr->handle);
 }
 static int
-sys__dir_excl(struct sys_dir_iter *it) {
-  int is_base = !str_cmp(it->name, strv("."));
-  int is_prev = !str_cmp(it->name, strv(".."));
-  return it->valid && (is_base || is_prev);
+sys__dir_excl(struct sys_dir_iter *itr) {
+  int is_base = !str_cmp(itr->name, strv("."));
+  int is_prev = !str_cmp(itr->name, strv(".."));
+  return itr->valid && (is_base || is_prev);
 }
 static void
-sys_dir_nxt(struct sys *s, struct sys_dir_iter *it) {
-  assert(s);
-  assert(it);
-  if (!it->valid) {
+sys_dir_nxt(struct sys *sys, struct sys_dir_iter *itr) {
+  assert(sys);
+  assert(itr);
+  if (!itr->valid) {
     return;
   }
   do {
-    struct dirent *ent = readdir(it->handle);
+    struct dirent *ent = readdir(itr->handle);
     if (!ent) {
-      sys__dir_free(s, it);
+      sys__dir_free(sys, itr);
       return;
     }
-    it->name = str0(ent->d_name);
-    it->isdir = ent->d_type & DT_DIR;
-  } while (sys__dir_excl(it));
+    itr->name = str0(ent->d_name);
+    itr->isdir = ent->d_type & DT_DIR;
+  } while (sys__dir_excl(itr));
 }
 static void
-sys_dir_lst(struct sys *s, struct sys_dir_iter *it, struct str path) {
-  assert(s);
-  assert(it);
-  struct sys_file_path fp;
-  if (!sys__file_path_push(&fp, path)) {
-    it->valid = 0;
-    it->err = 1;
+sys_dir_lst(struct sys *sys, struct sys_dir_iter *itr, struct str path) {
+  assert(sys);
+  assert(itr);
+  struct sys_file_path sfp;
+  if (!sys__file_path_push(&sfp, path)) {
+    itr->valid = 0;
+    itr->err = 1;
     return;
   }
-  mset(it, 0, szof(*it));
-  DIR *dir = opendir(fp.ospath);
-  sys__file_path_pop(&fp);
+  mset(itr, 0, szof(*itr));
+  DIR *dir = opendir(sfp.ospath);
+  sys__file_path_pop(&sfp);
   if (!dir) {
-    it->valid = 0;
-    it->err = 1;
+    itr->valid = 0;
+    itr->err = 1;
     return;
   }
-  it->handle = dir;
-  it->valid = 1;
-  sys_dir_nxt(s, it);
+  itr->handle = dir;
+  itr->valid = 1;
+  sys_dir_nxt(sys, itr);
 }
 
 /* ---------------------------------------------------------------------------
@@ -423,7 +423,7 @@ sys__mac_on_frame(void) {
   for arr_loopv(i, g_sys.keys){
     g_sys.keys[i] = 0;
   }
-  for (int i = 0; i < SYS_MOUSE_BTN_CNT; ++i) {
+  for arr_loopv(i, g_sys.mouse.btns) {
     g_sys.mouse.btns[i].pressed = 0;
     g_sys.mouse.btns[i].released = 0;
     g_sys.mouse.btns[i].doubled = 0;
@@ -432,29 +432,29 @@ sys__mac_on_frame(void) {
 static void
 sys_mac__resize(void) {
   NSRect bounds = [g_mac.view bounds];
-  int w = max(1, casti(bounds.size.width));
-  int h = max(1, casti(bounds.size.height));
-  if (g_mac.win_w == w && g_mac.win_h == h) {
+  int width = max(1, casti(bounds.size.width));
+  int hight = max(1, casti(bounds.size.height));
+  if (g_mac.win_w == width && g_mac.win_h == hight) {
     return;
   }
-  int fw = math_roundi(castf(w) * g_sys.dpi_scale);
-  int fh = math_roundi(castf(h) * g_sys.dpi_scale);
+  int fbw = math_roundi(castf(width) * g_sys.dpi_scale);
+  int fbh = math_roundi(castf(hight) * g_sys.dpi_scale);
 
-  g_mac.win_w = fw;
-  g_mac.win_h = fh;
-  g_sys.gfx.resize(&g_sys, fw, fh);
+  g_mac.win_w = fbw;
+  g_mac.win_h = fbh;
+  g_sys.gfx.resize(&g_sys, fbw, fbh);
 
   sys__mac_on_frame();
   [g_mac.view setNeedsDisplay:YES];
 }
 static void
-sys__mac_on_btn(struct sys_btn *b, int down) {
-  assert(b);
-  int was_down = b->down;
-  b->down = !!down;
-  b->pressed = !was_down && down;
-  b->released = was_down && !down;
-  b->doubled = 0;
+sys__mac_on_btn(struct sys_btn *btn, int down) {
+  assert(btn);
+  int was_down = btn->down;
+  btn->down = !!down;
+  btn->pressed = !was_down && down;
+  btn->released = was_down && !down;
+  btn->doubled = 0;
 }
 static void
 sys__mac_on_key(unsigned long *keys, int scan) {
@@ -555,9 +555,9 @@ sys__mac_on_key(unsigned long *keys, int scan) {
   // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }
 static unsigned
-sys__mac_mods(const NSEvent *const ev) {
+sys__mac_mods(const NSEvent *const evt) {
   unsigned res = 0u;
-  const NSEventModifierFlags flg = ev.modifierFlags;
+  const NSEventModifierFlags flg = evt.modifierFlags;
   if (flg & NSEventModifierFlagControl) {
     res |= SYS_KEYMOD_CTRL;
   }
@@ -570,9 +570,9 @@ sys__mac_mods(const NSEvent *const ev) {
   return res;
 }
 static void
-sys_mac__mouse_pos(const NSEvent *const e) {
+sys_mac__mouse_pos(const NSEvent *const evt) {
   assert(g_sys.platform);
-  NSPoint pos = e.locationInWindow;
+  NSPoint pos = evt.locationInWindow;
   float new_x = castf(pos.x) * g_sys.dpi_scale;
   float new_y = castf(pos.y) * g_sys.dpi_scale;
 
@@ -732,106 +732,106 @@ sys_mac__mouse_pos(const NSEvent *const e) {
 - (void)mouseExited:(NSEvent*)e {
 
 }
-- (void)mouseDown:(NSEvent*)e {
+- (void)mouseDown:(NSEvent*)evt {
   sys__mac_on_btn(&g_sys.mouse.btn.left, 1);
-  if (e.clickCount == 2) {
+  if (evt.clickCount == 2) {
     g_sys.mouse.btn.left.doubled = 1;
   }
   g_sys.btn_mod = 1;
   g_sys.mouse_mod = 1;
-  g_sys.keymod |= sys__mac_mods(e);
+  g_sys.keymod |= sys__mac_mods(evt);
   sys__mac_on_frame();
 }
-- (void)mouseUp:(NSEvent*)e {
+- (void)mouseUp:(NSEvent*)evt {
   sys__mac_on_btn(&g_sys.mouse.btn.left, 0);
 
   g_sys.btn_mod = 1;
   g_sys.mouse_mod = 1;
-  g_sys.keymod |= sys__mac_mods(e);
+  g_sys.keymod |= sys__mac_mods(evt);
   sys__mac_on_frame();
 }
-- (void)rightMouseDown:(NSEvent*)e {
+- (void)rightMouseDown:(NSEvent*)evt {
   sys__mac_on_btn(&g_sys.mouse.btn.right, 1);
 
   g_sys.btn_mod = 1;
   g_sys.mouse_mod = 1;
-  g_sys.keymod |= sys__mac_mods(e);
+  g_sys.keymod |= sys__mac_mods(evt);
   sys__mac_on_frame();
 }
-- (void)rightMouseUp:(NSEvent*)e {
+- (void)rightMouseUp:(NSEvent*)evt {
   sys__mac_on_btn(&g_sys.mouse.btn.right, 0);
 
   g_sys.btn_mod = 1;
   g_sys.mouse_mod = 1;
-  g_sys.keymod |= sys__mac_mods(e);
+  g_sys.keymod |= sys__mac_mods(evt);
   sys__mac_on_frame();
 }
-- (void)otherMouseDown:(NSEvent*)e {
-  if (2 == e.buttonNumber) {
+- (void)otherMouseDown:(NSEvent*)evt {
+  if (2 == evt.buttonNumber) {
     sys__mac_on_btn(&g_sys.mouse.btn.middle, 1);
     sys__mac_on_frame();
   }
 }
-- (void)otherMouseUp:(NSEvent*)e {
-  if (2 == e.buttonNumber) {
+- (void)otherMouseUp:(NSEvent*)evt {
+  if (2 == evt.buttonNumber) {
     sys__mac_on_btn(&g_sys.mouse.btn.middle, 0);
     sys__mac_on_frame();
   }
 }
-- (void)mouseMoved:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
+- (void)mouseMoved:(NSEvent*)evt {
+  sys_mac__mouse_pos(evt);
   g_sys.mouse_mod = 1;
-  g_sys.keymod |= sys__mac_mods(e);
+  g_sys.keymod |= sys__mac_mods(evt);
   if (abs(g_sys.mouse.pos_delta[0]) > 0 ||
       abs(g_sys.mouse.pos_delta[1]) > 0) {
     sys__mac_on_frame();
   }
 }
-- (void)mouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
-  if (abs(g_sys.mouse.pos_delta[0]) > 0 ||
-      abs(g_sys.mouse.pos_delta[1]) > 0) {
-    g_sys.btn_mod = 1;
-    sys__mac_on_frame();
-  }
-}
-- (void)rightMouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
+- (void)mouseDragged:(NSEvent*)evt {
+  sys_mac__mouse_pos(evt);
   if (abs(g_sys.mouse.pos_delta[0]) > 0 ||
       abs(g_sys.mouse.pos_delta[1]) > 0) {
     g_sys.btn_mod = 1;
     sys__mac_on_frame();
   }
 }
-- (void)otherMouseDragged:(NSEvent*)e {
-  sys_mac__mouse_pos(e);
+- (void)rightMouseDragged:(NSEvent*)evt {
+  sys_mac__mouse_pos(evt);
   if (abs(g_sys.mouse.pos_delta[0]) > 0 ||
       abs(g_sys.mouse.pos_delta[1]) > 0) {
     g_sys.btn_mod = 1;
     sys__mac_on_frame();
   }
 }
-- (void)scrollWheel:(NSEvent*)e {
-  float dx = castf(e.scrollingDeltaX);
-  float dy = castf(e.scrollingDeltaY);
-  if (e.hasPreciseScrollingDeltas) {
+- (void)otherMouseDragged:(NSEvent*)evt {
+  sys_mac__mouse_pos(evt);
+  if (abs(g_sys.mouse.pos_delta[0]) > 0 ||
+      abs(g_sys.mouse.pos_delta[1]) > 0) {
+    g_sys.btn_mod = 1;
+    sys__mac_on_frame();
+  }
+}
+- (void)scrollWheel:(NSEvent*)evt {
+  float dx = castf(evt.scrollingDeltaX);
+  float dy = castf(evt.scrollingDeltaY);
+  if (evt.hasPreciseScrollingDeltas) {
     dx *= 0.1f;
     dy *= 0.1f;
   }
   if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
-    g_sys.keymod |= sys__mac_mods(e);
+    g_sys.keymod |= sys__mac_mods(evt);
     g_sys.mouse.scrl[0] = casti(dx);
     g_sys.mouse.scrl[1] = casti(dy);
     g_sys.scrl_mod = 1;
   }
   sys__mac_on_frame();
 }
-- (void)keyDown:(NSEvent*)e {
-  g_sys.keymod |= sys__mac_mods(e);
-  sys__mac_on_key(g_sys.keys, e.keyCode);
+- (void)keyDown:(NSEvent*)evt {
+  g_sys.keymod |= sys__mac_mods(evt);
+  sys__mac_on_key(g_sys.keys, evt.keyCode);
   g_sys.key_mod = 1;
 
-  const NSString* chars = e.characters;
+  const NSString* chars = evt.characters;
   const NSUInteger len = chars.length;
   if (len > 0) {
     for (NSUInteger i = 0; i < len; i++) {
@@ -840,10 +840,10 @@ sys_mac__mouse_pos(const NSEvent *const e) {
         continue;
       }
       char buf[UTF_SIZ+1];
-      int n = utf_enc(buf, cntof(buf), codepoint);
-      if (g_sys.txt_len + n < cntof(g_sys.txt)) {
-        memcpy(g_sys.txt + g_sys.txt_len, buf, castsz(n));
-        g_sys.txt_len += n;
+      int cnt = utf_enc(buf, cntof(buf), codepoint);
+      if (g_sys.txt_len + cnt < cntof(g_sys.txt)) {
+        memcpy(g_sys.txt + g_sys.txt_len, buf, castsz(cnt));
+        g_sys.txt_len += cnt;
       }
     }
     g_sys.txt_mod = 1;

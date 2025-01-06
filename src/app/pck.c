@@ -757,6 +757,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
+
   struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
@@ -815,6 +816,7 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
         ret = ui_file_sel_view(filepath, cnt, fpk, &fpk->lst, ctx, &bdy, &tab.pan);
       }
       gui.tab.end(ctx, &tab, pan);
+
       /* file selection */
       int dis = fpk->lst.sel_idx < 0 || fpk->lst.sel_idx >= fpk->lst.page.cnt;
       if (!dis) {

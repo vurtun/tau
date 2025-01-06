@@ -42,79 +42,84 @@ static const int gfx_box_seq[] = {0,1,3,3,2,0};
     (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i])
 
 static unsigned
-gfx_mtl_d2d_clip(struct gfx_buf2d *buf, int l, int t, int r, int b) {
+gfx_mtl_d2d_clip(struct gfx_buf2d *buf, int lhs, int top, int rhs, int bot) {
   unsigned off = castu(buf->vbytes);
-  struct gfx_clip *c = recast(struct gfx_clip*, buf->vtx + buf->vbytes);
-  *c = (struct gfx_clip){.l = casts(l), .t = casts(t), .r = casts(r), .b = casts(b)};
-  gfx__mtl_resv(buf, *c, 0);
+  struct gfx_clip *clp = recast(struct gfx_clip*, buf->vtx + buf->vbytes);
+  *clp = (struct gfx_clip){.l = casts(lhs), .t = casts(top), .r = casts(rhs), .b = casts(bot)};
+  gfx__mtl_resv(buf, *clp, 0);
   return off;
 }
 static void
-gfx_mtl_d2d_box(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
+gfx_mtl_d2d_box(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                  unsigned col, unsigned clp) {
-  struct gfx_box *b = recast(struct gfx_box*, buf->vtx + buf->vbytes);
-  *b = (struct gfx_box){.l = casts(x0), .t = casts(y0), .r = casts(x1),
-    .b = casts(y1), .clip = clp, .col = col};
+  struct gfx_box *cmd = recast(struct gfx_box*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_box){.l = casts(px0), .t = casts(py0), .r = casts(px1),
+    .b = casts(py1), .clip = clp, .col = col};
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_BOX);
-  gfx__mtl_resv(buf, *b, cntof(gfx_box_seq));
+  gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
-gfx_mtl_d2d_ln(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
+gfx_mtl_d2d_ln(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                int thickness, unsigned col, unsigned clp) {
-  struct gfx_ln *c = recast(struct gfx_ln*, buf->vtx + buf->vbytes);
-  *c = (struct gfx_ln){.x0 = casts(x0), .y0 = casts(y0), .x1 = casts(x1),
-    .y1 = casts(y1), .clip = clp, .col = col, .thickness = castf(thickness)};
+  struct gfx_ln *cmd = recast(struct gfx_ln*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_ln){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
+    .y1 = casts(py1), .clip = clp, .col = col, .thickness = castf(thickness)};
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_LN);
-  gfx__mtl_resv(buf, *c, cntof(gfx_box_seq));
+  gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
-gfx_mtl_d2d_circle(struct gfx_buf2d *buf, int x, int y, int r,
+gfx_mtl_d2d_circle(struct gfx_buf2d *buf, int ctrx, int ctry, int rad,
                    unsigned col, unsigned clp) {
-  int x0 = x - r, y0 = y - r, x1 = x + r, y1 = y + r;
-  struct gfx_cir *c = recast(struct gfx_cir*, buf->vtx + buf->vbytes);
-  *c = (struct gfx_cir){.x0 = casts(x0), .y0 = casts(y0), .x1 = casts(x1),
-    .y1 = casts(y1), .clip = clp, .col = col};
+  int px0 = ctrx - rad;
+  int py0 = ctry - rad;
+  int px1 = ctrx + rad;
+  int py1 = ctry + rad;
+
+  struct gfx_cir *cmd = recast(struct gfx_cir*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_cir){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
+    .y1 = casts(py1), .clip = clp, .col = col};
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_CIR);
-  gfx__mtl_resv(buf, *c, cntof(gfx_box_seq));
+  gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
-gfx_mtl_d2d_tri(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
-                int x2, int y2, unsigned col, unsigned clp) {
-  struct gfx_tri *t = recast(struct gfx_tri*, buf->vtx + buf->vbytes);
-  *t = (struct gfx_tri){.x0 = casts(x0), .y0 = casts(y0), .x1 = casts(x1),
-    .y1 = casts(y1), .x2 = casts(x2), .y2 = casts(y2), .clip = clp, .col = col};
+gfx_mtl_d2d_tri(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
+                int px2, int py2, unsigned col, unsigned clp) {
+  struct gfx_tri *cmd = recast(struct gfx_tri*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_tri){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
+    .y1 = casts(py1), .x2 = casts(px2), .y2 = casts(py2), .clip = clp, .col = col};
   buf->idx[buf->icnt+0] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 0);
   buf->idx[buf->icnt+1] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 1);
   buf->idx[buf->icnt+2] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 2);
-  gfx__mtl_resv(buf, *t, 3);
+  gfx__mtl_resv(buf, *cmd, 3);
 }
 static void
-gfx_mtl_d2d_ico(struct gfx_buf2d *buf, int x0, int y0, int x1, int y1,
-                int u, int v, unsigned col, unsigned clp) {
-  struct gfx_ico *d = recast(struct gfx_ico*, buf->vtx + buf->vbytes);
-  *d = (struct gfx_ico){.l = casts(x0), .t = casts(y0), .r = casts(x1),
-    .b = casts(y1), .u = castus(u), .v = castus(v), .clip = clp, .col = col};
+gfx_mtl_d2d_ico(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
+                int img_u, int img_v, unsigned col, unsigned clp) {
+  struct gfx_ico *cmd = recast(struct gfx_ico*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_ico){.l = casts(px0), .t = casts(py0), .r = casts(px1),
+    .b = casts(py1), .u = castus(img_u), .v = castus(img_v), .clip = clp, .col = col};
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_ICO);
-  gfx__mtl_resv(buf, *d, cntof(gfx_box_seq));
+  gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
-gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dx, int dy, int dw, int dh,
-                int sx, int sy, int sw, int sh, unsigned clp) {
+gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dstx, int dsty, int dstw,
+                int dsth, int srcx, int srcy, int srcw, int srch, unsigned clp) {
+
   struct gfx_mtl *mtl = cast(struct gfx_mtl*, buf->intern);
   assert(tex >= 0 && tex < GFX_TEX_MAX);
   assert(mtl->tex[tex].act);
-  assert(sx <= mtl->tex[tex].w);
-  assert(sy <= mtl->tex[tex].h);
-  assert(sx + sw <= mtl->tex[tex].w);
-  assert(sy + sh <= mtl->tex[tex].h);
+  assert(srcx <= mtl->tex[tex].w);
+  assert(srcy <= mtl->tex[tex].h);
+  assert(srcx + srcw <= mtl->tex[tex].w);
+  assert(srcy + srch <= mtl->tex[tex].h);
 
-  struct gfx_img *d = recast(struct gfx_img*, buf->vtx + buf->vbytes);
-  *d = (struct gfx_img){.l = casts(dx), .t = casts(dy), .r = casts(dx + dw),
-    .b = casts(dy + dh), .clip = clp, .texcoord = {
-      castf(sx)/castf(mtl->tex[tex].w),
-      castf(sy)/castf(mtl->tex[tex].h),
-      castf(sx + sw)/castf(mtl->tex[tex].w),
-      castf(sy + sh)/castf(mtl->tex[tex].h),
+  struct gfx_img *cmd = recast(struct gfx_img*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_img){.l = casts(dstx), .t = casts(dsty), .r = casts(dstx + dstw),
+    .b = casts(dsty + dsth), .clip = clp, .texcoord = {
+      castf(srcx)/castf(mtl->tex[tex].w),
+      castf(srcy)/castf(mtl->tex[tex].h),
+      castf(srcx + srcw)/castf(mtl->tex[tex].w),
+      castf(srcy + srch)/castf(mtl->tex[tex].h),
     }
   };
   unsigned long long tex_id = castull(tex);
@@ -124,12 +129,12 @@ gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dx, int dy, int dw, int dh,
     int tex_idx = mtl->tex_cnt++;
     mtl->tex_buf[tex_idx] = mtl->tex[tex].hdl;
     tbl_put(&mtl->tex_cache, hash, &tex_idx);
-    d->tex = castu(tex_idx);
+    cmd->tex = castu(tex_idx);
   } else {
-    d->tex = castu(tbl_unref(&mtl->tex_cache,tok,0));
+    cmd->tex = castu(tbl_unref(&mtl->tex_cache,tok,0));
   }
   gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_IMG);
-  gfx__mtl_resv(buf, *d, cntof(gfx_box_seq));
+  gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 /* ---------------------------------------------------------------------------
  *                                  Texture
@@ -147,12 +152,13 @@ compiler_assert(cntof(gfx__mtl_pix_fmt) == GFX_PIX_FMT_TYPE_CNT, "[metal] invali
 compiler_assert(cntof(gfx__mtl_pix_fmt_bytes) == GFX_PIX_FMT_TYPE_CNT, "[metal] invalid pixel format size");
 
 static int
-gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, int h) {
-  assert(s);
+gfx_mtl_tex_load(struct sys *sys, enum gfx_pix_fmt_type type, void *data,
+                 int img_w, int img_h) {
+  assert(sys);
   assert(data);
 
   int i = 0;
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
   for (i = 0; i < GFX_TEX_MAX; ++i) {
     if (!mtl->tex[i].act) {
       break;
@@ -165,27 +171,27 @@ gfx_mtl_tex_load(struct sys *s, enum gfx_pix_fmt_type type, void *data, int w, i
   MTLPixelFormat fmt = gfx__mtl_pix_fmt[type];
   MTLTextureDescriptor *tex_desc = [MTLTextureDescriptor
     texture2DDescriptorWithPixelFormat:fmt
-    width:(NSUInteger)w height:(NSUInteger)h mipmapped:false];
+    width:(NSUInteger)img_w height:(NSUInteger)img_h mipmapped:false];
   tex_desc.usage = MTLTextureUsageShaderRead;
 
   id<MTLTexture> tex = [mtl->dev newTextureWithDescriptor:tex_desc];
-  MTLRegion region = MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h);
-  [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:(NSUInteger)(bpr*w)];
+  MTLRegion region = MTLRegionMake2D(0, 0, (NSUInteger)img_w, (NSUInteger)img_h);
+  [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:(NSUInteger)(bpr*img_w)];
 
   struct gfx_tex *img = mtl->tex + i;
-  img->w = w;
-  img->h = h;
+  img->w = img_w;
+  img->h = img_h;
   img->hdl = tex;
   img->act = 1;
   return i;
 }
 static void
-gfx_mtl_tex_siz(int *siz, struct sys *s, int id) {
+gfx_mtl_tex_siz(int *siz, struct sys *sys, int id) {
   assert(id >= 0 && id < GFX_TEX_MAX);
   assert(siz);
-  assert(s);
+  assert(sys);
 
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
   assert(mtl->tex[id].act);
   struct gfx_tex *tex = mtl->tex + id;
 
@@ -193,9 +199,10 @@ gfx_mtl_tex_siz(int *siz, struct sys *s, int id) {
   siz[1] = tex->h;
 }
 static void
-gfx_mtl_tex_del(struct sys *s, int hdl) {
+gfx_mtl_tex_del(struct sys *sys, int hdl) {
+  assert(sys);
   assert(hdl >= 0 && hdl < GFX_TEX_MAX);
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
 
   assert(mtl->tex[hdl].act);
   struct gfx_tex *tex = mtl->tex + hdl;
@@ -207,10 +214,14 @@ gfx_mtl_tex_del(struct sys *s, int hdl) {
  * ---------------------------------------------------------------------------
  */
 static int
-gfx_mtl_init(struct sys *s, void *view_ptr) {
+gfx_mtl_init(struct sys *sys, void *view_ptr) {
+  assert(sys);
+  assert(view_ptr);
+
   MTKView *view = (__bridge MTKView*)view_ptr;
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
-  mtl->sys = s;
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
+  mtl->sys = sys;
+
 #ifndef NDEBUG
   /* enable metal validaton layer */
   setenv("MTL_SHADER_VALIDATION", "1", 1);
@@ -229,14 +240,14 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
     NSLog(@"Metal is not supported on this device");
     return -1;
   }
-  s->gfx.buf2d.intern = mtl;
+  sys->gfx.buf2d.intern = mtl;
   mtl->sem = dispatch_semaphore_create(GFX_MTL_BUF_DEPTH);
   mtl->cmd_que = [mtl->dev newCommandQueue];
   mtl->lib = [mtl->dev newLibraryWithFile: @"gfx.metallib" error:&err];
   //mtl->lib = [mtl->dev newDefaultLibrary];
   if (!mtl->lib) {
-      NSLog(@"Failed to load library");
-      exit(0);
+    NSLog(@"Failed to load library");
+    exit(0);
   }
   id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"ren_vtx"];
   if (!vshdr_f) {
@@ -281,48 +292,53 @@ gfx_mtl_init(struct sys *s, void *view_ptr) {
   return 0;
 }
 static void
-gfx_mtl_shutdown(struct sys *s) {
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
+gfx_mtl_shutdown(struct sys *sys) {
+  assert(sys);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
   unused(mtl);
 }
 static void
-gfx_mtl_begin(struct sys *s, int w, int h) {
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
-  mtl->viewportSize.x = castu(w);
-  mtl->viewportSize.y = castu(h);
+gfx_mtl_begin(struct sys *sys, int scrn_w, int scrn_h) {
+  assert(sys);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
+  mtl->viewportSize.x = castu(scrn_w);
+  mtl->viewportSize.y = castu(scrn_h);
 
   mtl->tex_cnt = 1;
   tbl_clr(&mtl->tex_cache);
-  s->gfx.buf2d.vbytes = 0;
-  s->gfx.buf2d.vtx = 0;
-  s->gfx.buf2d.idx = 0;
-  s->gfx.buf2d.icnt = 0;
+  sys->gfx.buf2d.vbytes = 0;
+  sys->gfx.buf2d.vtx = 0;
+  sys->gfx.buf2d.idx = 0;
+  sys->gfx.buf2d.icnt = 0;
 }
 static void
-gfx_mtl_end(struct sys *s, void *view_ptr) {
+gfx_mtl_end(struct sys *sys, void *view_ptr) {
+  assert(sys);
+  assert(view_ptr);
+
   MTKView *view = (__bridge MTKView*)view_ptr;
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
-  if (!s->gfx.buf2d.icnt || !s->gfx.buf2d.vbytes) {
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
+  if (!sys->gfx.buf2d.icnt || !sys->gfx.buf2d.vbytes) {
     return;
   }
   dispatch_semaphore_wait(mtl->sem, DISPATCH_TIME_FOREVER);
   mtl->cur_buf = (mtl->cur_buf + 1) % GFX_MTL_BUF_DEPTH;
 
-  float c[4]; col_flt_paq(c, s->gfx.clear_color);
-  view.clearColor = MTLClearColorMake(c[0], c[1], c[2], 1.0);
+  float col[4]; col_flt_paq(col, sys->gfx.clear_color);
+  view.clearColor = MTLClearColorMake(col[0], col[1], col[2], 1.0);
 
-  int siz = s->gfx.buf2d.vbytes + s->gfx.buf2d.icnt * szof(int);
+  int siz = sys->gfx.buf2d.vbytes + sys->gfx.buf2d.icnt * szof(int);
   if (mtl->buf[mtl->cur_buf].length + 16 < (NSUInteger)siz) {
     mtl->buf[mtl->cur_buf] = [mtl->dev newBufferWithLength:(NSUInteger)npow2(siz)
       options:MTLResourceStorageModeShared];
   }
-  int ibytes = s->gfx.buf2d.icnt * szof(unsigned);
+  int ibytes = sys->gfx.buf2d.icnt * szof(unsigned);
   NSUInteger vtx_off = cast(NSUInteger, align_up(ibytes, 16));
   void *idx_buf = mtl->buf[mtl->cur_buf].contents;
   void *vtx_buf = cast(char*, mtl->buf[mtl->cur_buf].contents) + vtx_off;
 
-  mcpy(idx_buf, s->gfx.buf2d.idx, ibytes);
-  mcpy(vtx_buf, s->gfx.buf2d.vtx, s->gfx.buf2d.vbytes);
+  mcpy(idx_buf, sys->gfx.buf2d.idx, ibytes);
+  mcpy(vtx_buf, sys->gfx.buf2d.vtx, sys->gfx.buf2d.vbytes);
 
   id<MTLCommandBuffer> cmd_buf = [mtl->cmd_que commandBuffer];
   cmd_buf.label = @"tau_cmd_buf";
@@ -332,7 +348,7 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
     unused(buf);
     dispatch_semaphore_signal(blk_sem);
   }];
-  id<MTLTexture> tex = mtl->tex[s->gfx.d2d.tex].hdl;
+  id<MTLTexture> tex = mtl->tex[sys->gfx.d2d.tex].hdl;
   mtl->tex_buf[0] = tex;
 
   struct gfx_uniform uni = {0};
@@ -357,17 +373,18 @@ gfx_mtl_end(struct sys *s, void *view_ptr) {
       [enc useResource:mtl->tex_buf[i] usage:MTLResourceUsageSample];
     }
     [enc setFragmentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0 atIndex:0];
-    [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)s->gfx.buf2d.icnt];
+    [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)sys->gfx.buf2d.icnt];
     [enc endEncoding];
     [cmd_buf presentDrawable:view.currentDrawable];
   }
   [cmd_buf commit];
 }
 static void
-gfx_mtl_resize(struct sys *s, int w, int h) {
-  struct gfx_mtl *mtl = cast(struct gfx_mtl*, s->ren);
-  mtl->viewportSize.x = castu(w);
-  mtl->viewportSize.y = castu(h);
+gfx_mtl_resize(struct sys *sys, int win_w, int win_h) {
+  assert(sys);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, sys->ren);
+  mtl->viewportSize.x = castu(win_w);
+  mtl->viewportSize.y = castu(win_h);
 }
 
 /* ---------------------------------------------------------------------------

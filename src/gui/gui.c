@@ -5938,8 +5938,8 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   const struct gui_box *box = &slot->box;
   switch(tab->hdr_pos) {
   case GUI_TAB_HDR_TOP: {
-    int top = box->y.min + ((!is_act) ? 1 : 0);
-    int height = box->y.ext - ((!is_act) ? 1 : 0);
+    int top = box->y.min + ((is_act) ? 0 : 1);
+    int height = box->y.ext - ((is_act) ? 0 : 1);
 
     gui_drw_line_style(ctx, 1);
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
@@ -5960,8 +5960,8 @@ gui__tab_hdr_slot_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
   } break;
 
   case GUI_TAB_HDR_BOT: {
-    int bot = box->y.max + ((!is_act) ? 1 : 0);
-    int height = box->y.ext - ((!is_act) ? 1 : 0);
+    int bot = box->y.max - ((is_act) ? 0 : 1);
+    int height = box->y.ext - ((is_act) ? 0 : 1);
 
     gui_drw_line_style(ctx, 1);
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
@@ -6000,9 +6000,9 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     gui__tab_hdr_slot_drw(ctx, tab, slot, is_act);
   }
   hdr->id = uid;
+  tab->off = slot->box.x.max;
   slot->box.x = gui_shrink(&slot->box.x, ctx->cfg.pan_pad[0]);
   hdr->slot = slot->box;
-  tab->off = slot->box.x.max;
 }
 static void
 gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
