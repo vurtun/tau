@@ -6,25 +6,25 @@
   #define ckd_mul(R, A, B) __builtin_mul_overflow ((A), (B), (R))
 #endif
 
-static inline int
+static purist inline int
 chk_add(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_add(&ret, a, b);
   return ret;
 }
-static inline int
+static purist inline int
 chk_sub(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_sub(&ret, a, b);
   return ret;
 }
-static inline int
+static purist inline int
 chk_mul(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_mul(&ret, a, b);
   return ret;
 }
-static inline int
+static purist inline int
 npow2(int input) {
   unsigned int val = castu(input);
   val--;
@@ -146,7 +146,7 @@ rng_put(const struct rng *rng, const struct rng *val) {
 #define FNV1A32_HASH_INITIAL 2166136261U
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
 
-static inline no_sanitize_int unsigned
+static purist inline no_sanitize_int unsigned
 fnv1a32(const void *ptr, int cnt, unsigned hash) {
   const unsigned char *ptr8 = ptr;
   if (!ptr) {
@@ -157,7 +157,7 @@ fnv1a32(const void *ptr, int cnt, unsigned hash) {
   }
   return hash;
 }
-static inline no_sanitize_int unsigned long long
+static purist inline no_sanitize_int unsigned long long
 fnv1a64(const void *ptr, int len, unsigned long long hash) {
   const unsigned char *ptr8 = ptr;
   if (!ptr || !len) {
@@ -169,23 +169,23 @@ fnv1a64(const void *ptr, int len, unsigned long long hash) {
   }
   return hash;
 }
-static unsigned
+static purist unsigned
 fnv1au32(unsigned hash, unsigned uid) {
   return fnv1a32(&uid, sizeof(uid), hash);
 }
-static unsigned long long
+static purist unsigned long long
 fnv1au64(unsigned long long uid, unsigned long long hash) {
   return fnv1a64(&uid, sizeof(uid), hash);
 }
-static unsigned long long
+static purist unsigned long long
 hash_ptr(const void *ptr) {
   return fnv1a64(&ptr, szof(void*), FNV1A64_HASH_INITIAL);
 }
-static unsigned long long
+static purist unsigned long long
 hash_int(long long lld) {
   return fnv1a64(&lld, szof(lld), FNV1A64_HASH_INITIAL);
 }
-static unsigned long long
+static purist unsigned long long
 hash_lld(long long lld) {
   return fnv1a64(&lld, szof(lld), FNV1A64_HASH_INITIAL);
 }
@@ -327,7 +327,7 @@ seq_fix(int *p, int n) {
  *                                  Bits
  * ---------------------------------------------------------------------------
  */
-static inline unsigned
+static purist inline unsigned
 bit_rev32(unsigned x){
   x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
   x = ((x & 0x33333333) << 2) | ((x >> 2) & 0x33333333);
@@ -335,13 +335,13 @@ bit_rev32(unsigned x){
   x = (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
   return x;
 }
-static inline unsigned long long
+static purist inline unsigned long long
 bit_rev64(unsigned long long x){
   unsigned x1 = castu(x & 0xffffffffu);
   unsigned x2 = castu(x >> 32);
   return (castull(bit_rev32(x1)) << 32)|bit_rev32(x2);
 }
-static inline unsigned
+static purist inline unsigned
 bit_eqv(unsigned x, unsigned y) {
   /* Calculates bitwise equivalence.
    * Bitwise equivalence is the opposite of xor. It sets all bits that
@@ -361,7 +361,7 @@ bit_eqv(unsigned x, unsigned y) {
   (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
 static int bit_xor(unsigned long *addr, int nr);
 
-static inline int
+static purist inline int
 bit_tst(const unsigned long *addr, int nr) {
   assert(addr);
   unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);

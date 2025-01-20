@@ -425,7 +425,6 @@ static int
 gui__drw_resv(struct gui_ctx *ctx, const struct gfx_buf2d_cost *cost) {
   assert(ctx);
   assert(cost);
-
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
@@ -481,8 +480,8 @@ gui_drw_ln(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
   }
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.line)) {
-    sys->gfx.d2d.ln(&sys->gfx.buf2d, px0, py0, px1, py1, ctx->line_size, ctx->drw_col,
-      ctx->clip.hdl);
+    sys->gfx.d2d.ln(&sys->gfx.buf2d, px0, py0, px1, py1, ctx->line_size,
+      ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
@@ -541,7 +540,7 @@ gui_drw_tri(struct gui_ctx *ctx, int px0, int py0, int px1, int py1, int px2, in
   struct sys *sys = ctx->sys;
   if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.tri)) {
     sys->gfx.d2d.tri(&sys->gfx.buf2d, px0, py0, px1, py1, px2, py2,
-        ctx->drw_col, ctx->clip.hdl);
+      ctx->drw_col, ctx->clip.hdl);
   }
 }
 static void
@@ -561,6 +560,7 @@ gui_drw_glyph(struct gui_ctx *ctx, const struct res_glyph *gly) {
 }
 static void
 gui_drw_rune(struct gui_ctx *ctx, int posx, int posy, int rune) {
+  assert(ctx);
   struct res_glyph gly;
   res.fnt.glyph(&gly, &ctx->res->fnt, posx, posy, rune);
   gui_drw_glyph(ctx, &gly);

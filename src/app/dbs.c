@@ -101,64 +101,125 @@ db_tbl_col_name_rel(struct db_name_lck *lck) {
  */
 static int
 db_tbl_fltr_new(struct db_tbl_fltr_state *fltr) {
-  assert(fltr);
-  assert(fltr->unused > 0);
+  requires(fltr);
+  requires(fltr->unused > 0);
+  requires(fltr->unused > 0);
+  requires(fltr->unused <= DB_FLTR_CNT_MSK);
+  requires(fltr->cnt < DB_MAX_FLTR_CNT);
 
   int idx = cpu_bit_ffs32(fltr->unused);
+  assert(idx >= 0);
+  assert(idx < 32);
+  assert(idx < DB_MAX_FLTR_CNT);
+  assert(idx < cntof(fltr->elms));
+  assert((fltr->unused & (1u << castu(idx))) != 0U);
+
+  unsigned old_unused = fltr->unused;
   fltr->unused &= ~(1U << castu(idx));
   assert(idx < cntof(fltr->elms));
   mset(fltr->elms + idx, 0, szof(fltr->elms[0]));
-  return idx;
+
+  ensures(fltr->unused < old_unused);
+  ensures((fltr->unused & (1 << idx)) == 0U);
+
+  int ret = idx;
+  ensures(ret >= 0);
+  ensures(ret < DB_MAX_FLTR_CNT);
+  ensures(ret < cntof(fltr->elms));
+  return ret;
 }
 static void
 db_tbl_fltr_del(struct db_tbl_fltr_state *fltr, int idx) {
-  assert(fltr);
-  assert(idx >= 0);
-  assert(idx < cntof(fltr->elms));
-  assert(!(fltr->unused & (1U << castu(idx))));
+  requires(fltr);
+  requires(idx >= 0);
+  requires(idx < DB_MAX_FLTR_CNT);
+  requires(idx < cntof(fltr->elms));
+
+  requires(fltr->unused >= 0);
+  requires(fltr->unused <= DB_FLTR_CNT_MSK);
+  requires(!(fltr->unused & (1U << castu(idx))));
+  unsigned old_unused = fltr->unused;
 
   struct db_tbl_fltr_elm *elm = &fltr->elms[idx];
   fltr->unused |= (1U << castu(idx));
   mset(elm, 0, szof(*elm));
+
+  ensures(fltr->unused == (old_unused|(1u << castu(idx))));
+  ensures(fltr->unused > old_unused);
 }
 static int
 db_tbl_fltr_add(struct db_tbl_fltr_state *fltr, int idx) {
-  assert(fltr);
-  assert(idx >= 0);
-  assert(idx < cntof(fltr->lst));
-  assert(fltr->cnt < cntof(fltr->lst));
-  assert(!(fltr->unused & (1U << castu(idx))));
+  requires(fltr);
 
-  fltr->lst[fltr->cnt] = castb(idx);
-  return fltr->cnt++;
+  requires(fltr->cnt >= 0);
+  requires(fltr->cnt < DB_MAX_FLTR_CNT);
+  requires(fltr->cnt < cntof(fltr->elms));
+
+  requires(idx >= 0);
+  requires(idx <= 0xff);
+  requires(idx < DB_MAX_FLTR_CNT);
+  requires(idx < cntof(fltr->elms));
+
+  requires(fltr->unused >= 0);
+  requires(fltr->unused <= DB_FLTR_CNT_MSK);
+  requires(!(fltr->unused & (1U << idx)));
+
+  int old_cnt = fltr->cnt;
+  int ret = fltr->cnt++;
+  fltr->lst[ret] = castb(idx);
+
+  ensures(fltr->cnt > old_cnt);
+  ensures(fltr->cnt <= DB_MAX_FLTR_CNT);
+  ensures(fltr->cnt <= cntof(fltr->elms));
+
+  ensures(ret >= 0);
+  ensures(ret < DB_MAX_FLTR_CNT);
+  ensures(ret < cntof(fltr->elms));
+  return ret;
 }
 static void
-db_tbl_fltr_rm(struct db_tbl_fltr_state *fltr, int idx) {
-  assert(fltr);
-  assert(idx >= 0);
-  assert(idx < fltr->cnt);
-  assert(idx < cntof(fltr->lst));
-  assert(fltr->cnt < cntof(fltr->lst));
-  assert(!(fltr->unused & (1U << castu(fltr->lst[idx]))));
+db_tbl_fltr_rm(struct db_tbl_fltr_state *fltr, int lst_idx) {
+  requires(fltr);
+  requires(fltr->cnt > 0);
+  requires(fltr->cnt <= DB_MAX_FLTR_CNT);
+  requires(fltr->cnt <= fltr->cnt);
 
-  arr_rm(fltr->lst, idx, fltr->cnt);
-  fltr->cnt--;
+  requires(lst_idx >= 0);
+  requires(lst_idx < fltr->cnt);
+  requires(lst_idx < DB_MAX_FLTR_CNT);
+  requires(lst_idx < cntof(fltr->lst));
+
+  requires(fltr->unused <= APP_VIEW_CNT_MSK);
+  requires(fltr->unused >= 0);
+  requires(!(fltr->unused & (1 << fltr->lst[lst_idx])));
+
+  arr_rm(fltr->lst, lst_idx, fltr->cnt);
+  int old_cnt = fltr->cnt--;
+
+  ensures(fltr->cnt >= 0);
+  ensures(fltr->cnt < old_cnt);
 }
 static int
 db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
                     struct db_tbl_view *vtbl, struct db_tbl_fltr_state *fltr,
                     long long col, struct str str) {
-  assert(sdb);
-  assert(stbl);
-  assert(vtbl);
-  assert(fltr);
+  requires(sdb);
+  requires(stbl);
+  requires(vtbl);
+  requires(fltr);
 
-  assert(fltr->unused);
-  assert(str_len(str));
-  assert(str_len(str) < DB_MAX_FLTR_STR);
-  assert(fltr->cnt < cntof(fltr->lst));
+  requires(col >= 0);
+  requires(fltr->unused);
+  requires(str_len(str) > 0);
+  requires(str_len(str) <= DB_MAX_FLTR_STR);
+  requires(fltr->cnt < DB_MAX_FLTR_CNT);
+  requires(fltr->cnt < cntof(fltr->lst));
 
   int idx = db_tbl_fltr_new(fltr);
+  assert(idx < DB_MAX_FLTR_CNT);
+  assert(idx < cntof(fltr->elms));
+  assert(idx >= 0);
+
   struct db_tbl_fltr_elm *elm = &fltr->elms[idx];
   elm->type = DB_TBL_FLTR_ELM_TYP_STR;
   elm->fnd = str_sqz(elm->fnd_buf, cntof(elm->fnd_buf), str);
@@ -173,19 +234,41 @@ db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
   db_tbl_col_name_rel(&clck);
   db_tbl_name_rel(&tlck);
 
-  return db_tbl_fltr_add(fltr, idx);
+  int ret = db_tbl_fltr_add(fltr, idx);
+  ensures(ret >= 0);
+  ensures(ret < DB_MAX_FLTR_CNT);
+  ensures(ret < cntof(fltr->elms));
+  return ret;
 }
 static void
 db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
-  assert(fltr);
-  assert(idx >= 0);
-  assert(idx < fltr->cnt);
-  assert(idx < cntof(fltr->lst));
-  assert(!(fltr->unused & (1U << castu(fltr->lst[idx]))));
+  requires(fltr);
+
+  requires(fltr->cnt > 0);
+  requires(fltr->cnt <= DB_MAX_FLTR_CNT);
+  requires(fltr->cnt <= cntof(fltr->lst));
+
+  requires(idx >= 0);
+  requires(idx < fltr->cnt);
+  requires(idx < cntof(fltr->lst));
+  requires(!(fltr->unused & (1U << castu(fltr->lst[idx]))));
+
+  int old_cnt = fltr->cnt;
+  unsigned old_unused = fltr->unused;
 
   int elm = fltr->lst[idx];
+  assert(elm >= 0);
+  assert(elm < fltr->cnt);
+  assert(elm < cntof(fltr->lst));
+  assert(elm < DB_MAX_FLTR_CNT);
+
   db_tbl_fltr_rm(fltr, idx);
   db_tbl_fltr_del(fltr, elm);
+
+  ensures(fltr->cnt >= 0);
+  ensures(fltr->cnt < old_cnt);
+  ensures((fltr->unused | (1 << idx)) == old_unused);
+  ensures(fltr->unused > old_unused);
 }
 static void
 db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
@@ -220,20 +303,20 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
                      struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                      struct db_tbl_fltr_state *fltr, struct db_tbl_fltr_view *view,
                      int low, int high) {
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(vtbl);
-  assert(fltr);
-  assert(view);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(vtbl);
+  requires(fltr);
+  requires(view);
 
-  assert(low >= 0);
-  assert(high >= 0);
-  assert(low <= high);
+  requires(low >= 0);
+  requires(high >= 0);
+  requires(low <= high);
 
-  assert(low <= stbl->fltr.data_rng.total);
-  assert(high <= stbl->fltr.data_rng.total);
-  assert((high - low) <= cntof(view->data));
+  requires(low <= stbl->fltr.data_rng.total);
+  requires(high <= stbl->fltr.data_rng.total);
+  requires((high - low) <= cntof(view->data));
   if ((high - low) > cntof(view->data)) {
     return -1;
   }
@@ -333,16 +416,32 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
  */
 static int
 db_tbl_new(struct db_state *sdb) {
-  assert(sdb);
-  assert(sdb->unused > 0);
+  requires(sdb);
+  requires(sdb->tab_cnt < DB_TBL_CNT);
+  requires(sdb->unused > 0);
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
 
   int idx = cpu_bit_ffs32(sdb->unused);
+  assert(idx >= 0);
+  assert(idx < 32);
+  assert(idx < DB_TBL_CNT);
   assert(idx < cntof(sdb->tbls));
-  sdb->unused &= ~(1U << castu(idx));
+  assert((sdb->unused & (1u << castu(idx))) != 0U);
 
+  unsigned old_unused = sdb->unused;
+  sdb->unused &= ~(1U << castu(idx));
   mset(sdb->tbls + idx, 0, szof(sdb->tbls[0]));
   sdb->tbls[idx].fltr.unused = DB_FLTR_CNT_MSK;
-  return idx;
+  assert((sdb->unused & (1u << castu(idx))) == 0);
+
+  int ret = idx;
+  ensures(ret >= 0);
+  ensures(ret < DB_TBL_CNT);
+  ensures(ret < cntof(sdb->tbls));
+
+  ensures(sdb->unused < old_unused);
+  ensures((sdb->unused & (1 << idx)) == 0U);
+  return ret;
 }
 static enum res_ico_id
 db_tbl_col_ico(struct str type) {
@@ -390,18 +489,23 @@ static void
 db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                 int low, int high, int sel) {
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(vtbl);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(vtbl);
 
-  assert(low >= 0);
-  assert(high >= 0);
-  assert(low <= high);
+  requires(sdb->con);
+  requires(stbl->col.rng.total <= SQLITE_MAX_COLUMN);
+  requires(sel == 0 || sel == 1);
 
-  assert(low < stbl->col.rng.total);
-  assert(high <= stbl->col.rng.total);
-  assert((high - low) <= cntof(vtbl->col.lst));
+  requires(low >= 0);
+  requires(high >= 0);
+  requires(low <= high);
+
+  requires(low <= stbl->col.rng.total);
+  requires(high <= stbl->col.rng.total);
+  requires((high - low) <= cntof(vtbl->col.lst));
+  requires((high - low) <= DB_MAX_TBL_COLS);
 
   int err = 0;
   stbl->row.rng.lo = 0;
@@ -486,17 +590,46 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
   err = sqlite3_finalize(stmt);
   assert(err == SQLITE_OK);
   db_tbl_name_rel(&lck);
+
+  ensures(stbl->col.rng.lo >= 0);
+  ensures(stbl->col.rng.hi >= 0);
+  ensures(stbl->col.rng.hi >= stbl->col.rng.lo);
+
+  ensures(stbl->col.rng.cnt >= 0);
+  ensures(stbl->col.rng.cnt <= DB_MAX_TBL_COLS);
+  ensures(stbl->col.rng.cnt <= SQLITE_MAX_COLUMN);
+  ensures(stbl->col.rng.cnt <= stbl->col.rng.total);
+
+  ensures(stbl->row.cols.lo >= 0);
+  ensures(stbl->row.cols.hi >= 0);
+  ensures(stbl->row.cols.lo <= stbl->row.cols.hi);
+  ensures(!sel || (stbl->row.cols.cnt <= stbl->col.sel.cnt));
+
+  ensures(stbl->row.rng.lo >= 0);
+  ensures(stbl->row.rng.hi >= 0);
+  ensures(stbl->row.rng.hi >= stbl->row.rng.lo);
+  ensures(stbl->row.rng.cnt >= 0);
+
+  ensures(vtbl->col.buf.cnt >= 0);
+  ensures(vtbl->col.buf.cnt <= cntof(vtbl->col.buf.mem));
+  ensures(vtbl->col.id == stbl->rowid);
 }
 static void
 db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
                     struct db_tbl_state *stbl, struct db_tbl_view *vtbl, int low) {
-  assert(sdb);
-  assert(vdb);
-  assert(vtbl);
-  assert(stbl);
+  requires(sdb);
+  requires(vdb);
+  requires(vtbl);
+  requires(stbl);
 
-  assert(low >= 0);
-  assert(low + stbl->row.cols.cnt <= stbl->col.rng.total);
+  requires(low >= 0);
+  requires(low + stbl->row.cols.cnt <= stbl->col.rng.total);
+  requires(stbl->row.cols.cnt <= stbl->col.rng.total);
+  requires(stbl->row.cols.cnt <= DB_MAX_TBL_ROW_COLS);
+
+  requires(stbl->row.cols.cnt <= stbl->col.rng.total);
+  requires(stbl->row.cols.cnt <= DB_MAX_TBL_ROW_COLS);
+  requires(stbl->col.rng.cnt <= stbl->col.rng.total);
 
   stbl->row.rng.lo = 0;
   stbl->row.rng.hi = 0;
@@ -511,9 +644,25 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
       !rng_has_inclv(&stbl->col.rng, rhs)) {
     db_tbl_qry_cols(sdb, vdb, stbl, vtbl, lhs, rhs, 0);
   }
-  int rend = max(stbl->row.cols.cnt, stbl->col.rng.total) - stbl->row.cols.cnt;
-  stbl->row.cols.lo = min(low, rend);
+  int row_end = max(stbl->row.cols.cnt, stbl->col.rng.total) - stbl->row.cols.cnt;
+  stbl->row.cols.lo = min(low, row_end);
   stbl->row.cols.hi = stbl->row.cols.lo + stbl->row.cols.cnt;
+
+  ensures(stbl->row.cols.lo >= 0);
+  ensures(stbl->row.cols.hi >= 0);
+  ensures(stbl->row.cols.hi >= stbl->row.cols.lo);
+  ensures(stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt);
+
+  ensures(stbl->row.cols.lo >= stbl->col.rng.lo);
+  ensures(stbl->row.cols.hi <= stbl->col.rng.hi);
+  ensures(stbl->row.cols.cnt <= stbl->col.rng.cnt);
+
+  ensures(stbl->row.cols.hi >= stbl->row.cols.lo);
+  ensures(stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt);
+
+  ensures(stbl->row.rng.lo == 0);
+  ensures(stbl->row.rng.hi == 0);
+  ensures(stbl->row.rng.cnt == 0);
 }
 static struct str
 db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
@@ -764,45 +913,87 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
 }
 static void
 db_tbl_del(struct db_state *sdb, int idx) {
-  assert(sdb);
-  assert(idx >= 0);
-  assert(idx < cntof(sdb->tbls));
-  assert(!(sdb->unused & (1U << castu(idx))));
+  requires(sdb);
+  requires(idx >= 0);
+  requires(idx < DB_TBL_CNT);
+  requires(idx < cntof(sdb->tbls));
+
+  requires(sdb->unused >= 0);
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+  requires(!(sdb->unused & (1U << castu(idx))));
+  unsigned old_unused = sdb->unused;
 
   struct db_tbl_state *tbl = &sdb->tbls[idx];
   sdb->unused |= (1U << castu(idx));
   db_tbl_fltr_view_clr(&tbl->fltr);
   mset(tbl, 0, szof(*tbl));
+
+  ensures(sdb->unused == (old_unused|(1u << castu(idx))));
+  ensures(sdb->unused > old_unused);
 }
 static int
 db_tbl_add(struct db_state *sdb, int idx) {
-  assert(sdb);
-  assert(idx >= 0);
-  assert(idx < cntof(sdb->tbls));
+  requires(sdb);
+  requires(sdb->tab_cnt >= 0);
+  requires(sdb->tab_cnt <= DB_TBL_CNT);
+  requires(sdb->tab_cnt <= cntof(sdb->tabs));
 
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
-  assert(!(sdb->unused & (1U << castu(idx))));
-  assert(sdb->tab_cnt <= UCHAR_MAX);
+  requires(idx >= 0);
+  requires(idx <= 0xff);
+  requires(idx < DB_TBL_CNT);
+  requires(idx < cntof(sdb->tabs));
 
-  sdb->tabs[sdb->tab_cnt] = castb(idx);
-  return sdb->tab_cnt++;
+  requires(sdb->unused >= 0);
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+  requires(!(sdb->unused & (1U << castu(idx))));
+
+  int old_tab_cnt = sdb->tab_cnt;
+  int ret = sdb->tab_cnt++;
+  sdb->tabs[ret] = castb(idx);
+
+  ensures(sdb->tab_cnt > old_tab_cnt);
+  ensures(sdb->tab_cnt <= DB_TBL_CNT);
+  ensures(sdb->tab_cnt <= cntof(sdb->tabs));
+
+  ensures(ret >= 0);
+  ensures(ret < DB_TBL_CNT);
+  ensures(ret < cntof(sdb->tabs));
+  return ret;
 }
 static void
-db_tbl_rm(struct db_state *sdb, int idx) {
-  assert(sdb);
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+db_tbl_rm(struct db_state *sdb, int tab_idx) {
+  requires(sdb);
+  requires(sdb->tab_cnt > 0);
+  requires(sdb->tab_cnt <= DB_TBL_CNT);
+  requires(sdb->tab_cnt <= sdb->tab_cnt);
 
-  assert(idx >= 0);
-  assert(idx < sdb->tab_cnt);
-  assert(idx < cntof(sdb->tabs));
-  assert(!(sdb->unused & (1U << castu(sdb->tabs[idx]))));
+  requires(tab_idx >= 0);
+  requires(tab_idx < sdb->tab_cnt);
+  requires(tab_idx < DB_TBL_CNT);
+  requires(tab_idx < cntof(sdb->tabs));
 
-  arr_rm(sdb->tabs, idx, sdb->tab_cnt);
-  sdb->tab_cnt--;
+  requires(sdb->sel_tab < sdb->tab_cnt);
+  requires(sdb->sel_tab < DB_TBL_CNT);
+  requires(sdb->sel_tab < cntof(sdb->tabs));
+
+  requires(sdb->unused >= 0);
+  requires(!(sdb->unused & (1u << sdb->tabs[tab_idx])));
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+
+  arr_rm(sdb->tabs, tab_idx, sdb->tab_cnt);
+  int old_tab_cnt = sdb->tab_cnt--;
+  sdb->sel_tab = castb(clamp(0, sdb->sel_tab, sdb->tab_cnt-1));
+
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
+  ensures(sdb->tab_cnt <= old_tab_cnt);
 }
 static int
 db_tbl_fltr_enabled(struct db_tbl_fltr_state *fltr) {
-  assert(fltr);
+  requires(fltr);
   for arr_loopn(i, fltr->lst, fltr->cnt) {
     assert(i < cntof(fltr->lst));
     int idx = fltr->lst[i];
@@ -1046,35 +1237,47 @@ db_free(struct db_state *sdb) {
 }
 static void
 db_tab_resort(struct db_state *sdb, int dst_idx, int src_idx) {
-  assert(sdb);
-  assert(dst_idx >= 0);
-  assert(src_idx >= 0);
+  requires(sdb);
+  requires(dst_idx >= 0);
+  requires(src_idx >= 0);
 
-  assert(dst_idx < sdb->tab_cnt);
-  assert(src_idx < sdb->tab_cnt);
-  assert(dst_idx < cntof(sdb->tabs));
-  assert(src_idx < cntof(sdb->tabs));
+  requires(dst_idx < sdb->tab_cnt);
+  requires(src_idx < sdb->tab_cnt);
 
-  assert(!(sdb->unused & (1U << sdb->tabs[dst_idx])));
-  assert(!(sdb->unused & (1U << sdb->tabs[src_idx])));
-  iswap(sdb->tabs[dst_idx], sdb->tabs[src_idx]);
+  requires(dst_idx < cntof(sdb->tabs));
+  requires(src_idx < cntof(sdb->tabs));
+
+  requires(sdb->tabs[dst_idx] < cntof(sdb->tbls));
+  requires(sdb->tabs[src_idx] < cntof(sdb->tbls));
+
+  requires(!(sdb->unused & (1U << castu(sdb->tabs[dst_idx]))));
+  requires(!(sdb->unused & (1U << castu(sdb->tabs[src_idx]))));
+
+  int old_dst = sdb->tabs[dst_idx];
+  int old_src = sdb->tabs[src_idx];
+
+  sdb->tabs[src_idx] = castb(old_dst);
+  sdb->tabs[dst_idx] = castb(old_src);
+
+  ensures(sdb->tabs[dst_idx] == old_src);
+  ensures(sdb->tabs[src_idx] == old_dst);
 }
 static int
 db_tab_open(struct db_state *sdb, struct db_view *vdb, int view,
             enum db_tbl_type type, struct str tbl_name, long long rowid,
             struct gui_ctx *ctx) {
 
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
 
-  assert(sdb->unused > 0);
-  assert(view >= 0);
-  assert(view < cntof(sdb->tbls));
+  requires(sdb->unused > 0);
+  requires(view >= 0);
+  requires(view < cntof(sdb->tbls));
 
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
-  assert(!(sdb->unused & (1llu << view)));
-  assert(type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW);
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(!(sdb->unused & (1llu << view)));
+  requires(type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW);
 
   db_tbl_setup(sdb, vdb, view, ctx, tbl_name, rowid, type);
   sdb->sel_tab = castb(db_tbl_add(sdb, view));
@@ -1083,38 +1286,74 @@ db_tab_open(struct db_state *sdb, struct db_view *vdb, int view,
 static int
 db_tab_open_new(struct db_state *sdb, struct db_view *vdb, enum db_tbl_type type,
                 struct str tbl_name, long long rowid, struct gui_ctx *ctx) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
 
-  assert(sdb->unused > 0);
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
-  assert(type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW);
+  requires(sdb->unused > 0);
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW);
 
   int view = db_tbl_new(sdb);
-  return db_tab_open(sdb, vdb, view, type, tbl_name, rowid, ctx);
+  int ret = db_tab_open(sdb, vdb, view, type, tbl_name, rowid, ctx);
+  return ret;
 }
 static int
 db_tab_open_empty(struct db_state *sdb) {
-  assert(sdb);
-  assert(sdb->unused > 0);
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(sdb);
+  requires(sdb->unused >= 0);
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+
+  requires(sdb->tab_cnt >= 0);
+  requires(sdb->tab_cnt < DB_TBL_CNT);
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
+
+  requires(sdb->unused >= 0);
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+  unsigned old_unused = sdb->unused;
 
   int view = db_tbl_new(sdb);
+  assert(view >= 0);
+  assert(view < DB_TBL_CNT);
+  assert(view <= cntof(sdb->tbls));
+
+  int old_tab_cnt = sdb->tab_cnt;
   int tab_idx = db_tbl_add(sdb, view);
+  assert(tab_idx >= 0);
+  assert(tab_idx < DB_TBL_CNT);
+  assert(tab_idx <= cntof(sdb->tabs));
+
   db_tab_resort(sdb, 0, tab_idx);
-  return sdb->sel_tab = 0;
+  int ret = sdb->sel_tab = 0;
+
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->tab_cnt <= old_tab_cnt);
+  ensures(sdb->tab_cnt == old_tab_cnt + 1);
+
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
+
+  ensures(sdb->unused >= 0);
+  ensures(sdb->unused <= DB_TBL_CNT_MSK);
+  ensures(sdb->unused < old_unused);
+
+  ensures(ret >= 0);
+  ensures(ret < DB_TBL_CNT);
+  ensures(ret < cntof(sdb->tabs));
+  return ret;
 }
 static void
 db_tab_open_tbl_id(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
                    int view, long long tbl_id) {
-  assert(ctx);
-  assert(sdb);
-  assert(vdb);
+  requires(ctx);
+  requires(sdb);
+  requires(vdb);
 
-  assert(sdb->unused > 0);
-  assert(view < cntof(sdb->tbls));
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(sdb->unused > 0);
+  requires(view < cntof(sdb->tbls));
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
 
   sqlite3_stmt *stmt = 0;
   struct str sql = strv("SELECT name FROM sqlite_master WHERE rowid = ?;");
@@ -1137,13 +1376,13 @@ db_tab_open_tbl_id(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ct
 static void
 db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
                     struct gui_ctx *ctx, int view) {
-  assert(ctx);
-  assert(sdb);
-  assert(vdb);
+  requires(ctx);
+  requires(sdb);
+  requires(vdb);
 
-  assert(sdb->unused > 0);
-  assert(view < cntof(sdb->tbls));
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(sdb->unused > 0);
+  requires(view < cntof(sdb->tbls));
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
 
   for tbl_loop(n, i, &vdb->info.sel) {
     long long rowid = tbl_unref(&vdb->info.sel, n, 0);
@@ -1152,19 +1391,39 @@ db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
 }
 static void
 db_tab_close(struct db_state *sdb, int tab_idx) {
-  assert(sdb);
-  assert(tab_idx >= 0);
-  assert(sdb->tab_cnt > 0);
-  assert(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(sdb);
+  requires(tab_idx >= 0);
+  requires(tab_idx < sdb->tab_cnt);
+  requires(tab_idx < DB_TBL_CNT);
+  requires(tab_idx < cntof(sdb->tabs));
 
-  assert(tab_idx < cntof(sdb->tabs));
-  assert(tab_idx < sdb->tab_cnt);
-  assert(!(sdb->unused & (1llu << sdb->tabs[tab_idx])));
+  requires(sdb->tab_cnt > 0);
+  requires(sdb->tab_cnt <= DB_TBL_CNT);
+  requires(sdb->tab_cnt < cntof(sdb->tabs));
+
+  requires(!(sdb->unused & (1u << sdb->tabs[tab_idx])));
+  requires(sdb->unused <= DB_TBL_CNT_MSK);
+  requires(sdb->unused > 0);
 
   int tbl = sdb->tabs[tab_idx];
+  assert(tbl >= 0);
+  assert(tbl < DB_TBL_CNT);
+  assert(tbl < cntof(sdb->tbls));
+
+  unsigned old_unused = sdb->unused;
   db_tbl_rm(sdb, tab_idx);
   db_tbl_del(sdb, tbl);
   sdb->sel_tab = clamp(0, sdb->sel_tab, sdb->tab_cnt-1);
+
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->tab_cnt < DB_TBL_CNT);
+  ensures(sdb->tab_cnt < cntof(sdb->tbls));
+
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
+  ensures(sdb->unused >= old_unused);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2385,10 +2644,10 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
         db_tab_close(sdb, tab.sel.idx);
       }
       confine gui_disable_on_scope(&gui, ctx, sdb->unused == 0) {
+        /* open new table view tab */
         struct gui_btn add = {.box = hdr.pan.box};
         add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
         if (gui.btn.ico(ctx, &add, &hdr.pan, RES_ICO_FOLDER_ADD)) {
-          /* open new table view tab */
           db_tab_open_empty(sdb);
         }
       }

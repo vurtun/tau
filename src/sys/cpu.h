@@ -61,6 +61,10 @@ cpu_bit_ffs64(unsigned long long u) {
 #define atom_sub(val, add) _InterlockedExchangeSub64((long long volatile *)val, add)
 
 #define force_inline __forceinline
+#define assume(x) __assume(x)
+#define likely(x)
+#define unlikely(x)
+
 #define no_sanitize_int
 #define no_sanitize_addr
 #define no_sanitize_undef
@@ -68,11 +72,11 @@ cpu_bit_ffs64(unsigned long long u) {
 
 #else
 
-#define alignto(x) __attribute__((aligned(x)))
-#define cpu_bit_cnt(u) __builtin_popcount(u)
-#define cpu_bit_cnt64(u) __builtin_popcountll(u)
-#define cpu_bit_ffs32(u) __builtin_ctz(u)
-#define cpu_bit_ffs64(u) __builtin_ctzll(u)
+#define alignto(x)        __attribute__((aligned(x)))
+#define cpu_bit_cnt(u)    __builtin_popcount(u)
+#define cpu_bit_cnt64(u)  __builtin_popcountll(u)
+#define cpu_bit_ffs32(u)  __builtin_ctz(u)
+#define cpu_bit_ffs64(u)  __builtin_ctzll(u)
 
 #define lfence() asm volatile("" ::: "memory")
 #define sfence() asm volatile("" ::: "memory")
@@ -82,12 +86,23 @@ cpu_bit_ffs64(unsigned long long u) {
 #define atom_add(val, add) __sync_fetch_and_add(val, add)
 #define atom_sub(val, sub) __sync_fetch_and_sub(val, sub)
 
-#define force_inline __attribute__((always_inline))
-#define no_sanitize_int __attribute__((no_sanitize("integer")))
-#define no_sanitize_addr __attribute__((no_sanitize("address")))
+#define force_inline      __attribute__((always_inline))
+#define purist            __attribute__((pure))
+
+#define assume(x)         __attribute__((__assume__(x)))
+#define likely(x)         __builtin_expect(!!(x), 1)
+#define unlikely(x)       __builtin_expect(!!(x), 0)
+
+#define no_sanitize_int   __attribute__((no_sanitize("integer")))
+#define no_sanitize_addr  __attribute__((no_sanitize("address")))
 #define no_sanitize_undef __attribute__((no_sanitize("undefined")))
-#define no_sanitize_leak __attribute__((no_sanitize("leak")))
+#define no_sanitize_leak  __attribute__((no_sanitize("leak")))
+
 #endif
+
+#define requires(x) assert(x)
+#define ensures(x) assert(x)
+#define loop_invariant(x) assert(x)
 
 #define sse_align alignto(16)
 #define avx_align alignto(32)
@@ -331,7 +346,6 @@ cpu_rintf(float x) { {
 #define flt4_rsqrt(a)       _mm_rsqrt_ps(a)
 #define flt4_rsqrt(a)       _mm_sqrt_ps(a)
 #define flt4_strs(d,a)      _mm_store_ss(d,a)
-#define flt4_hflt4(s)       _mm_cvtph_ps(s)
 
 static inline float
 cpu_rsqrt(float n) {
@@ -342,20 +356,6 @@ static inline float
 cpu_sqrt(float n) {
   flt4_strs(&n, flt4_sqrt(flt4_flt(n)));
   return n;
-}
-
-typedef struct hflt4_t {unsigned short[4];} hflt4;
-static inline hflt4
-hflt4_flt4(flt4 in) {
-  unsigned int sse_align d[4] = {0};
-  int4_str(d, _mm_cvtps_ph(s,_MM_FROUND_TO_NEAREST_INT));
-  return (hflt4){d[0],d[1],d[2],d[3]};
-}
-static inline unsigned short
-hflt(float in) {
-  flt4 i = flt4_flt(in);
-  union bit_castqi v = {.hflt = hflt4_flt4(i)};
-  return v.u16[0];
 }
 
 #define int4                __m128i
@@ -489,50 +489,6 @@ cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
 }
 #endif
 
-/* hash */
-typedef __m128i       hkey
-#define hkey_init     _mm_loadu_si128((const __m128i *)(const void*)aes_seed)
-#define hkey_zero     _mm_set1_epi32(0)
-#define hkey_eq(a,b)  (_mm_movemask_epi8(_mm_cmpeq_epi8(a, b)) == 0xffff)
-#define hkey_int(a)   _mm_set1_epi32(cast(unsigned,a))
-#define hkey32(v)     _mm_cvtsi128_si32(v);
-
-static inline hkey
-cpu_hash(const void *src, int len, hkey seed) {
-  static const char unsigned msk[32] = {
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0
-  };
-  const unsigned char *at = src;
-  hkey h = _mm_xor_si128(_mm_set1_epi32(cast(unsigned,len)), seed);
-  int n = len >> 4;
-  int over = len & 15;
-  while (n--) {
-    hash_key prv = h;
-    hash_key in = _mm_loadu_si128((const __m128i *)(const void*)at);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_xor_si128(h, prv);
-    at += 16;
-  }
-  if (over) {
-    hkey prv = h;
-    hkey m = _mm_loadu_si128((const __m128i *)(const void*)(msk + 16 - over));
-    hkey in = _mm_loadu_si128(at);
-    hkey pad = _mm_andnot_si128(m, _mm_set1_epi8(over));
-    in = _mm_or_si128(_mm_and_si128(m, in), pad);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_aesdec_si128(h, in);
-    h = _mm_xor_si128(h, prv);
-  }
-  return h;
-}
-
 #elif defined(__arm__) || defined(__aarch64__)
 
 #include <arm_neon.h>
@@ -586,7 +542,6 @@ cpu_rintf(float x) {
 #define flt4_rsqrt(a)       vrsqrteq_f32(a)
 #define flt4_sqrt(a)        vsqrtq_f32(a)
 #define flt4_strs(d,a)      vst1q_lane_f32(d,a,0)
-#define flt4_hflt4(a)       vcvt_f32_f16(a)
 
 static inline flt4
 flt4_cmpu(flt4 a, flt4 b) {
@@ -603,19 +558,6 @@ static inline float
 cpu_sqrt(float n) {
   flt4_strs(&n, flt4_sqrt(flt4_flt(n)));
   return n;
-}
-
-#define hflt4               float16x4_t
-#define hflt4_flt4(s)       vcvt_f16_f32(s)
-
-static inline unsigned short
-hflt(float in) {
-  flt4 i = flt4_flt(in);
-  union {
-    hflt4 hflt;
-    unsigned short u16[4];
-  } v = {.hflt = hflt4_flt4(i)};
-  return v.u16[0];
 }
 
 #define int4                int32x4_t
@@ -731,51 +673,6 @@ cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
   return (int)n;
 }
 
-/* hash */
-typedef uint8x16_t        hkey;
-#define hkey_init         vld1q_u8((const void*)aes_seed)
-#define hkey_zero         vreinterpretq_u8_u32(vdupq_n_u32((0)))
-#define hkey_eq(a,b)      chr16_tst_all_ones(vceqq_u8(a,b))
-#define hkey32(v)         vgetq_lane_s32(vreinterpretq_s32_u8(v), 0);
-
-static inline hkey
-cpu_hash(const void *src, int len, hkey seed) {
-  #define hkey__dec(a,key) (vaesimcq_u8(vaesdq_u8(a, (hkey){0})) ^ (key))
-  static const char unsigned msk[32] = {
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0
-  };
-  const unsigned char *at = src;
-  hkey h = veorq_u8(vreinterpretq_u8_u32(vdupq_n_u32((unsigned)len)), seed);
-  int over = len & 15;
-  int n = len >> 4;
-  while (n--) {
-    hkey prv = h;
-    hkey in = vld1q_u8(at);
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = veorq_u8(h, prv);
-    at += 16;
-  }
-  if (over) {
-    hkey prv = h;
-    hkey in = vld1q_u8(at);
-    hkey m = vld1q_u8((msk + 16 - over));
-    hkey pad = vbicq_u8(m, vdupq_n_u8((unsigned char)over));
-    in = vandq_u8(m, in)|pad;
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = hkey__dec(h, in);
-    h = veorq_u8(h, prv);
-  }
-  #undef hkey__dec
-  return h;
-}
-
 #elif defined(__EMSCRIPTEN__)
 
 #define SYS_EMSCRIPT 1
@@ -783,7 +680,6 @@ cpu_hash(const void *src, int len, hkey seed) {
 #include <wasm_simd128.h>
 
 /* simd 128-bit */
-typedef struct hflt4_t {unsigned short n[4];} hflt4;
 
 /* misc */
 #define yield()
@@ -859,53 +755,6 @@ cpu_sqrt(float x) {
   }
   return y;
 }
-static inline unsigned short
-hflt(float in) {
-  union flt {
-    float f;
-    unsigned u;
-  };
-  union flt f = {.f = in};
-  union flt f32infty = { 255 << 23 };
-  union flt f16max   = { (127 + 16) << 23 };
-  union flt denorm_magic = { ((127 - 15) + (23 - 10) + 1) << 23 };
-  unsigned sign_mask = 0x80000000u;
-  unsigned short o = 0u;
-  unsigned sign = f.u & sign_mask;
-  f.u ^= sign;
-  // NOTE all the integer compares in this function can be safely
-  // compiled into signed compares since all operands are below
-  // 0x80000000. Important if you want fast straight SSE2 code
-  // (since there's no unsigned PCMPGTD).
-  if (f.u >= f16max.u) { // result is Inf or NaN (all exponent bits set)
-      o = (f.u > f32infty.u) ? 0x7e00 : 0x7c00; // NaN->qNaN and Inf->Inf
-  } else { // (De)normalized number or zero
-    if (f.u < (113u << 23u)) { // resulting FP16 is subnormal or zero
-      // use a magic value to align our 10 mantissa bits at the bottom of
-      // the float. as long as FP addition is round-to-nearest-even this just works.
-      f.f += denorm_magic.f;
-      // and one integer subtract of the bias later, we have our final float!
-      o = (unsigned short)(f.u - denorm_magic.u);
-    } else {
-      unsigned mant_odd = (f.u >> 13u) & 1u; // resulting mantissa is odd
-      // update exponent, rounding bias part 1
-      f.u += ((15 - 127) << 23) + 0xfff; // rounding bias part 2
-      f.u += mant_odd;
-      o = (unsigned short)(f.u >> 13u); // take the bits!
-    }
-  }
-  o |= sign >> 16;
-  return o;
-}
-static inline hflt4
-hflt4_flt4(float *in) {
-  hflt4 ret;
-  ret.n[0] = hflt(in[0]);
-  ret.n[1] = hflt(in[1]);
-  ret.n[2] = hflt(in[2]);
-  ret.n[3] = hflt(in[3]);
-  return ret;
-}
 
 /* string */
 static const char*
@@ -946,86 +795,6 @@ cpu_str_fnd(const char *hay, int hay_len, const char *needle, int needle_len) {
     }
   }
   return hay_len;
-}
-
-/* hash */
-typedef struct hash_key_emsc {
-  union {
-    unsigned long long u[2];
-    unsigned int i[4];
-  };
-} hkey;
-#define hkey_init     (hkey){.u = {15604736489670298034LLU, 13596372671434772738LLU}}
-#define hkey_zero     (hkey){0}
-#define hkey_eq(a,b)  (memcmp(&a,&b,sizeof(hkey)) == 0)
-#define hkey32(v)     v.i[0];
-
-static inline unsigned long long
-cpu__hash_rotl64(unsigned long long x, long long r) {
-  return (x << r) | (x >> (64 - r));
-}
-static inline unsigned long long
-cpu__hash_fmix64(unsigned long long k) {
-  k ^= k >> 33;
-  k *= 0xff51afd7ed558ccdllu;
-  k ^= k >> 33;
-  k *= 0xc4ceb9fe1a85ec53llu;
-  k ^= k >> 33;
-  return k;
-}
-static hkey
-cpu_hash(const void *src, int len, hkey seed) {
-  const unsigned char *data = (const unsigned char*)src;
-  unsigned long long h1 = seed.u[0];
-  unsigned long long h2 = seed.u[1];
-  unsigned long long c1 = 0x87c37b91114253d5LLU;
-  unsigned long long c2 = 0x4cf5ad432745937fLLU;
-
-  const int nblocks = len / 16;
-  const unsigned long long * blocks = (const unsigned long long *)(data);
-  for (int i = 0; i < nblocks; i++) {
-    unsigned long long k1 = blocks[i*2+0];
-    unsigned long long k2 = blocks[i*2+1];
-    k1 *= c1; k1  = cpu__hash_rotl64(k1,31); k1 *= c2; h1 ^= k1;
-    h1 = cpu__hash_rotl64(h1,27); h1 += h2; h1 = h1*5+0x52dce729;
-    k2 *= c2; k2  = cpu__hash_rotl64(k2,33); k2 *= c1; h2 ^= k2;
-    h2 = cpu__hash_rotl64(h2,31); h2 += h1; h2 = h2*5+0x38495ab5;
-  }
-  unsigned long long k1 = 0, k2 = 0;
-  const unsigned char* tail = (const unsigned char*)(data + nblocks*16);
-  switch(len & 15)
-  {
-  case 15: k2 ^= (unsigned long long)(tail[14]) << 48;
-  case 14: k2 ^= (unsigned long long)(tail[13]) << 40;
-  case 13: k2 ^= (unsigned long long)(tail[12]) << 32;
-  case 12: k2 ^= (unsigned long long)(tail[11]) << 24;
-  case 11: k2 ^= (unsigned long long)(tail[10]) << 16;
-  case 10: k2 ^= (unsigned long long)(tail[ 9]) << 8;
-  case  9: k2 ^= (unsigned long long)(tail[ 8]) << 0;
-           k2 *= c2; k2  = cpu__hash_rotl64(k2,33); k2 *= c1; h2 ^= k2;
-
-  case  8: k1 ^= (unsigned long long)(tail[ 7]) << 56;
-  case  7: k1 ^= (unsigned long long)(tail[ 6]) << 48;
-  case  6: k1 ^= (unsigned long long)(tail[ 5]) << 40;
-  case  5: k1 ^= (unsigned long long)(tail[ 4]) << 32;
-  case  4: k1 ^= (unsigned long long)(tail[ 3]) << 24;
-  case  3: k1 ^= (unsigned long long)(tail[ 2]) << 16;
-  case  2: k1 ^= (unsigned long long)(tail[ 1]) << 8;
-  case  1: k1 ^= (unsigned long long)(tail[ 0]) << 0;
-           k1 *= c1; k1  = cpu__hash_rotl64(k1,31); k1 *= c2; h1 ^= k1;
-  };
-
-  h1 ^= len; h2 ^= len;
-  h1 += h2; h2 += h1;
-  h1 = cpu__hash_fmix64(h1);
-  h2 = cpu__hash_fmix64(h2);
-  h1 += h2;
-  h2 += h1;
-
-  hkey ret;
-  ret.u[0] = h1;
-  ret.u[1] = h2;
-  return ret;
 }
 
 #endif

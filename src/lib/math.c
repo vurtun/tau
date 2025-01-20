@@ -38,10 +38,6 @@ union bit_casti {
   unsigned i;
   float f;
 };
-union bit_castqi {
-  hflt4 hflt;
-  unsigned short u16[4];
-};
 static float
 math_log2(float x) {
   union bit_castf v = {x};
