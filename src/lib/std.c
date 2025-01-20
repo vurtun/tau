@@ -837,7 +837,7 @@ str_fnd(struct str hay, struct str needle) {
     }
     return str_len(hay);
   } else {
-    return cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
+    return cpu_str_fnd(str_beg(hay), str_len(hay), str_beg(needle), castsz(str_len(needle)));
   }
 }
 static int

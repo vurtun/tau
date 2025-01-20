@@ -1,7 +1,7 @@
-#define _GNU_SOURCE
 #define VK_USE_PLATFORM_XLIB_KHR
 
 /* std */
+#include <unistd.h>
 #include <stddef.h>
 #include <ctype.h>
 #include <errno.h>
@@ -126,7 +126,7 @@ static struct sys g_sys;
  *                                Util
  * ---------------------------------------------------------------------------
  */
-static void no_return
+static void
 xpanic(const char *fmt, ...) {
   assert(fmt);
   va_list args;

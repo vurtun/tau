@@ -266,7 +266,8 @@ cpu_info(struct cpu_info *cpu) {
   unsigned eax, ebx, ecx, edx;
 
   /* vendor  */
-  eax = 0, ecx = 0;
+  eax = 0;
+  ecx = 0;
   cpu__id(&eax, &ebx, &ecx, &edx);
   char vendor[13] = {0};
   memcpy(vendor + 0, &ebx, sizeof(ebx));
@@ -280,7 +281,8 @@ cpu_info(struct cpu_info *cpu) {
     cpu->vendor = CPU_UNKNOWN;
   }
   /* check features */
-  eax = 1, ecx = 0;
+  eax = 1;
+  ecx = 0;
   cpu__id(&eax, &ebx, &ecx, &edx);
   cpu->has_fpu = (edx & (1u << 0)) != 0;
   cpu->has_mmx = (edx & (1u << 23)) != 0;
@@ -296,7 +298,8 @@ cpu_info(struct cpu_info *cpu) {
   cpu->has_simd_256 = cpu->has_avx;
 
   /* check extended features */
-  eax = 7, ecx = 0;
+  eax = 7;
+  ecx = 0;
   cpu__id(&eax, &ebx, &ecx, &edx);
   cpu->has_avx2 = (ebx & (1u << 5)) != 0;
   cpu->has_sha = (ebx & (1u << 29)) != 0;
@@ -318,12 +321,12 @@ cpu_info(struct cpu_info *cpu) {
   cpu->has_avx512_vp2intersect = (edx & (1u << 8)) != 0;
 }
 static force_inline float
-cpu_fma(float x, float y, float z) { {
+cpu_fma(float x, float y, float z) {
   __asm__ ("vfmaddss %3, %2, %1, %0" : "=x" (x) : "x" (x), "x" (y), "x" (z));
   return x;
 }
 static force_inline float
-cpu_rintf(float x) { {
+cpu_rintf(float x) {
   __asm__ ("frndint" : "+t"(x));
   return x;
 }
@@ -344,7 +347,7 @@ cpu_rintf(float x) { {
 #define flt4_int4(a)        _mm_castsi128_ps(a)
 #define flt4_cmpu(a,b)      _mm_cmpunord_ps(a,b)
 #define flt4_rsqrt(a)       _mm_rsqrt_ps(a)
-#define flt4_rsqrt(a)       _mm_sqrt_ps(a)
+#define flt4_sqrt(a)        _mm_sqrt_ps(a)
 #define flt4_strs(d,a)      _mm_store_ss(d,a)
 
 static inline float
@@ -399,7 +402,7 @@ cpu_sqrt(float n) {
 #define int8_mul(a,b)       _mm256_mullo_epi32(a, b)
 
 /* string */
-#if CPU_SIMD_256
+#ifdef CPU_SIMD_256
 
 static inline no_sanitize_addr const char*
 cpu_str_chr(const char *s, int n, int chr) {
@@ -447,45 +450,47 @@ cpu_str_fnd(const char *s, int n, const char *needle, int k) {
 #else
 
 static inline const char*
-cpu_str_chr(const char *s, int n, int chr) {
+cpu_str_chr(const char *str, int cnt, int chr) {
   static const char unsigned ovr_msk[32] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   };
-  const char *e = s + n;
-  __m128i m = _mm_set1_epi8(chr & 0xff);
-  for (; s < e; s += 16) {
-    int r = (int)(e - s); r = r > 16 ? 16 : r;
-    __m128i o = _mm_loadu_si128((const __m128i *)(ovr_msk + 16 - r));
-    __m128i d = _mm_loadu_si128((const __m128i *)(const void*)s);
+  const char *end = str + cnt;
+  __m128i ndl = _mm_set1_epi8((char)(chr & 0xff));
+  for (; str < end; str += 16) {
+    int rst = (int)(end - str);
+    rst = rst > 16 ? 16 : rst;
+
+    __m128i o = _mm_loadu_si128((const __m128i *)(const void*)(ovr_msk + 16 - rst));
+    __m128i d = _mm_loadu_si128((const __m128i *)(const void*)(const void*)str);
     __m128i v = _mm_and_si128(d, o);
-    unsigned msk = _mm_movemask_epi8(_mm_cmpeq_epi8(v,m));
+    unsigned msk = (unsigned)_mm_movemask_epi8(_mm_cmpeq_epi8(v,ndl));
     if (msk) {
-      return s + cpu_bit_ffs32(msk);
+      return str + cpu_bit_ffs32(msk);
     }
   }
-  return e;
+  return end;
 }
 static inline int
-cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
-  const __m128i first = _mm_set1_epi8(needle[0]);
-  const __m128i last  = _mm_set1_epi8(needle[k-1]);
-  for (size_t i = 0; i < n; i += 16) {
-    const __m128i block_first = _mm_loadu_si128((const __m128i*)(s + i));
-    const __m128i block_last  = _mm_loadu_si128((const __m128i*)(s + i + k - 1));
-    const __m128i eq_first = _mm_cmpeq_epi8(first, block_first);
-    const __m128i eq_last  = _mm_cmpeq_epi8(last, block_last);
-    unsigned mask = _mm_movemask_epi8(_mm_and_si128(eq_first, eq_last));
-    while (mask != 0) {
-      int bitpos = __builtin_ctz(mask);
-      if (memcmp(s + i + bitpos + 1, needle + 1, k - 2) == 0) {
-          return i + bitpos;
+cpu_str_fnd(const char *str, int cnt, const char *ndl, size_t len) {
+  const __m128i first = _mm_set1_epi8(ndl[0]);
+  const __m128i last  = _mm_set1_epi8(ndl[len-1]);
+  for (int i = 0; i < cnt; i += 16) {
+    const __m128i blk_beg = _mm_loadu_si128((const __m128i*)(const void*)(str + i));
+    const __m128i blk_end = _mm_loadu_si128((const __m128i*)(const void*)(str + i + len - 1));
+    const __m128i eql_beg = _mm_cmpeq_epi8(first, blk_beg);
+    const __m128i eql_end = _mm_cmpeq_epi8(last, blk_end);
+    unsigned msk = (unsigned)_mm_movemask_epi8(_mm_and_si128(eql_beg, eql_end));
+    while (msk != 0) {
+      unsigned bitpos = (unsigned)__builtin_ctz(msk);
+      if (memcmp(str + i + bitpos, ndl + 1, (size_t)(len - 1)) == 0) {
+        return i + (int)bitpos;
       }
-      mask = mask & (mask - 1);
+      msk = msk & (msk - 1);
     }
   }
-  return n;
+  return cnt;
 }
 #endif
 

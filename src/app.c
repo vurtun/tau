@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 /* std */
 #include <assert.h>
 #include <stddef.h>
@@ -116,9 +118,6 @@ app_view_del(struct app *app, int idx) {
   requires(app->unused <= APP_VIEW_CNT_MSK);
   requires(!(app->unused & (1U << castu(idx))));
 
-  assume(idx >= 0);
-  assume(idx < APP_VIEW_CNT);
-
   unsigned old_unused = app->unused;
   struct app_view *view = &app->views[idx];
   app->unused |= (1U << castu(idx));
@@ -172,9 +171,6 @@ app_tab_add(struct app *app, int idx) {
 
   requires(!(app->unused & (1U << castu(idx))));
   requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  assume(idx >= 0);
-  assume(idx < APP_VIEW_CNT);
 
   int old_tab_cnt = app->tab_cnt;
   int ret = app->tab_cnt++;
@@ -235,9 +231,6 @@ app_tab_close(struct app *app, int tab_idx) {
   requires(!(app->unused & (1U << castu(app->tabs[tab_idx]))));
   requires(app->unused <= APP_VIEW_CNT_MSK);
 
-  assume(tab_idx >= 0);
-  assume(tab_idx < APP_VIEW_CNT);
-
   unsigned old_unused = app->unused;
   app_view_del(app, app->tabs[tab_idx]);
   app_tab_rm(app, tab_idx);
@@ -275,7 +268,6 @@ app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   assert(add_cnt >= 0);
   assert(add_cnt < APP_VIEW_CNT);
 
-  assume(file_cnt < cntof(app->tabs));
   for arr_loopn(i, app->tabs, file_cnt) {
     /* open each database in new tab */
     loop_invariant(i >= 0);
