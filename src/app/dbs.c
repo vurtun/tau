@@ -42,9 +42,9 @@ struct db_name_lck {
 static void
 db_tbl_name_acq(struct db_name_lck *lck, struct db_state *sdb,
                 struct db_tbl_state *tbl) {
-  assert(sdb);
-  assert(lck);
-  assert(tbl);
+  requires(sdb);
+  requires(lck);
+  requires(tbl);
 
   lck->stmt = 0;
   if (tbl->qry_name) {
@@ -63,16 +63,16 @@ db_tbl_name_acq(struct db_name_lck *lck, struct db_state *sdb,
 }
 static void
 db_tbl_name_rel(struct db_name_lck *lck) {
-  assert(lck);
+  requires(lck);
   sqlite3_finalize(lck->stmt);
 }
 static void
 db_tbl_col_name_acq(struct db_name_lck *lck, struct db_state *sdb,
                     struct db_tbl_view *tbl, struct db_tbl_col *col,
                     struct str tbl_name, long long col_id) {
-  assert(sdb);
-  assert(lck);
-  assert(tbl);
+  requires(sdb);
+  requires(lck);
+  requires(tbl);
 
   if (!col || col->qry_name) {
     struct str sql = strv("SELECT name FROM pragma_table_info(?) WHERE rowid = ?;");
@@ -150,7 +150,6 @@ db_tbl_fltr_del(struct db_tbl_fltr_state *fltr, int idx) {
 static int
 db_tbl_fltr_add(struct db_tbl_fltr_state *fltr, int idx) {
   requires(fltr);
-
   requires(fltr->cnt >= 0);
   requires(fltr->cnt < DB_MAX_FLTR_CNT);
   requires(fltr->cnt < cntof(fltr->elms));
@@ -189,7 +188,7 @@ db_tbl_fltr_rm(struct db_tbl_fltr_state *fltr, int lst_idx) {
   requires(lst_idx < DB_MAX_FLTR_CNT);
   requires(lst_idx < cntof(fltr->lst));
 
-  requires(fltr->unused <= APP_VIEW_CNT_MSK);
+  requires(fltr->unused < APP_VIEW_CNT_MSK);
   requires(fltr->unused >= 0);
   requires(!(fltr->unused & (1 << fltr->lst[lst_idx])));
 
@@ -212,8 +211,8 @@ db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
   requires(fltr->unused);
   requires(str_len(str) > 0);
   requires(str_len(str) <= DB_MAX_FLTR_STR);
-  requires(fltr->cnt < DB_MAX_FLTR_CNT);
-  requires(fltr->cnt < cntof(fltr->lst));
+  requires(fltr->cnt <= DB_MAX_FLTR_CNT);
+  requires(fltr->cnt <= cntof(fltr->lst));
 
   int idx = db_tbl_fltr_new(fltr);
   assert(idx < DB_MAX_FLTR_CNT);
@@ -243,7 +242,6 @@ db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
 static void
 db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
   requires(fltr);
-
   requires(fltr->cnt > 0);
   requires(fltr->cnt <= DB_MAX_FLTR_CNT);
   requires(fltr->cnt <= cntof(fltr->lst));
@@ -272,7 +270,7 @@ db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
 }
 static void
 db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
-  assert(fltr);
+  requires(fltr);
   for arr_loopn(i, fltr->lst, fltr->cnt) {
     assert(i < cntof(fltr->lst));
     int idx = fltr->lst[i];
@@ -284,7 +282,7 @@ db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
 }
 static void
 db_tbl_open_fltr(struct db_tbl_state *tbl, long long col) {
-  assert(tbl);
+  requires(tbl);
   mset(&tbl->fltr.data_rng, szof(tbl->fltr.data_rng), 0);
   tbl->disp = DB_TBL_VIEW_DSP_FILTER;
   tbl->fltr.state = DB_TBL_FLTR_EDT;
@@ -294,7 +292,7 @@ db_tbl_open_fltr(struct db_tbl_state *tbl, long long col) {
 }
 static void
 db_tbl_close_fltr(struct db_tbl_state *tbl) {
-  assert(tbl);
+  requires(tbl);
   tbl->disp = DB_TBL_VIEW_DSP_DATA;
   tbl->fltr.state = DB_TBL_FLTR_LST;
 }
@@ -309,6 +307,10 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   requires(vtbl);
   requires(fltr);
   requires(view);
+
+  requires(fltr->cnt >= 0);
+  requires(fltr->cnt < DB_MAX_FLTR_CNT);
+  requires(fltr->cnt < cntof(fltr->lst));
 
   requires(low >= 0);
   requires(high >= 0);
@@ -408,6 +410,17 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   db_tbl_col_name_rel(&clck);
   db_tbl_name_rel(&tlck);
   stmt = 0;
+
+  ensures(view->id == stbl->rowid);
+  ensures((stmt && fltr->data_rng.lo == low) || (!stmt && fltr->data_rng.lo == 0));
+  ensures((stmt && fltr->data_rng.hi == high) || (!stmt && fltr->data_rng.hi == 0));
+
+  ensures(fltr->data_rng.cnt >= 0);
+  ensures(fltr->data_rng.cnt <= DB_MAX_FLTR_ELM);
+  ensures(fltr->data_rng.cnt <= cntof(view->data));
+
+  ensures(view->buf.cnt >= 0);
+  ensures(view->buf.cnt <= cntof(view->buf.mem));
   return 0;
 }
 /* ---------------------------------------------------------------------------
@@ -489,6 +502,7 @@ static void
 db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                 int low, int high, int sel) {
+
   requires(sdb);
   requires(vdb);
   requires(stbl);
@@ -668,10 +682,14 @@ static struct str
 db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
                     struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                     struct str tbl_name, struct str sql) {
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(vtbl);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(vtbl);
+
+  requires(stbl->fltr.cnt >= 0);
+  requires(stbl->fltr.cnt <= DB_MAX_FLTR_CNT);
+  requires(stbl->fltr.cnt <= cntof(stbl->fltr.lst));
 
   /* fill with active filter conditions */
   const char *pre = " WHERE";
@@ -699,10 +717,10 @@ db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
 static int
 db_tbl_qry_row_cnt(struct db_state *sdb, struct db_view *vdb,
                    struct db_tbl_state *stbl, struct db_tbl_view *vtbl) {
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(vtbl);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(vtbl);
 
   /* query table name */
   struct db_name_lck lck = {0};
@@ -721,27 +739,43 @@ db_tbl_qry_row_cnt(struct db_state *sdb, struct db_view *vdb,
     cnt = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
   }
+  ensures(cnt >= 0);
   return cnt;
 }
 static int
 db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                 int low, int high) {
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(vtbl);
 
-  assert(low >= 0);
-  assert(high >= 0);
-  assert(low <= high);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(vtbl);
 
-  assert(low <= stbl->row.rng.total);
-  assert(high <= stbl->row.rng.total);
-  assert((high - low) <= cntof(vtbl->row.lst));
+  requires(low >= 0);
+  requires(high >= 0);
+  requires(low <= high);
+  requires(low <= stbl->row.rng.total);
+  requires(high <= stbl->row.rng.total);
+
+  requires((high - low) <= DB_MAX_TBL_ROWS);
+  requires((high - low) <= cntof(vtbl->row.rowids));
+  requires((high - low) <= cntof(vtbl->row.lst));
   if ((high - low) > cntof(vtbl->row.rowids)) {
     return -1;
   }
+  requires(stbl->row.cols.lo >= 0);
+  requires(stbl->row.cols.hi >= 0);
+  requires(stbl->row.cols.hi >= stbl->row.cols.lo);
+  requires(stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt);
+
+  requires(stbl->row.cols.lo >= stbl->col.rng.lo);
+  requires(stbl->row.cols.hi <= stbl->col.rng.hi);
+  requires(stbl->row.cols.cnt <= stbl->col.rng.cnt);
+
+  requires(stbl->row.cols.hi >= stbl->row.cols.lo);
+  requires(stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt);
+
   stbl->row.rng.lo = low;
   stbl->row.rng.hi = high;
   stbl->row.rng.cnt = 0;
@@ -773,15 +807,14 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql, "LIMIT %d,%d", low, high-low);
 
   /* query table rows */
-  if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
+  int elm_idx = 0;
+  if (str_len(sql) <= cntof(vdb->sql_qry_buf)-1) {
     int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     assert(err == SQLITE_OK);
 
-    int elm_idx = 0;
     for db_loop(_,err,stmt,vtbl->row.rowids) {
       assert(elm_idx < DB_MAX_TBL_ELM);
       vtbl->row.rowids[stbl->row.rng.cnt++] = sqlite3_column_int64(stmt, 0);
-
       for loopn(i, stbl->row.cols.cnt, DB_MAX_TBL_ROW_COLS) {
         int idx = i + stbl->row.cols.lo;
         assert(idx < cntof(vtbl->col.lst));
@@ -791,7 +824,6 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
           const char *dat = (const char*)sqlite3_column_text(stmt, i+1);
           int len = sqlite3_column_bytes(stmt, i+1);
           struct str data = strn(dat, len);
-
           assert(elm_idx < cntof(vtbl->row.lst));
           vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
         }
@@ -808,16 +840,31 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
     stbl->row.rng.total = 0;
   }
   db_tbl_name_rel(&tlck);
+
+  ensures(elm_idx >= 0);
+  ensures(elm_idx < DB_MAX_TBL_ELM);
+  ensures(elm_idx < cntof(vtbl->row.lst));
+
+  ensures(stbl->row.rng.lo >= 0);
+  ensures(stbl->row.rng.hi >= 0);
+  ensures(stbl->row.rng.lo <= stbl->row.rng.hi);
+  ensures(stbl->row.rng.lo + stbl->row.rng.cnt == stbl->row.rng.hi);
+  ensures(stbl->row.rng.cnt <= DB_MAX_TBL_ROWS);
+  ensures(stbl->row.rng.cnt <= cntof(vtbl->row.rowids));
+
+  ensures(vtbl->row.buf.cnt >= 0);
+  ensures(vtbl->row.buf.cnt <= cntof(vtbl->row.buf.mem));
+  ensures(vtbl->row.id == stbl->rowid);
   return 0;
 }
 static void
 db_tbl_rev(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *stbl,
            struct db_tbl_view *view) {
 
-  assert(sdb);
-  assert(vdb);
-  assert(stbl);
-  assert(view);
+  requires(sdb);
+  requires(vdb);
+  requires(stbl);
+  requires(view);
 
   stbl->row.rng.total = db_tbl_qry_row_cnt(sdb, vdb, stbl, view);
   stbl->row.rng.cnt = 0;
@@ -829,10 +876,10 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
              struct gui_ctx *ctx, struct str name, long long rowid,
              enum db_tbl_type kind) {
 
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(str_is_val(name));
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(str_is_val(name));
 
   /* setup table view */
   struct db_tbl_state *tbl = &sdb->tbls[idx];
@@ -1012,12 +1059,15 @@ db_tbl_fltr_enabled(struct db_tbl_fltr_state *fltr) {
  */
 static int
 db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
-  assert(sdb);
   static const char *type[] = {
 #define DB_INFO(a,b,c,d) b,
     DB_TBL_MAP(DB_INFO)
 #undef DB_INFO
   };
+  requires(sdb);
+  requires(tab >= 0);
+  requires(tab <= cntof(type));
+
   int err = 0;
   sqlite3_stmt *stmt = 0;
   if (str_len(fltr)) {
@@ -1036,27 +1086,35 @@ db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
   assert(err == SQLITE_ROW);
   int cnt = sqlite3_column_int(stmt, 0);
   err = sqlite3_finalize(stmt);
-  assert(err == SQLITE_OK);
+
+  ensures(err == SQLITE_OK);
+  ensures(cnt >= 0);
   return cnt;
 }
 static struct db_info_elm*
 db_info_elm_new(struct db_info_state *sinfo, struct db_info_view *vinfo) {
-  assert(vinfo);
-  assert(sinfo);
-  assert(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
+  requires(vinfo != 0);
+  requires(sinfo != 0);
+  requires(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
 
+  int old_cnt = sinfo->elm_cnt;
   int elm_idx = sinfo->elm_cnt++;
   struct db_info_elm *elm = vinfo->elms + elm_idx;
+
+  ensures(elm != 0);
+  ensures(sinfo->elm_cnt == old_cnt + 1);
+  ensures(elm == vinfo->elms + old_cnt);
   return elm;
 }
 static void
 db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
                 long long rowid, struct str name, struct str sql) {
 
-  assert(vinfo);
-  assert(sinfo);
-  assert(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
+  requires(vinfo);
+  requires(sinfo);
+  requires(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
 
+  int old_cnt = sinfo->elm_cnt;
   struct db_info_elm *elm = db_info_elm_new(sinfo, vinfo);
   elm->name = str_buf_sqz(&vinfo->buf, name, DB_MAX_TBL_NAME);
   elm->sql = str_buf_sqz(&vinfo->buf, sql, DB_MAX_TBL_SQL);
@@ -1069,19 +1127,23 @@ db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
       *byte = ' ';
     }
   }
+  ensures(elm->rowid == rowid);
+  ensures(sinfo->elm_cnt == old_cnt + 1);
+  ensures(str_buf_len(elm->name) <= DB_MAX_TBL_NAME);
+  ensures(str_buf_len(elm->sql) <= DB_MAX_TBL_SQL);
 }
 static int
 db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
                 struct db_info_view *vinfo, int low, int high) {
   int err = 0;
-  assert(sdb);
-  assert(sinfo);
-  assert(vinfo);
+  requires(sdb != 0);
+  requires(sinfo != 0);
+  requires(vinfo != 0);
 
-  assert(low >= 0);
-  assert(low <= high);
-  assert(high <= sinfo->tab_cnt[sinfo->sel_tab]);
-  assert((high - low) < DB_MAX_INFO_ELM_CNT);
+  requires(low >= 0);
+  requires(low <= high);
+  requires(high <= sinfo->tab_cnt[sinfo->sel_tab]);
+  requires(high - low < DB_MAX_INFO_ELM_CNT);
   if ((high - low) > DB_MAX_INFO_ELM_CNT) {
     return -1;
   }
@@ -1125,15 +1187,23 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
   }
   assert(err == SQLITE_DONE);
   sqlite3_finalize(stmt);
+
+  ensures(err == SQLITE_DONE);
+  ensures(sinfo->elm_cnt <= DB_MAX_INFO_ELM_CNT);
+  ensures(sinfo->elm_rng.lo == low);
+  ensures(sinfo->elm_rng.hi == high);
+  ensures(sinfo->elm_rng.cnt == high - low);
+  ensures(vinfo->buf.cnt <= cntof(vinfo->buf.mem));
+  ensures(vinfo->id == sdb->id);
   return 0;
 }
 static void
 db_info_sel_elms(struct db_state *sdb, struct db_info_state *sinfo,
                  struct db_info_view *vinfo, const struct gui_lst_sel *sel) {
-  assert(sdb);
-  assert(sel);
-  assert(sinfo);
-  assert(vinfo);
+  requires(sdb);
+  requires(sel);
+  requires(sinfo);
+  requires(vinfo);
   if (sel->mut == GUI_LST_SEL_MOD_REPLACE) {
     tbl_clr(&vinfo->sel);
   }
@@ -1214,14 +1284,19 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
   }
   int sel = cpu_bit_ffs32(sdb->info.tab_act);
   sdb->info.sel_tab = cast(enum db_tbl_type, sel);
+
+  ensures(sdb->unused == DB_TBL_CNT_MSK-1);
+  ensures(sdb->info.sel_tab >= 0);
+  ensures(sdb->info.sel_tab < cntof(sdb->info.tab_cnt));
   return 1;
 }
 static void
 db_free(struct db_state *sdb) {
-  assert(sdb);
+  ensures(sdb);
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->tab_cnt <= cntof(sdb->tabs));
+
   /* cleanup tabs */
-  assert(sdb->tab_cnt >= 0);
-  assert(sdb->tab_cnt <= cntof(sdb->tabs));
   for arr_loopn(i, sdb->tabs, sdb->tab_cnt) {
     assert(i < DB_TBL_CNT);
     int idx = sdb->tabs[i];
@@ -1240,6 +1315,9 @@ db_tab_resort(struct db_state *sdb, int dst_idx, int src_idx) {
   requires(sdb);
   requires(dst_idx >= 0);
   requires(src_idx >= 0);
+
+  requires(src_idx <= 0xff);
+  requires(dst_idx <= 0xff);
 
   requires(dst_idx < sdb->tab_cnt);
   requires(src_idx < sdb->tab_cnt);
@@ -1281,6 +1359,11 @@ db_tab_open(struct db_state *sdb, struct db_view *vdb, int view,
 
   db_tbl_setup(sdb, vdb, view, ctx, tbl_name, rowid, type);
   sdb->sel_tab = castb(db_tbl_add(sdb, view));
+
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
   return sdb->sel_tab;
 }
 static int
@@ -1296,6 +1379,11 @@ db_tab_open_new(struct db_state *sdb, struct db_view *vdb, enum db_tbl_type type
 
   int view = db_tbl_new(sdb);
   int ret = db_tab_open(sdb, vdb, view, type, tbl_name, rowid, ctx);
+
+  ensures(ret < sdb->tab_cnt);
+  ensures(ret < DB_TBL_CNT);
+  ensures(ret < cntof(sdb->tabs));
+  ensures(ret >= 0);
   return ret;
 }
 static int
@@ -1305,8 +1393,8 @@ db_tab_open_empty(struct db_state *sdb) {
   requires(sdb->unused <= DB_TBL_CNT_MSK);
 
   requires(sdb->tab_cnt >= 0);
-  requires(sdb->tab_cnt < DB_TBL_CNT);
-  requires(sdb->tab_cnt < cntof(sdb->tabs));
+  requires(sdb->tab_cnt <= DB_TBL_CNT);
+  requires(sdb->tab_cnt <= cntof(sdb->tabs));
 
   requires(sdb->unused >= 0);
   requires(sdb->unused <= DB_TBL_CNT_MSK);
@@ -1315,13 +1403,13 @@ db_tab_open_empty(struct db_state *sdb) {
   int view = db_tbl_new(sdb);
   assert(view >= 0);
   assert(view < DB_TBL_CNT);
-  assert(view <= cntof(sdb->tbls));
+  assert(view < cntof(sdb->tbls));
 
   int old_tab_cnt = sdb->tab_cnt;
   int tab_idx = db_tbl_add(sdb, view);
   assert(tab_idx >= 0);
   assert(tab_idx < DB_TBL_CNT);
-  assert(tab_idx <= cntof(sdb->tabs));
+  assert(tab_idx < cntof(sdb->tabs));
 
   db_tab_resort(sdb, 0, tab_idx);
   int ret = sdb->sel_tab = 0;
@@ -1372,6 +1460,18 @@ db_tab_open_tbl_id(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ct
     db_tab_open_new(sdb, vdb, sdb->info.sel_tab, tbl_name_str, tbl_id, ctx);
   }
   sqlite3_finalize(stmt);
+
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->tab_cnt < DB_TBL_CNT);
+  ensures(sdb->tab_cnt < cntof(sdb->tabs));
+
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
+
+  ensures(sdb->unused >= 0);
+  ensures(sdb->unused <= DB_TBL_CNT_MSK);
 }
 static void
 db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
@@ -1388,6 +1488,18 @@ db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
     long long rowid = tbl_unref(&vdb->info.sel, n, 0);
     db_tab_open_tbl_id(sdb, vdb, ctx, view, rowid);
   }
+  ensures(sdb->tab_cnt >= 0);
+  ensures(sdb->tab_cnt < sdb->tab_cnt);
+  ensures(sdb->tab_cnt < DB_TBL_CNT);
+  ensures(sdb->tab_cnt < cntof(sdb->tabs));
+
+  ensures(sdb->sel_tab >= 0);
+  ensures(sdb->sel_tab < sdb->tab_cnt);
+  ensures(sdb->sel_tab < DB_TBL_CNT);
+  ensures(sdb->sel_tab < cntof(sdb->tabs));
+
+  ensures(sdb->unused >= 0);
+  ensures(sdb->unused <= DB_TBL_CNT_MSK);
 }
 static void
 db_tab_close(struct db_state *sdb, int tab_idx) {
@@ -1436,10 +1548,10 @@ static int
 ui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
            struct str txt, enum res_ico_id icon, int uline) {
 
-  assert(ctx);
-  assert(btn);
-  assert(icon);
-  assert(parent);
+  requires(ctx);
+  requires(btn);
+  requires(icon);
+  requires(parent);
 
   static const struct gui_align align = {GUI_HALIGN_MID, GUI_VALIGN_MID};
   gui.btn.begin(ctx, btn, parent);
@@ -1459,10 +1571,10 @@ ui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
 static int
 ui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
                struct str txt, enum res_ico_id icon) {
-  assert(ctx);
-  assert(btn);
-  assert(icon);
-  assert(parent);
+  requires(ctx);
+  requires(btn);
+  requires(icon);
+  requires(parent);
 
   gui.btn.begin(ctx, btn, parent);
   {
@@ -1484,13 +1596,13 @@ ui_edit_fnd(struct gui_ctx *ctx, struct gui_edit_box *edt,
             struct gui_panel *pan, struct gui_panel *parent,
             struct gui_txt_ed *ted, char *buf, int cap, struct str str) {
 
-  assert(ted);
-  assert(buf);
-  assert(ctx);
+  requires(ted);
+  requires(buf);
+  requires(ctx);
 
-  assert(edt);
-  assert(pan);
-  assert(parent);
+  requires(edt);
+  requires(pan);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -1523,13 +1635,13 @@ static int
 ui_tbl_hdr_elm_ico(struct gui_ctx *ctx, struct gui_tbl *tbl,
                    const int *tbl_lay, struct gui_btn *slot,
                    int *state, enum res_ico_id ico) {
-  assert(ctx);
-  assert(tbl);
-  assert(ico);
+  requires(ctx);
+  requires(tbl);
+  requires(ico);
 
-  assert(slot);
-  assert(state);
-  assert(tbl_lay);
+  requires(slot);
+  requires(state);
+  requires(tbl_lay);
 
   gui.tbl.hdr.slot.begin(ctx, tbl, slot);
   {
@@ -1542,10 +1654,10 @@ ui_tbl_hdr_elm_ico(struct gui_ctx *ctx, struct gui_tbl *tbl,
 static int
 ui_tbl_hdr_elm_tog(struct gui_ctx *ctx, struct gui_tbl *tbl,
                    const int *tbl_lay, int *state, int act) {
-  assert(ctx);
-  assert(tbl);
-  assert(state);
-  assert(tbl_lay);
+  requires(ctx);
+  requires(tbl);
+  requires(state);
+  requires(tbl_lay);
 
   struct gui_btn slot = {0};
   enum res_ico_id ico = act ? RES_ICO_TOGGLE_ON : RES_ICO_TOGGLE_OFF;
@@ -1554,10 +1666,10 @@ ui_tbl_hdr_elm_tog(struct gui_ctx *ctx, struct gui_tbl *tbl,
 static int
 ui_tbl_hdr_elm_lock(struct gui_ctx *ctx, struct gui_tbl *tbl,
                     const int *tbl_lay, int *state, int act) {
-  assert(ctx);
-  assert(tbl);
-  assert(state);
-  assert(tbl_lay);
+  requires(ctx);
+  requires(tbl);
+  requires(state);
+  requires(tbl_lay);
 
   struct gui_btn slot = {0};
   enum res_ico_id ico = act ? RES_ICO_UNLOCK : RES_ICO_LOCK;
@@ -1566,11 +1678,11 @@ ui_tbl_hdr_elm_lock(struct gui_ctx *ctx, struct gui_tbl *tbl,
 static int
 ui_tbl_lst_elm_col_tog(struct gui_ctx *ctx, struct gui_tbl *tbl,
                        const int *tbl_lay, struct gui_panel *elm, int *is_act) {
-  assert(ctx);
-  assert(tbl);
-  assert(elm);
-  assert(is_act);
-  assert(tbl_lay);
+  requires(ctx);
+  requires(tbl);
+  requires(elm);
+  requires(is_act);
+  requires(tbl_lay);
 
   struct gui_icon icon = {0};
   enum res_ico_id ico = *is_act ? RES_ICO_TOGGLE_ON : RES_ICO_TOGGLE_OFF;
@@ -1588,10 +1700,10 @@ ui_tbl_lst_elm_col_tog(struct gui_ctx *ctx, struct gui_tbl *tbl,
 static void
 ui_db_tbl_fltr_lst_tbl_hdr(struct db_tbl_fltr_state *fltr, struct gui_tbl *tbl,
                            int *tbl_cols, int col_cnt, struct gui_ctx *ctx) {
-  assert(ctx);
-  assert(tbl);
-  assert(fltr);
-  assert(tbl_cols);
+  requires(ctx);
+  requires(tbl);
+  requires(fltr);
+  requires(tbl_cols);
 
   gui.tbl.hdr.begin(ctx, tbl, tbl_cols, col_cnt, arrv(fltr->tbl.state));
   {
@@ -1625,15 +1737,15 @@ ui_db_tbl_fltr_lst_view(struct db_state *sdb, struct db_view *vdb,
                         struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                         struct db_tbl_fltr_state *fltr, struct gui_ctx *ctx,
                         struct gui_panel *pan, struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(fltr);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(fltr);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -1697,16 +1809,16 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
                     struct db_tbl_fltr_state *fltr, struct db_tbl_fltr_view *view,
                     struct gui_ctx *ctx, struct gui_panel *pan,
                     struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(fltr);
-  assert(view);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(fltr);
+  requires(view);
+  requires(parent);
 
   struct gui_box lay = pan->box;
   gui.pan.begin(ctx, pan, parent);
@@ -1719,19 +1831,18 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
       fltr->data_rng = rng_nil;
       fltr->off[1] = 0;
     }
-
     struct gui_btn back = {0};
     back.box = gui.cut.bot(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
     gui.btn.txt(ctx, &back, pan, strv("Back"), 0);
     if (back.clk) {
       db_tbl_close_fltr(stbl);
     }
-
     confine gui_disable_on_scope(&gui, ctx, !str_len(view->fnd_str)) {
       struct gui_btn add = {0};
       add.box = gui.cut.bot(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
       gui.btn.txt(ctx, &add, pan, strv("Add"), 0);
       if (add.clk) {
+        assert(str_len(view->fnd_str) > 0);
         db_tbl_fltr_add_str(sdb, stbl, vtbl, fltr, fltr->ini_col, view->fnd_str);
         db_tbl_close_fltr(stbl);
         db_tbl_rev(sdb, vdb, stbl, vtbl);
@@ -1785,15 +1896,15 @@ ui_db_tbl_view_dsp_fltr(struct db_state *sdb, struct db_view *vdb,
                         struct db_tbl_fltr_state *fltr, struct db_tbl_fltr_view *view,
                         struct gui_ctx *ctx, struct gui_panel *pan,
                         struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(fltr);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(fltr);
+  requires(parent);
 
   switch (fltr->state) {
   case DB_TBL_FLTR_LST: {
@@ -1827,9 +1938,9 @@ ui_db_tbl_lst_elm_ico(enum db_tbl_type type) {
 static void
 ui_db_tbl_view_hdr_key_slot(struct db_tbl_view *view, struct db_tbl_col *col,
                             struct gui_ctx *ctx, struct gui_btn *slot) {
-  assert(col);
-  assert(ctx);
-  assert(slot);
+  requires(col);
+  requires(ctx);
+  requires(slot);
 
   struct gui_cfg_stk stk[1] = {0};
   unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
@@ -1843,11 +1954,11 @@ static void
 ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                             struct db_tbl_col *col, struct gui_ctx *ctx,
                             struct gui_btn *slot) {
-  assert(col);
-  assert(ctx);
-  assert(vtbl);
-  assert(stbl);
-  assert(slot);
+  requires(col);
+  requires(ctx);
+  requires(vtbl);
+  requires(stbl);
+  requires(slot);
 
   /* table column header filter icon button */
   struct gui_btn fltr = {.box = slot->pan.box};
@@ -1855,6 +1966,7 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   int dis = col->blob || (stbl->fltr.cnt >= cntof(stbl->fltr.lst));
   confine gui_disable_on_scope(&gui, ctx, dis) {
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
+      assert(!col->blob && (stbl->fltr.cnt < cntof(stbl->fltr.lst)));
       db_tbl_open_fltr(stbl, col->rowid);
     }
   }
@@ -1871,8 +1983,9 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
 static void
 ui_db_tbl_view_hdr_blob_slot(struct gui_ctx *ctx, struct str txt,
                              struct gui_btn *slot) {
-  assert(ctx);
-  assert(slot);
+  requires(ctx);
+  requires(slot);
+
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
   struct gui_panel pan = {.box = slot->pan.box};
   gui_txt(ctx, &pan, &slot->pan, txt, &align);
@@ -1881,10 +1994,10 @@ static void
 ui_db_tbl_view_hdr_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                         struct db_tbl_col *col, struct gui_ctx *ctx,
                         struct gui_btn *slot) {
-  assert(col);
-  assert(ctx);
-  assert(vtbl);
-  assert(stbl);
+  requires(col);
+  requires(ctx);
+  requires(vtbl);
+  requires(stbl);
 
   /* table column header filter icon button */
   struct gui_btn fltr = {.box = slot->pan.box};
@@ -1892,6 +2005,7 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   int dis = col->blob || (stbl->fltr.cnt >= cntof(stbl->fltr.lst));
   confine gui_disable_on_scope(&gui, ctx, dis) {
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
+      assert(!col->blob && (stbl->fltr.cnt < cntof(stbl->fltr.lst)));
       db_tbl_open_fltr(stbl, col->rowid);
     }
   }
@@ -1906,14 +2020,14 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
                         struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                         struct gui_ctx *ctx, struct gui_panel *pan,
                         struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -2040,14 +2154,14 @@ ui_db_tbl_view_dsp_layout(struct db_state *sdb, struct db_view *vdb,
                           struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                           struct gui_ctx *ctx, struct gui_panel *pan,
                           struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -2103,10 +2217,11 @@ ui_db_tbl_view_dsp_layout(struct db_state *sdb, struct db_view *vdb,
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, gui_id64(key), 0);
         {
           int dis = stbl->col.state == DB_TBL_COL_STATE_LOCKED;
-          int is_act = (dis || tbl_has(&stbl->col.sel, key));
           confine gui_disable_on_scope(&gui, ctx, dis) {
+            int is_act = (dis || tbl_has(&stbl->col.sel, key));
             /* column selection */
             if (ui_tbl_lst_elm_col_tog(ctx, &tbl, tbl_cols, &item, &is_act)) {
+              assert(stbl->col.state != DB_TBL_COL_STATE_LOCKED);
               if (is_act) {
                 tbl_put(&stbl->col.sel, key, &col->rowid);
               } else{
@@ -2157,14 +2272,14 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
                    struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                    struct gui_ctx *ctx, struct gui_panel *pan,
                    struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(stbl);
-  assert(vtbl);
-  assert(parent);
+  requires(stbl);
+  requires(vtbl);
+  requires(parent);
 
   static const struct {
     struct str name;
@@ -2246,15 +2361,15 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
                     struct db_info_state *sinfo, struct db_info_view *vinfo,
                     struct gui_ctx *ctx, struct gui_panel *pan,
                     struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(sinfo);
-  assert(vinfo);
-  assert(parent);
-  assert(view < cntof(sdb->tbls));
+  requires(sinfo);
+  requires(vinfo);
+  requires(parent);
+  requires(view < cntof(sdb->tbls));
 
   int open_tbl = 0;
   int open_tbl_idx = -1;
@@ -2358,15 +2473,15 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
                 struct db_info_state *sinfo, struct db_info_view *vinfo,
                 struct gui_ctx *ctx, struct gui_panel *pan,
                 struct gui_panel *parent) {
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
 
-  assert(sinfo);
-  assert(vinfo);
-  assert(parent);
-  assert(view < cntof(sdb->tbls));
+  requires(sinfo);
+  requires(vinfo);
+  requires(parent);
+  requires(view < cntof(sdb->tbls));
 
   static const struct tab_def {
     struct str title;
@@ -2426,10 +2541,10 @@ ui_db_view_tab(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                struct gui_tab_ctl_hdr *hdr, struct str title,
                enum res_ico_id ico) {
 
-  assert(ctx);
-  assert(tab);
-  assert(hdr);
-  assert(title.ptr);
+  requires(ctx);
+  requires(tab);
+  requires(hdr);
+  requires(title.ptr);
 
   struct gui_panel slot = {0};
   gui.tab.hdr.slot.begin(ctx, tab, hdr, &slot, gui_id64(str_hash(title)));
@@ -2440,15 +2555,15 @@ static void
 ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
            struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent) {
 
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
-  assert(view >= 0);
-  assert(view < cntof(sdb->tbls));
-  assert(!(sdb->unused & (1U << castu(view))));
+  requires(view >= 0);
+  requires(view < cntof(sdb->tbls));
+  requires(!(sdb->unused & (1U << castu(view))));
 
   struct db_tbl_view *vtbl = &vdb->tbl;
   struct db_tbl_state *stbl = &sdb->tbls[view];
@@ -2467,6 +2582,7 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
       int dis = !sdb->unused || !vdb->info.sel.cnt;
       confine gui_disable_on_scope(&gui, ctx, dis) {
         if (ui_btn_ico(ctx, &open, pan, strv("Open"), RES_ICO_TH_LIST, 0)) {
+          assert(sdb->unused && vdb->info.sel.cnt);
           db_tab_open_tbl_sel(sdb, vdb, ctx, view);
           tbl_clr(&vdb->info.sel);
         }
@@ -2485,10 +2601,10 @@ static int
 ui_db_explr_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
                              struct gui_panel *parent, struct str title,
                              enum res_ico_id ico) {
-  assert(ctx);
-  assert(pan);
-  assert(ico);
-  assert(parent);
+  requires(ctx);
+  requires(pan);
+  requires(ico);
+  requires(parent);
 
   int ret = 0;
   gui.pan.begin(ctx, pan, parent);
@@ -2509,14 +2625,14 @@ ui_db_explr_tab_slot(struct db_state *sdb, struct db_tbl_state *stbl,
                      struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                      struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
                      struct str title, enum res_ico_id ico) {
-  assert(sdb);
-  assert(ctx);
-  assert(tab);
-  assert(hdr);
-  assert(ico);
+  requires(sdb);
+  requires(ctx);
+  requires(tab);
+  requires(hdr);
+  requires(ico);
 
-  assert(stbl);
-  assert(slot);
+  requires(stbl);
+  requires(slot);
 
   int ret = 0;
   gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, gui_id64(hash_lld(stbl->rowid)));
@@ -2532,13 +2648,13 @@ static int
 ui_db_explr_tab(struct db_state *sdb, struct db_tbl_state *stbl,
                 struct gui_ctx *ctx, struct gui_tab_ctl *tab,
                 struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot) {
-  assert(sdb);
-  assert(ctx);
-  assert(tab);
-  assert(hdr);
+  requires(sdb);
+  requires(ctx);
+  requires(tab);
+  requires(hdr);
 
-  assert(stbl);
-  assert(slot);
+  requires(stbl);
+  requires(slot);
 
   struct str title = strv("Info");
   enum res_ico_id ico = RES_ICO_CUBE;
@@ -2552,10 +2668,10 @@ static int
 ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx, struct gui_panel *pan,
                    struct gui_panel *parent) {
 
-  assert(sdb);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(sdb);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   int ret = -1;
   gui.pan.begin(ctx, pan, parent);
@@ -2600,11 +2716,11 @@ static void
 ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent) {
 
-  assert(sdb);
-  assert(vdb);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(sdb);
+  requires(vdb);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -2648,6 +2764,7 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
         struct gui_btn add = {.box = hdr.pan.box};
         add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
         if (gui.btn.ico(ctx, &add, &hdr.pan, RES_ICO_FOLDER_ADD)) {
+          assert(sdb->unused != 0);
           db_tab_open_empty(sdb);
         }
       }

@@ -120,7 +120,7 @@ rng__bnd(int idx, int cnt) {
 }
 static force_inline struct rng
 rng__mk(int low, int high, int cnt) {
-  assert(low <= high);
+  requires(low <= high);
   struct rng ret = {.lo = low, .hi = high};
   ret.cnt = abs(ret.hi - ret.lo);
   ret.total = cnt;
@@ -128,12 +128,16 @@ rng__mk(int low, int high, int cnt) {
 }
 static force_inline struct rng
 rng_sub(const struct rng *rng, int beg, int end) {
+  requires(rng);
   struct rng ret = rng(beg, end, rng->total);
   rng_shft(&ret, rng->lo);
   return ret;
 }
 static force_inline struct rng
 rng_put(const struct rng *rng, const struct rng *val) {
+  requires(rng);
+  requires(val);
+
   struct rng ret = *val;
   rng_shft(&ret, rng->lo);
   return ret;
@@ -153,7 +157,7 @@ fnv1a32(const void *ptr, int cnt, unsigned hash) {
     return FNV1A32_HASH_INITIAL;
   }
   for loop(i,cnt) {
-     hash = (hash ^ ptr8[i]) * 16777619u;
+    hash = (hash ^ ptr8[i]) * 16777619u;
   }
   return hash;
 }
@@ -206,20 +210,24 @@ rnd_mix(unsigned long long val) {
 }
 static inline unsigned long long
 rnd_split_mix(unsigned long long *val, int idx) {
+  requires(val);
   *val = rnd_gen(*val, idx);
   return rnd_mix(*val);
 }
 static inline unsigned long long
 rnd(unsigned long long *val) {
+  requires(val);
   return rnd_split_mix(val, 1);
 }
 static inline unsigned
 rndu(unsigned long long *val) {
+  requires(val);
   unsigned long long ret = rnd(val);
   return castu(ret & 0xffffffffu);
 }
 static inline int
 rndi(unsigned long long *val) {
+  requires(val);
   unsigned rnd = rndu(val);
   long long norm = castll(rnd) - (UINT_MAX/2);
   assert(norm >= INT_MIN && norm <= INT_MAX);
@@ -227,11 +235,13 @@ rndi(unsigned long long *val) {
 }
 static inline double
 rndn(unsigned long long *val) {
+  requires(val);
   unsigned rnd = rndu(val);
   return castd(rnd) / castd(UINT_MAX);
 }
 static unsigned
 rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
+  requires(x);
   unsigned lo = min(mini, maxi);
   unsigned hi = max(mini, maxi);
   unsigned rng = castu(-1);
@@ -250,6 +260,7 @@ rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
 }
 static inline float
 rndf01(unsigned long long *x) {
+  requires(x);
   unsigned u = rndu(x);
   double du = castd(u);
   double div = castd((unsigned)-1);
@@ -257,6 +268,7 @@ rndf01(unsigned long long *x) {
 }
 static float
 rnduf(unsigned long long *x, float mini, float maxi) {
+  requires(x);
   unsigned u = rndu(x);
   float lo = min(mini, maxi);
   float hi = max(mini, maxi);
@@ -299,18 +311,22 @@ rnduf(unsigned long long *x, float mini, float maxi) {
  */
 static inline void
 seq_rng(int *seq, struct rng rng) {
+  requires(seq);
   for loopi(i,k,rng) {
     seq[k] = i;
   }
 }
 static inline void
 seq_rngu(unsigned *seq, struct rng rng) {
+  requires(seq);
   for loopi(i,k,rng) {
     seq[k] = castu(i);
   }
 }
 static inline void
 seq_rnd(int *seq, int n, unsigned long long *r) {
+  requires(r);
+  requires(seq);
   for (int i = n - 1; i > 0; --i) {
     unsigned at = rndu(r) % castu(i + 1);
     iswap(seq[i], seq[at]);
@@ -318,6 +334,7 @@ seq_rnd(int *seq, int n, unsigned long long *r) {
 }
 static inline void
 seq_fix(int *p, int n) {
+  requires(p);
   for (int i = 0; i < n; ++i) {
     p[i] = -1 - p[i];
   }
@@ -363,13 +380,13 @@ static int bit_xor(unsigned long *addr, int nr);
 
 static purist inline int
 bit_tst(const unsigned long *addr, int nr) {
-  assert(addr);
+  requires(addr);
   unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
   return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
 }
 static inline int
 bit_tst_clr(unsigned long *addr, int nr) {
-  assert(addr);
+  requires(addr);
   if (bit_tst(addr, nr)) {
     bit_xor(addr, nr);
     return 1;
@@ -392,7 +409,7 @@ bit_set_on(unsigned long *addr, int nr, int cond) {
 }
 static inline int
 bit_clr(unsigned long *addr, int nr) {
-  assert(addr);
+  requires(addr);
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
   int ret = casti((*p & m));
@@ -401,13 +418,14 @@ bit_clr(unsigned long *addr, int nr) {
 }
 static inline void
 bit_clr_on(unsigned long *addr, int nr, int cond) {
+  requires(addr);
   if (cond) {
     bit_clr(addr, nr);
   }
 }
 static inline int
 bit_xor(unsigned long *addr, int nr) {
-  assert(addr);
+  requires(addr);
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
   *p ^= m;
@@ -415,13 +433,13 @@ bit_xor(unsigned long *addr, int nr) {
 }
 static inline void
 bit_fill(unsigned long *addr, int byte, int nbits) {
-  assert(addr);
+  requires(addr);
   int n = bits_to_long(nbits);
   mset(addr, byte, n * szof(long));
 }
 static int
 bit_ffs(const unsigned long *addr, int nbits, int idx) {
-  assert(addr);
+  requires(addr);
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -438,8 +456,9 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
 }
 static int
 bit_ffz(const unsigned long *addr, int nbits, int idx) {
-  assert(addr);
-  assert(nbits >= 0);
+  requires(addr);
+  requires(nbits >= 0);
+
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -456,9 +475,9 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
 }
 static int
 bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
-  assert(addr);
-  assert(nbits >= 0);
-  assert(idx < nbits);
+  requires(addr);
+  requires(nbits >= 0);
+  requires(idx < nbits);
 
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1U, bit_mask(idx)) - 1U;
@@ -481,8 +500,8 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
 }
 static int
 bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
-  assert(addr);
-  assert(nbits >= 0);
+  requires(addr);
+  requires(nbits >= 0);
 
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1U, bit_mask(idx)) - 1U;
@@ -504,22 +523,24 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
 }
 static int
 bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
-  assert(addr);
-  assert(nbits >= 0);
-  assert(off < nbits);
+  requires(addr);
+  requires(nbits >= 0);
+  requires(off < nbits);
   if (!idx) {
     return bit_ffs(addr, nbits, idx);
   }
   for (int i = 0; i <= idx && off < nbits; ++off) {
-    if (bit_tst(addr, off) && i++ == idx) break;
+    if (bit_tst(addr, off) && i++ == idx) {
+      break;
+    }
   }
   return off;
 }
 static int
 bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
-  assert(addr);
-  assert(nbits >= 0);
-  assert(off < nbits);
+  requires(addr);
+  requires(nbits >= 0);
+  requires(off < nbits);
   if (!idx) {
     return bit_ffz(addr, nbits, idx);
   }
@@ -1290,13 +1311,13 @@ path_ext(struct str path) {
 
 static unsigned
 str_buf__push(int *cnt, char *mem, int cap, struct str s) {
-  assert(cnt);
-  assert(*cnt >= 0);
-  assert(*cnt <= 0xffff);
-  assert(*cnt <= cap);
-  assert(cap >= 0);
-  assert(mem);
-  assert(cap);
+  requires(cnt);
+  requires(*cnt >= 0);
+  requires(*cnt <= 0xffff);
+  requires(*cnt <= cap);
+  requires(cap >= 0);
+  requires(mem);
+  requires(cap);
 
   unsigned off = castu(*cnt) & 0xffff;
   int lft = max(0, cap - *cnt);
@@ -1309,15 +1330,15 @@ str_buf__push(int *cnt, char *mem, int cap, struct str s) {
 }
 static unsigned
 str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
-  assert(cnt);
-  assert(cap <= 0x10000);
-  assert(*cnt >= 0);
-  assert(*cnt <= 0x10000);
-  assert(*cnt <= cap);
-  assert(cap >= 0);
-  assert(*cnt <= cap);
-  assert(mem);
-  assert(cap);
+  requires(cnt);
+  requires(cap <= 0x10000);
+  requires(*cnt >= 0);
+  requires(*cnt <= 0x10000);
+  requires(*cnt <= cap);
+  requires(cap >= 0);
+  requires(*cnt <= cap);
+  requires(mem);
+  requires(cap);
 
   unsigned off = castu(*cnt) & 0xffff;
   int lft = min(max_len, max(0, cap - *cnt));
@@ -1329,11 +1350,11 @@ str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
 }
 static struct str
 str_buf__get(char *mem, int cnt, unsigned hdl) {
-  assert(mem);
-  assert(cnt >= 0);
-  assert(str_buf_len(hdl) <= cnt);
-  assert(str_buf_off(hdl) <= cnt);
-  assert(str_buf_len(hdl) + str_buf_off(hdl) <= cnt);
+  requires(mem);
+  requires(cnt >= 0);
+  requires(str_buf_len(hdl) <= cnt);
+  requires(str_buf_off(hdl) <= cnt);
+  requires(str_buf_len(hdl) + str_buf_off(hdl) <= cnt);
 
   int off = str_buf_off(hdl);
   int len = str_buf_len(hdl);
@@ -1341,9 +1362,9 @@ str_buf__get(char *mem, int cnt, unsigned hdl) {
 }
 static void
 str_buf__clr(char *mem, int *cnt) {
-  assert(mem);
-  assert(cnt);
-  assert(*cnt >= 0);
+  requires(mem);
+  requires(cnt);
+  requires(*cnt >= 0);
   *cnt = 0;
 }
 

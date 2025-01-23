@@ -225,7 +225,7 @@ app_tab_close(struct app *app, int tab_idx) {
 
   requires(tab_idx >= 0);
   requires(tab_idx < app->tab_cnt);
-  requires(tab_idx <= APP_VIEW_CNT);
+  requires(tab_idx < APP_VIEW_CNT);
   requires(tab_idx < cntof(app->tabs));
 
   requires(!(app->unused & (1U << castu(app->tabs[tab_idx]))));

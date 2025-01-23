@@ -1,8 +1,5 @@
 #define DBS_VERISON 1
 
-struct gui_ctx;
-struct gui_panel;
-
 enum {
   DB_MAX_FILTER               = 32,
   DB_TBL_CNT                  = 16,
@@ -40,6 +37,9 @@ enum {
  *                                State
  *-----------------------------------------------------------------------------
  */
+struct gui_ctx;
+struct gui_panel;
+
 /* filter */
 enum db_tbl_fltr_col {
   DB_TBL_FLTR_STATE,
