@@ -240,6 +240,9 @@ struct file_view_lst_qry {
 };
 static int
 file_view_lst_elm_cmp_name_asc(const void *aptr, const void *bptr) {
+  requires(aptr);
+  requires(bptr);
+
   const struct file_elm *elm_a = (const struct file_elm*)aptr;
   const struct file_elm *elm_b = (const struct file_elm*)bptr;
   int eql = elm_b->isdir - elm_a->isdir;
@@ -250,6 +253,9 @@ file_view_lst_elm_cmp_name_asc(const void *aptr, const void *bptr) {
 }
 static int
 file_view_lst_elm_cmp_name_dec(const void *aptr, const void *bptr) {
+  requires(aptr);
+  requires(bptr);
+
   const struct file_elm *elm_a = (const struct file_elm*)aptr;
   const struct file_elm *elm_b = (const struct file_elm*)bptr;
   int eql = elm_a->isdir - elm_b->isdir;
@@ -260,6 +266,9 @@ file_view_lst_elm_cmp_name_dec(const void *aptr, const void *bptr) {
 }
 static void
 file_view_lst_elm_swp(void *aptr, void *bptr) {
+  requires(aptr);
+  requires(bptr);
+
   struct file_elm *elm_a = (struct file_elm*)aptr;
   struct file_elm *elm_b = (struct file_elm*)bptr;
   struct file_elm tmp = *elm_a;
@@ -269,11 +278,11 @@ file_view_lst_elm_swp(void *aptr, void *bptr) {
 static void
 file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
                        struct str path, struct str name) {
-  assert(sys);
-  assert(elm);
+  requires(sys);
+  requires(elm);
 
-  assert(str_is_val(name));
-  assert(str_is_val(path));
+  requires(str_is_val(name));
+  requires(str_is_val(path));
 
   char buf[MAX_FILE_PATH];
   struct str ospath = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(path), strf(name));
@@ -304,8 +313,8 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
 }
 static int
 file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*)) {
-  assert(arr);
-  assert(cmp);
+  requires(arr);
+  requires(cmp);
 
   int num = FILE_LIST_ELM_BUF_CNT;
   int piv_idx = FILE_LIST_ELM_CNT;
@@ -330,7 +339,7 @@ file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*
 }
 static struct str
 file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
-  assert(lst);
+  requires(lst);
   int cap = cntof(lst->page.txt.buf[0]) - lst->page.txt.cnt;
   char *buf = lst->page.txt.buf[cur] + lst->page.txt.cnt;
   struct str ret = str_set(buf, cap, name);
@@ -342,9 +351,9 @@ file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
 static void
 file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
                   const struct file_view_lst_qry *qry) {
-  assert(sys);
-  assert(qry);
-  assert(lst);
+  requires(sys);
+  requires(qry);
+  requires(lst);
 
   lst->page.cnt = 0;
   lst->page.total = 0;
@@ -400,10 +409,13 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
   qsort(ptr, castsz(lst->page.cnt), szof(lst->page.elms[0]), qry->cmp);
   lst->page_cnt = (lst->page.total + FILE_LIST_ELM_CNT - 1) / FILE_LIST_ELM_CNT;
   lst->page.idx = qry->page;
+
+  ensures(lst->page_cnt >= 0);
+  ensures(lst->page.idx == qry->page);
 }
 static void
 file_view_lst_clr(struct file_list_view *lst) {
-  assert(lst);
+  requires(lst);
   zero2(lst->off);
   lst->sel_idx = -1;
 
@@ -419,9 +431,9 @@ file_view_lst_clr(struct file_list_view *lst) {
 static void
 file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
                  struct sys *sys, struct str fullpath) {
-  assert(fpk);
-  assert(sys);
-  assert(lst);
+  requires(fpk);
+  requires(sys);
+  requires(lst);
 
   lst->nav_path = str_set(lst->nav_buf, cntof(lst->nav_buf), fullpath);
   if (str_is_val(lst->nav_path)) {
@@ -436,9 +448,9 @@ file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
 }
 static void
 file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
-  assert(ctx);
-  assert(fpk);
-  assert(sys);
+  requires(ctx);
+  requires(fpk);
+  requires(sys);
 
   /* setup list table */
   struct gui_split_lay_cfg tbl_cfg = {0};
@@ -452,9 +464,9 @@ file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) 
 }
 static int
 file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
-  assert(sys);
-  assert(ctx);
-  assert(fpk);
+  requires(sys);
+  requires(ctx);
+  requires(fpk);
 
   fpk->lst_rev = 1;
   fpk->home = str_set(fpk->home_path, cntof(fpk->home_path), str0(getenv("HOME")));
@@ -466,8 +478,8 @@ file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
 }
 static void
 file_view_free(struct file_view *fpk, struct sys *sys) {
-  assert(fpk);
-  assert(sys);
+  requires(fpk);
+  requires(sys);
 
   unused(sys);
   file_view_lst_clr(&fpk->lst);
@@ -481,12 +493,13 @@ static struct str
 ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
                struct gui_panel *pan, struct gui_panel *parent,
                struct gui_txt_ed *ted, char *buf, int cap, struct str str) {
-  assert(ted);
-  assert(buf);
-  assert(ctx);
-  assert(edt);
-  assert(pan);
-  assert(parent);
+
+  requires(ted);
+  requires(buf);
+  requires(ctx);
+  requires(edt);
+  requires(pan);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -519,11 +532,11 @@ static void
 ui_file_lst_view_fnd(struct file_view *fpk, struct file_list_view *lst,
                      struct gui_ctx *ctx, struct gui_panel *pan,
                      struct gui_panel *parent) {
-  assert(fpk);
-  assert(lst);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(fpk);
+  requires(lst);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   struct gui_edit_box edt = {.box = pan->box};
   lst->fltr = ui_edit_search(ctx, &edt, pan, parent, &lst->fltr_ed,
@@ -541,10 +554,10 @@ static void
 ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
                          struct gui_ctx *ctx, struct gui_panel *pan,
                          struct gui_panel *parent) {
-  assert(lst);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(lst);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   gui.pan.begin(ctx, pan, parent);
   {
@@ -600,10 +613,10 @@ static void
 ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
                      const int *lay, struct gui_panel *pan,
                      const struct file_elm *elm, int is_sel) {
-  assert(elm);
-  assert(tbl);
-  assert(lay);
-  assert(pan);
+  requires(elm);
+  requires(tbl);
+  requires(lay);
+  requires(pan);
 
   static const struct gui_align algn = {GUI_HALIGN_RIGHT, GUI_VALIGN_MID};
   static const unsigned dir_col = col_rgb_hex(0xeecd4a);
@@ -633,11 +646,11 @@ static struct str
 ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
                  struct file_list_view *lst, struct gui_ctx *ctx,
                  struct gui_panel *pan, struct gui_panel *parent) {
-  assert(fpk);
-  assert(lst);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(fpk);
+  requires(lst);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   int dir = 0;
   int chdir = 0;
@@ -713,11 +726,11 @@ static struct str
 ui_file_sel_view(char *filepath, int cnt, struct file_view *fpk,
                  struct file_list_view *lst, struct gui_ctx *ctx,
                  struct gui_panel *pan, struct gui_panel *parent) {
-  assert(fpk);
-  assert(lst);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
+  requires(fpk);
+  requires(lst);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
 
   struct str ret = str_inv;
   gui.pan.begin(ctx, pan, parent);
@@ -737,9 +750,9 @@ ui_file_sel_view(char *filepath, int cnt, struct file_view *fpk,
 static void
 ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
                   struct gui_tab_ctl *tab) {
-  assert(lst);
-  assert(ctx);
-  assert(tab);
+  requires(lst);
+  requires(ctx);
+  requires(tab);
 
   confine gui_disable_on_scope(&gui, ctx, lst->page.idx <= 0) {
     struct gui_btn prv = {.box = tab->hdr};
@@ -792,11 +805,11 @@ static struct str
 ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
             struct gui_panel *pan, struct gui_panel *parent) {
 
-  assert(fpk);
-  assert(ctx);
-  assert(pan);
-  assert(parent);
-  assert(filepath);
+  requires(fpk);
+  requires(ctx);
+  requires(pan);
+  requires(parent);
+  requires(filepath);
 
   struct str ret = str_inv;
   gui.pan.begin(ctx, pan, parent);
