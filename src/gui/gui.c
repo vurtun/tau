@@ -473,6 +473,7 @@ gui_drw_box(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
 static void
 gui_drw_ln(struct gui_ctx *ctx, int px0, int py0, int px1, int py1) {
   assert(ctx);
+  assert(ctx->sys);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER) {
@@ -599,6 +600,7 @@ static void
 gui_drw_sprite(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int dsth,
                int srcx, int srcy, int srcw, int srch) {
   assert(ctx);
+  assert(ctx->sys);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
   if (ctx->pass != GUI_RENDER ||
@@ -614,6 +616,7 @@ gui_drw_sprite(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int d
 static void
 gui_drw_img(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int dsth) {
   assert(ctx);
+  assert(ctx->sys);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
 
@@ -625,6 +628,7 @@ gui_drw_img(struct gui_ctx *ctx, int tex, int dstx, int dsty, int dstw, int dsth
 static void
 gui_drw_blit(struct gui_ctx *ctx, int tex, int posx, int posy) {
   assert(ctx);
+  assert(ctx->sys);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
 
@@ -632,7 +636,7 @@ gui_drw_blit(struct gui_ctx *ctx, int tex, int posx, int posy) {
   struct sys *sys = ctx->sys;
   sys->gfx.tex.info(img_siz, ctx->sys, tex);
   gui_drw_sprite(ctx, tex, posx, posy, img_siz[0], img_siz[1], 0, 0,
-      img_siz[0], img_siz[1]);
+    img_siz[0], img_siz[1]);
 }
 
 /* ---------------------------------------------------------------------------
@@ -998,30 +1002,30 @@ gui__scale_val(int val, unsigned dpi_scale) {
   return casti(rounded >> 16u);
 }
 static void
-gui_cfg_scale(struct gui_cfg *out, const struct gui_cfg *in, unsigned dpi_scale) {
-  out->sep = gui__scale_val(in->sep, dpi_scale);
-  out->item = gui__scale_val(in->item, dpi_scale);
-  out->elm = gui__scale_val(in->elm, dpi_scale);
-  out->tab = gui__scale_val(in->tab, dpi_scale);
-  out->depth = gui__scale_val(in->depth, dpi_scale);
-  out->btn_pad = gui__scale_val(in->btn_pad, dpi_scale);
-  out->grid = gui__scale_val(in->grid, dpi_scale);
-  out->pan_pad[0] = gui__scale_val(in->pan_pad[0], dpi_scale);
-  out->pan_pad[1] = gui__scale_val(in->pan_pad[1], dpi_scale);
-  out->pan_gap[0] = gui__scale_val(in->pan_gap[0], dpi_scale);
-  out->pan_gap[1] = gui__scale_val(in->pan_gap[1], dpi_scale);
-  out->grp_off = gui__scale_val(in->grp_off, dpi_scale);
-  out->grp_pad = gui__scale_val(in->grp_pad, dpi_scale);
-  out->lay_pad[0] = gui__scale_val(in->lay_pad[0], dpi_scale);
-  out->lay_pad[1] = gui__scale_val(in->lay_pad[1], dpi_scale);
-  out->lst_pad[0] = gui__scale_val(in->lst_pad[0], dpi_scale);
-  out->lst_pad[1] = gui__scale_val(in->lst_pad[1], dpi_scale);
-  out->gap[0] = gui__scale_val(in->gap[0], dpi_scale);
-  out->gap[1] = gui__scale_val(in->gap[1], dpi_scale);
-  out->pad[0] = gui__scale_val(in->pad[0], dpi_scale);
-  out->pad[1] = gui__scale_val(in->pad[1], dpi_scale);
-  out->ico = gui__scale_val(in->ico, dpi_scale);
-  out->scrl = gui__scale_val(in->scrl, dpi_scale);
+gui_cfg_scale(struct gui_cfg *out, const struct gui_cfg *old, unsigned dpi_scale) {
+  out->sep = gui__scale_val(old->sep, dpi_scale);
+  out->item = gui__scale_val(old->item, dpi_scale);
+  out->elm = gui__scale_val(old->elm, dpi_scale);
+  out->tab = gui__scale_val(old->tab, dpi_scale);
+  out->depth = gui__scale_val(old->depth, dpi_scale);
+  out->btn_pad = gui__scale_val(old->btn_pad, dpi_scale);
+  out->grid = gui__scale_val(old->grid, dpi_scale);
+  out->pan_pad[0] = gui__scale_val(old->pan_pad[0], dpi_scale);
+  out->pan_pad[1] = gui__scale_val(old->pan_pad[1], dpi_scale);
+  out->pan_gap[0] = gui__scale_val(old->pan_gap[0], dpi_scale);
+  out->pan_gap[1] = gui__scale_val(old->pan_gap[1], dpi_scale);
+  out->grp_off = gui__scale_val(old->grp_off, dpi_scale);
+  out->grp_pad = gui__scale_val(old->grp_pad, dpi_scale);
+  out->lay_pad[0] = gui__scale_val(old->lay_pad[0], dpi_scale);
+  out->lay_pad[1] = gui__scale_val(old->lay_pad[1], dpi_scale);
+  out->lst_pad[0] = gui__scale_val(old->lst_pad[0], dpi_scale);
+  out->lst_pad[1] = gui__scale_val(old->lst_pad[1], dpi_scale);
+  out->gap[0] = gui__scale_val(old->gap[0], dpi_scale);
+  out->gap[1] = gui__scale_val(old->gap[1], dpi_scale);
+  out->pad[0] = gui__scale_val(old->pad[0], dpi_scale);
+  out->pad[1] = gui__scale_val(old->pad[1], dpi_scale);
+  out->ico = gui__scale_val(old->ico, dpi_scale);
+  out->scrl = gui__scale_val(old->scrl, dpi_scale);
 }
 static void
 gui_init(struct gui_ctx *ctx, struct gui_args *args) {
@@ -1277,7 +1281,7 @@ gui_end(struct gui_ctx *ctx) {
       if (sys->dnd.state != SYS_DND_NONE) {
         gui_sys_dnd_end(ctx, sys);
       }
-      if (ctx->dnd_clr) {
+     if (ctx->dnd_clr) {
         gui_dnd_clr(ctx);
       }
       gui_input_end(ctx, &sys->mouse);
@@ -4178,10 +4182,12 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
   /* mouse wheel scrolling */
   if (sys->mouse.scrl[1]) {
     if (ctx->pass == GUI_INPUT && pan->is_hov) {
-      reg->scrl_wheel = !reg->scrl_wheel ? 1 : reg->scrl_wheel;
-      reg->off[1] -= sys->mouse.scrl[1] * reg->scrl_wheel;
-      sys->mouse.scrl[1] = 0;
-      reg->scrolled = 1;
+      if (sys->mouse.scrl[1]) {
+        reg->scrl_wheel = !reg->scrl_wheel ? 1 : reg->scrl_wheel;
+        reg->off[1] -= sys->mouse.scrl[1] * reg->scrl_wheel;
+        sys->mouse.scrl[1] = 0;
+        reg->scrolled = 1;
+      }
     }
   }
   int top = pan->box.y.min + off_y;

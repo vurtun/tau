@@ -264,6 +264,15 @@ file_view_lst_elm_cmp_name_dec(const void *aptr, const void *bptr) {
   }
   return str_cmp(elm_b->name, elm_b->name);
 }
+/*@
+  requires aptr != NULL;
+  requires bptr != NULL;
+  assigns *aptr, *bptr;
+  ensures memcmp((char*)aptr, (char*)&old_a) != 0;
+  ensures memcmp((char*)bptr, (char*)&old_b) != 0;
+  ensures memcmp((char*)bptr, (char*)&old_a) == 0;
+  ensures memcmp((char*)aptr, (char*)&old_b) == 0;
+*/
 static void
 file_view_lst_elm_swp(void *aptr, void *bptr) {
   requires(aptr);
@@ -271,10 +280,46 @@ file_view_lst_elm_swp(void *aptr, void *bptr) {
 
   struct file_elm *elm_a = (struct file_elm*)aptr;
   struct file_elm *elm_b = (struct file_elm*)bptr;
-  struct file_elm tmp = *elm_a;
-  *elm_a = *elm_b;
-  *elm_b = tmp;
+
+  struct file_elm old_a = *elm_a;
+  struct file_elm old_b = *elm_b;
+
+  *elm_a = old_b;
+  *elm_b = old_a;
+
+  ensures(memcmp(elm_a, &old_a, sizeof(old_a)));
+  ensures(memcmp(elm_b, &old_b, sizeof(old_a)));
+  ensures(!memcmp(elm_b, &old_a, sizeof(old_a)));
+  ensures(!memcmp(elm_a, &old_b, sizeof(old_a)));
 }
+/*@
+  requires sys != NULL;
+  requires elm != NULL;
+  requires str_is_val(name);
+  requires str_is_val(path);
+
+  assigns elm->sys_type, elm->file_type, elm->name, elm->size, elm->perm, elm->mtime;
+
+  ensures elm->sys_type >= 0;  // Ensures non-negative system type
+  ensures (elm->sys_type == SYS_FILE_DEF || elm->sys_type == SYS_FILE_LNK || elm->sys_type == SYS_FILE_DIR);
+  if (old(sys->file.info(sys, &info, ospath))) {
+    ensures elm->size == info.siz;
+    ensures elm->perm == info.perm;
+    ensures elm->mtime == info.mtime;
+  } else {
+    ensures elm->size == 0;
+    ensures elm->perm == 0;
+    ensures elm->mtime == 0;
+  }
+  ensures str_cmp(elm->name, name) == 0;
+  if (elm->sys_type == SYS_FILE_DEF || elm->sys_type == SYS_FILE_LNK) {
+    ensures elm->file_type == castu(file_type(path_ext(ospath)));
+  } else if (elm->sys_type == SYS_FILE_DIR) {
+    ensures elm->file_type == 1;
+  } else {
+    ensures elm->file_type == 0;  // Default for unknown types
+  }
+*/
 static void
 file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
                        struct str path, struct str name) {
@@ -311,6 +356,17 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
   elm->mtime = info.mtime;
   elm->sys_type = info.type;
 }
+/*@
+  requires arr != NULL;
+  requires cmp != NULL;
+  assigns arr[0..FILE_LIST_ELM_BUF_CNT-1];
+  ensures \forall integer i, j; 0 <= i < rhs && rhs <= j < FILE_LIST_ELM_BUF_CNT;
+          cmp(&arr[i], &arr[j]) <= 0;
+  ensures \forall integer i, j; 0 <= i < rhs && 0 <= j < rhs;
+          cmp(&arr[i], &arr[j]) <= 0;
+  ensures \forall integer i, j; rhs <= i < FILE_LIST_ELM_BUF_CNT && rhs <= j < FILE_LIST_ELM_BUF_CNT;
+          cmp(&arr[i], &arr[j]) >= 0;
+*/
 static int
 file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*)) {
   requires(arr);
@@ -337,17 +393,42 @@ file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*
   file_view_lst_elm_swp(&arr[rhs], &arr[piv_idx]);
   return rhs;
 }
+/*@
+  requires lst != NULL;
+  requires 0 <= cur && cur <= cntof(lst->page.txt.buf);
+  assigns lst->page.txt.cnt, lst->page.txt.buf[cur][0..FILE_LIST_STR_BUF_SIZ-1];
+  ensures \result.len <= cap;
+  ensures \result.len <= FILE_LIST_STR_BUF_SIZ;
+  ensures lst->page.txt.cnt <= FILE_LIST_STR_BUF_SIZ;
+*/
 static struct str
 file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
   requires(lst);
+  requires(cur >= 0 && cur <= cntof(lst->page.txt.buf));
+
   int cap = cntof(lst->page.txt.buf[0]) - lst->page.txt.cnt;
   char *buf = lst->page.txt.buf[cur] + lst->page.txt.cnt;
   struct str ret = str_set(buf, cap, name);
   if (str_is_val(name)) {
     lst->page.txt.cnt += str_len(name);
   }
+  ensures(ret.rng.cnt <= cap);
+  ensures(ret.rng.cnt <= FILE_LIST_STR_BUF_SIZ);
+  ensures(lst->page.txt.cnt <= FILE_LIST_STR_BUF_SIZ);
   return ret;
 }
+/*@
+  requires sys != NULL;
+  requires qry != NULL;
+  requires lst != NULL;
+
+  assigns lst->page.cnt, lst->page.total, lst->page.elms[*], lst->page.txt.cnt, lst->page.txt.cur, lst->page_cnt, lst->page.idx;
+
+  ensures lst->page_cnt >= 0;
+  ensures lst->page.idx == qry->page;
+  ensures lst->page.total >= 0;
+  ensures lst->page.idx < lst->page_cnt;
+*/
 static void
 file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
                   const struct file_view_lst_qry *qry) {
@@ -412,7 +493,23 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
 
   ensures(lst->page_cnt >= 0);
   ensures(lst->page.idx == qry->page);
+  ensures(lst->page.total >= 0);
+  ensures(lst->page.idx < lst->page_cnt);
 }
+/*@
+  requires lst != NULL;
+  assigns lst->off[*], lst->sel_idx, lst->page_cnt, lst->page.idx, lst->page.cur,
+         lst->page.txt.cnt, lst->page.txt.cur, lst->page.txt.buf[*][*];
+
+  ensures lst->page_cnt >= 0;
+  ensures lst->page.idx <= lst->page_cnt;  // Ensures valid page index
+  ensures lst->page.total >= 0;  // Total count (unchanged, can't be negative)
+  ensures lst->page.cnt == 0;  // Ensures empty page
+  ensures lst->page.txt.cnt == 0;  // Ensures empty text buffer
+  ensures lst->page.txt.cur == 0;  // Ensures initial text buffer index
+  ensures lst->page.txt.buf[0][0] == 0;  // Ensures null termination of first buffer
+  ensures lst->page.txt.buf[1][0] == 0;  // Ensures null termination of second buffer
+*/
 static void
 file_view_lst_clr(struct file_list_view *lst) {
   requires(lst);
@@ -427,7 +524,36 @@ file_view_lst_clr(struct file_list_view *lst) {
   lst->page.txt.cur = 0;
   lst->page.txt.buf[0][0] = 0;
   lst->page.txt.buf[1][0] = 0;
+
+  ensures(lst->page_cnt >= 0);
+  ensures(lst->page.idx <= lst->page_cnt);
+  ensures(lst->page.total >= 0);
+  ensures(lst->page.cnt <= lst->page.total);
+  ensures(lst->page.txt.cnt == 0);
+  ensures(lst->page.txt.cur == 0);
+  ensures(lst->page.txt.cnt <= FILE_LIST_STR_BUF_SIZ);
 }
+/*@
+  requires fpk != NULL;
+  requires sys != NULL;
+  requires lst != NULL;
+  requires str_is_val(fullpath);  // Ensures valid fullpath argument
+
+  assigns lst->nav_path, fpk->lst[*], lst->page_cnt, lst->page.total, lst->page.idx, lst->page.cnt;
+
+  ensures lst->page_cnt >= 0;
+  ensures lst->page.total >= 0;
+  ensures lst->page.idx < lst->page_cnt;  // Ensures valid page index after update
+  ensures lst->page.cnt <= lst->page.total;
+
+  // if branch
+  if (str_is_val(lst->nav_path)) {
+    ensures(fpk->lst.page_cnt >= 0);  // Inherited from callees
+    ensures(fpk->lst.page.total >= 0);  // Inherited from callees
+    ensures(fpk->lst.page.idx <= fpk->lst.page_cnt);  // Inherited from callees
+    ensures(fpk->lst.page.cnt <= fpk->lst.page.total);  // Inherited from callees
+  }
+*/
 static void
 file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
                  struct sys *sys, struct str fullpath) {
@@ -445,7 +571,23 @@ file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
     qry.cmp = file_view_lst_elm_cmp_name_asc;
     file_view_lst_qry(lst, sys, &qry);
   }
+  ensures(lst->page_cnt >= 0);
+  ensures(lst->page.total >= 0);
+  ensures(lst->page.idx < lst->page_cnt);
+  ensures(lst->page.cnt <= lst->page.total);
 }
+/*@
+  requires ctx != NULL;
+  requires fpk != NULL;
+  requires sys != NULL;
+
+  assigns fpk->lst.tbl.state[*], fpk->lst.page_cnt, fpk->lst.page.total, fpk->lst.page.idx, fpk->lst.page.cnt;
+
+  ensures lst->page_cnt >= 0;
+  ensures lst->page.total >= 0;
+  ensures lst->page.idx < lst->page_cnt;  // Ensures valid page index after update
+  ensures lst->page.cnt <= lst->page.total;
+*/
 static void
 file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
   requires(ctx);
@@ -461,7 +603,29 @@ file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) 
   gui.tbl.lay(fpk->lst.tbl.state, ctx, &tbl_cfg);
   /* open home directory */
   file_view_lst_cd(fpk, &fpk->lst, sys, fpk->home);
+
+  ensures(fpk->lst.page_cnt >= 0);
+  ensures(fpk->lst.page.total >= 0);
+  ensures(fpk->lst.page.idx < fpk->lst.page_cnt);
+  ensures(fpk->lst.page.cnt <= fpk->lst.page.total);
 }
+/*@
+  requires sys != NULL;
+  requires ctx != NULL;
+  requires fpk != NULL;
+
+  assigns fpk->lst_rev, fpk->home, fpk->lst[*];
+
+  if (str_is_inv(fpk->home)) {
+    ensures \result == -ENAMETOOLONG;
+  } else {
+    ensures lst->page_cnt >= 0;
+    ensures lst->page.total >= 0;
+    ensures lst->page.idx < lst->page_cnt;
+    ensures lst->page.cnt <= lst->page.total;
+  }
+  ensures \result == 0 || \result == -ENAMETOOLONG;
+*/
 static int
 file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
   requires(sys);
@@ -474,6 +638,11 @@ file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
     return -ENAMETOOLONG;
   }
   file_view_lst_init(fpk, sys, ctx);
+
+  ensures(fpk->lst.page_cnt >= 0);
+  ensures(fpk->lst.page.total >= 0);
+  ensures(fpk->lst.page.idx < fpk->lst.page_cnt);
+  ensures(fpk->lst.page.cnt <= fpk->lst.page.total);
   return 0;
 }
 static void
@@ -770,7 +939,6 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
-
   struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {

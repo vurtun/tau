@@ -82,9 +82,41 @@ static struct app g_app;
 #include "app/pck.c"
 #include "app/dbs.c"
 
+/*@
+  type invariant app_view_state_valid: \forall struct app_view *v; valid(v) ==> v->state >= APP_VIEW_STATE_FILE && v->state <= APP_VIEW_STATE_DB;
+  type invariant app_view_last_state_valid: \forall struct app_view *v; valid(v) ==> v->last_state >= APP_VIEW_STATE_FILE && v->last_state <= APP_VIEW_STATE_DB;
+  type invariant app_view_path_buf_off_valid: \forall struct app_view *v; valid(v) ==> v->path_buf_off >= 0; // Add upper bound if applicable
+
+  type invariant app_tab_cnt_valid: \forall struct app *a; valid(a) ==> a->tab_cnt >= 0 && a->tab_cnt <= APP_VIEW_CNT;
+  type invariant app_unused_valid: \forall struct app *a; valid(a) ==> a->unused >= 0 && a->unused <= APP_VIEW_CNT_MSK;
+  type invariant app_unused_tabs_relation: \forall struct app *a; valid(a) ==>
+    (\forall integer i; 0 <= i < APP_VIEW_CNT ==>
+      (a->unused & (1u << i)) != 0 <==> (\forall integer j; 0 <= j < a->tab_cnt ==> a->tabs[j] != i));
+  type invariant app_sel_tab_valid: \forall struct app *a; valid(a) ==> a->sel_tab >= 0 && a->sel_tab < a->tab_cnt;
+  type invariant app_show_tab_lst_valid: \forall struct app *a; valid(a) ==> a->show_tab_lst == 0 || a->show_tab_lst == 1;
+  type invariant app_tabs_valid: \forall struct app *a; valid(a) ==> (\forall integer i; 0 <= i < a->tab_cnt ==> a->tabs[i] >= 0 && a->tabs[i] < APP_VIEW_CNT);
+  type invariant app_views_valid: \forall struct app *a; valid(a) ==> (\forall integer i; 0 <= i < a->tab_cnt ==> valid(&a->views[a->tabs[i]]));
+  type invariant app_unused_constraints: \forall struct app *a; valid(a) ==>
+    (a->tab_cnt == 0 ==> a->unused == APP_VIEW_CNT_MSK) && // If no tabs, all views are unused
+    (a->tab_cnt > 0 ==> a->unused < APP_VIEW_CNT_MSK); // If there are tabs, at least one view is in use
+*/
 /* -----------------------------------------------------------------------------
  *                                  App
  * ---------------------------------------------------------------------------*/
+/*@
+  requires app != NULL;
+  requires app->tab_cnt < APP_VIEW_CNT;
+  requires app->unused > 0;
+  requires app->unused <= APP_VIEW_CNT_MSK;
+  assigns app->unused, app->views[0..APP_VIEW_CNT-1], app->tab_cnt; // Modifies app->unused and the views array and tab_cnt
+
+  ensures \result >= 0 && \result < APP_VIEW_CNT; // Returns a valid index
+  ensures app->unused < \old(app->unused); // unused bits are cleared
+  ensures (app->unused & (1U << \result)) == 0U; // The bit corresponding to the returned index is cleared
+  ensures app->tab_cnt == \old(app->tab_cnt) + 1; // tab count is increased by one
+  ensures \forall integer i; 0 <= i < APP_VIEW_CNT && i != \result ==> app->views[i] == \old(app->views[i]); // Other views are not modified
+  ensures \forall integer j; 0 <= j < szof(app->views[0]); \at(app->views[\result],Pre)[j] == 0; // the new view is initialized to zero
+*/
 static int
 app_view_new(struct app *app) {
   requires(app);
@@ -108,6 +140,15 @@ app_view_new(struct app *app) {
   ensures((app->unused & (1 << idx)) == 0U);
   return idx;
 }
+/*@
+  requires app != NULL;
+  requires idx >= 0 && idx < APP_VIEW_CNT;
+  requires app->unused <= APP_VIEW_CNT_MSK;
+  requires !(app->unused & (1U << castu(idx)));
+  assigns app->unused, app->views[idx];
+  ensures app->unused == (\old(app->unused) | (1U << castu(idx)));
+  ensures app->views[idx].file_path.ptr == NULL; // file_path is set to str_nil
+*/
 static void
 app_view_del(struct app *app, int idx) {
   requires(app);
@@ -126,6 +167,18 @@ app_view_del(struct app *app, int idx) {
   ensures(app->unused == (old_unused|(1u << castu(idx))));
   ensures(app->unused > old_unused);
 }
+/*@
+  requires app != NULL;
+  requires idx >= 0 && idx < APP_VIEW_CNT;
+  requires app->unused <= APP_VIEW_CNT_MSK;
+  requires !(app->unused & (1U << castu(idx)));
+
+  assigns app->views[idx];
+
+  ensures app->views[idx].state == APP_VIEW_STATE_FILE;
+  ensures app->views[idx].last_state == APP_VIEW_STATE_FILE;
+  ensures app->views[idx].path_buf_off == idx * MAX_FILE_PATH;
+*/
 static void
 app_view_setup(struct app *app, int idx) {
   requires(app);
@@ -140,6 +193,13 @@ app_view_setup(struct app *app, int idx) {
   view->last_state = view->state;
   view->path_buf_off = idx * MAX_FILE_PATH;
 }
+/*@
+  requires app != NULL;
+  requires idx >= 0 && idx < APP_VIEW_CNT;
+  requires !(app->unused & (1U << castu(idx))));
+  assigns app->views[idx];
+  ensures \result == 0 || \result == -1; // Returns 0 or -1
+*/
 static int
 app_view_init(struct app *app, int idx, struct str path) {
   requires(app);
@@ -157,6 +217,18 @@ app_view_init(struct app *app, int idx, struct str path) {
   view->state = APP_VIEW_STATE_DB;
   return 0;
 }
+/*@
+  requires app != NULL;
+  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
+  requires idx >= 0 && idx < APP_VIEW_CNT;
+  requires !(app->unused & (1U << castu(idx)));
+  requires app->unused <= APP_VIEW_CNT_MSK;
+
+  assigns app->tabs[app->tab_cnt], app->tab_cnt;
+
+  ensures \result >= 0 && \result < APP_VIEW_CNT;
+  ensures app->tab_cnt == \old(app->tab_cnt) + 1;
+*/
 static int
 app_tab_add(struct app *app, int idx) {
   requires(app);
@@ -185,6 +257,27 @@ app_tab_add(struct app *app, int idx) {
   ensures(ret < cntof(app->tabs));
   return ret;
 }
+/*@
+  requires app != NULL;
+  requires app->tab_cnt > 0 && app->tab_cnt <= APP_VIEW_CNT;
+  requires tab_idx >= 0 && tab_idx < app->tab_cnt;
+  requires !(app->unused & (1 << app->tabs[tab_idx])); // Corresponding view must be in use
+  requires app->unused <= APP_VIEW_CNT_MSK;
+
+  assigns app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab;
+
+  ensures app->tab_cnt == \old(app->tab_cnt) - 1;
+  ensures \forall integer i; 0 <= i < \old(app->tab_cnt);  // All remaining tabs are valid
+          (\exists integer j; 0 <= j < \old(app->tab_cnt) && i != j ==> app->tabs[i] == \old(app->tabs[j])); // All original tabs (except the removed one) are still present.
+  ensures \forall integer i; 0 <= i < app->tab_cnt ==>  // The order of the tabs is preserved (relative to their original positions)
+          (\exists integer j; 0 <= j < \old(app->tab_cnt) && i != j ==>
+                (
+                    (j < tab_idx && i < tab_idx && app->tabs[i] == \old(app->tabs[j])) ||
+                    (j > tab_idx && i > tab_idx -1 && app->tabs[i] == \old(app->tabs[j]))
+                )
+           );
+  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt; // sel_tab is within the new range
+*/
 static void
 app_tab_rm(struct app *app, int tab_idx) {
   requires(app);
@@ -215,7 +308,22 @@ app_tab_rm(struct app *app, int tab_idx) {
 
   ensures(app->tab_cnt >= 0);
   ensures(app->tab_cnt < old_tab_cnt);
+  ensures(app->tab_cnt <= APP_VIEW_CNT);
+  ensures(app->tab_cnt <= cntof(app->tabs));
 }
+/*@
+  requires app != NULL;
+  requires app->tab_cnt > 0 && app->tab_cnt <= APP_VIEW_CNT;
+  requires tab_idx >= 0 && tab_idx < app->tab_cnt;
+  requires !(app->unused & (1U << castu(app->tabs[tab_idx])));
+  requires app->unused <= APP_VIEW_CNT_MSK;
+
+  assigns app->unused, app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab;
+
+  ensures app->tab_cnt == \old(app->tab_cnt) - 1;
+  ensures app->unused == (\old(app->unused) | (1U << castu(app->tabs[tab_idx])));
+  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
+*/
 static void
 app_tab_close(struct app *app, int tab_idx) {
   requires(app);
@@ -240,8 +348,21 @@ app_tab_close(struct app *app, int tab_idx) {
   ensures(app->sel_tab < app->tab_cnt);
   ensures(app->sel_tab < APP_VIEW_CNT);
   ensures(app->sel_tab < cntof(app->tabs));
-  ensures(app->unused >= old_unused);
+  ensures(app->unused <= APP_VIEW_CNT_MSK);
+  ensures(app->unused > old_unused);
 }
+/*@
+  requires app != NULL;
+  requires files != NULL;
+  requires file_cnt >= 0 && file_cnt <= APP_VIEW_CNT;
+  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
+
+  assigns app->unused, app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab, app->views[0..APP_VIEW_CNT-1];
+
+  ensures app->tab_cnt >= \old(app->tab_cnt);
+  ensures app->tab_cnt <= APP_VIEW_CNT;
+  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
+*/
 static void
 app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   requires(app);
@@ -306,6 +427,15 @@ app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
   ensures(app->sel_tab < APP_VIEW_CNT);
   ensures(app->sel_tab < cntof(app->tabs));
 }
+/*@
+  requires app != NULL;
+  requires app->unused > 0;
+  requires app->unused <= APP_VIEW_CNT_MSK;
+  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
+  assigns app->unused, app->tabs[app->tab_cnt], app->tab_cnt, app->sel_tab, app->views[0..APP_VIEW_CNT-1];
+  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
+  ensures app->unused < \old(app->unused);
+*/
 static int
 app_tab_open(struct app *app) {
   requires(app);
@@ -329,6 +459,18 @@ app_tab_open(struct app *app) {
   ensures(app->unused < old_unused);
   return app->sel_tab;
 }
+/*@
+  requires app != NULL;
+  requires dst_idx >= 0 && dst_idx < app->tab_cnt;
+  requires src_idx >= 0 && src_idx < app->tab_cnt;
+  requires !(app->unused & (1U << castu(app->tabs[dst_idx]))); // dst_idx tab must be in use
+  requires !(app->unused & (1U << castu(app->tabs[src_idx]))); // src_idx tab must be in use
+  assigns app->tabs[0..APP_VIEW_CNT-1]; // Only the tabs array is modified
+
+  ensures app->tabs[dst_idx] == \old(app->tabs[src_idx]); // Value at dst_idx is now the old value at src_idx
+  ensures app->tabs[src_idx] == \old(app->tabs[dst_idx]); // Value at src_idx is now the old value at dst_idx
+  ensures \forall integer i; 0 <= i < APP_VIEW_CNT && i != dst_idx && i != src_idx ==> app->tabs[i] == \old(app->tabs[i]); // Other elements are unchanged.
+*/
 static void
 app_tab_swap(struct app *app, int dst_idx, int src_idx) {
   requires(app);
@@ -356,6 +498,15 @@ app_tab_swap(struct app *app, int dst_idx, int src_idx) {
   ensures(app->tabs[dst_idx] == old_src);
   ensures(app->tabs[src_idx] == old_dst);
 }
+/*@
+  requires sys!= NULL;
+  requires app!= NULL;
+  requires \valid(app); // The app structure itself must be valid
+  assigns app->res, app->gui, app->fs, app->db, app->tab_cnt, app->unused, app->tabs[0..APP_VIEW_CNT-1], app->views[0..APP_VIEW_CNT-1]; // All the relevant parts of app are assigned
+  ensures app->tab_cnt == 1;
+  ensures app->tabs == 0;
+  ensures app->unused == APP_VIEW_CNT_MSK - 1u;
+*/
 static void
 app_init(struct app *app, struct sys *sys) {
   requires(sys);
@@ -388,12 +539,25 @@ app_init(struct app *app, struct sys *sys) {
   app_view_setup(app, app->tabs[0]);
 
 #ifdef DEBUG_MODE
+  ut_bit();
   ut_str();
+  ut_utf();
+  ut_str2();
+  ut_tbl();
 #endif
+
   ensures(app->tab_cnt == 1);
   ensures(app->tabs[0] == 0);
   ensures(app->unused == APP_VIEW_CNT_MSK - 1u);
 }
+/*@
+  requires sys != NULL;
+  requires app != NULL;
+  requires \valid(app); // app structure must be valid
+  assigns app->unused, app->tab_cnt, app->tabs[0..APP_VIEW_CNT-1], app->views[0..APP_VIEW_CNT-1], app->fs, app->res; // All relevant parts of app are assigned
+  ensures app->tab_cnt == 0;
+  ensures app->unused == APP_VIEW_CNT_MSK;
+*/
 static void
 app_shutdown(struct app *app, struct sys *sys) {
   requires(sys);
@@ -513,7 +677,6 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       const struct str *file_urls = paq->data;
       switch (paq->state) {
       case GUI_DND_DELIVERY: {
-
         int file_cnt = paq->size;
         int rest = cpu_bit_cnt(app->unused & APP_VIEW_CNT_MSK);
         int cnt = min(file_cnt, rest);

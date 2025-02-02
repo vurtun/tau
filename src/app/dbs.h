@@ -109,7 +109,7 @@ struct db_tree_tbl_state {
 #define DB_TBL_MAP(TYPE)                                \
   TYPE(TBL,       "table",    "Tables",   RES_ICO_TABLE)\
   TYPE(VIEW,      "view",     "Views",    RES_ICO_IMAGE)\
-  TYPE(IDX,       "index",    "Indexs",   RES_ICO_TAG)  \
+  TYPE(IDX,       "index",    "Indexes",  RES_ICO_TAG)  \
   TYPE(TRIGGER,   "trigger",  "Triggers", RES_ICO_BOLT)
 
 enum db_tbl_type {

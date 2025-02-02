@@ -60,7 +60,9 @@ struct sys_mac {
   sys__mac_view *view;
   sys__mac_view_delegate *view_dlg;
   unsigned long long tooltip;
+  id keyup_monitor;
 
+  float scrl[2];
   float dpi_scale[2];
   int win_w, win_h;
 };
@@ -353,6 +355,10 @@ sys__mac_err(const char *fmt, ...) {
  */
 static void
 sys__mac_free(void) {
+  if (g_mac.keyup_monitor != nil) {
+    [NSEvent removeMonitor:g_mac.keyup_monitor];
+    g_mac.keyup_monitor = nil;
+  }
   SYS__OBJ_REL(g_mac.track_area);
   SYS__OBJ_REL(g_mac.app_dlg);
   SYS__OBJ_REL(g_mac.win_dlg);
@@ -612,13 +618,14 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
     NSWindowStyleMaskResizable;
   NSRect win_rect = NSMakeRect(0, 0, g_sys.win.w, g_sys.win.h);
   g_mac.win = [[NSWindow alloc] initWithContentRect:win_rect styleMask:style
-                              backing:NSBackingStoreBuffered defer:NO];
+    backing:NSBackingStoreBuffered defer:NO];
 
   g_mac.win.releasedWhenClosed = NO;
   g_mac.win.title = [NSString stringWithUTF8String:g_sys.win.title];
   g_mac.win.restorable = YES;
   g_mac.win_dlg = [[sys__mac_window_delegate alloc] init];
   g_mac.win.delegate = g_mac.win_dlg;
+  g_mac.win.acceptsMouseMovedEvents = YES;
   [g_mac.win setOpaque: YES];
   g_mac.win_w = g_sys.win.w;
   g_mac.win_h = g_sys.win.h;
@@ -665,16 +672,23 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
   [NSApp activateIgnoringOtherApps:YES];
   [g_mac.win makeKeyAndOrderFront:nil];
   [g_mac.win makeMainWindow];
+
+  [NSEvent setMouseCoalescingEnabled:NO];
+  NSEvent *focusevent = [NSEvent otherEventWithType:NSEventTypeAppKitDefined
+    location:NSZeroPoint
+    modifierFlags:0x40
+    timestamp:0
+    windowNumber:0
+    context:nil
+    subtype:NSEventSubtypeApplicationActivated
+    data1:0
+    data2:0];
+  [NSApp postEvent:focusevent atStart:YES];
   [NSApp finishLaunching];
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
+  unused(sender);
   return YES;
-}
-- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
-  return NO;
-}
-- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames {
-
 }
 - (void)applicationWillTerminate:(NSNotification*)notification {
   g_sys.op = SYS_QUIT;
@@ -719,8 +733,8 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
     SYS__OBJ_REL(g_mac.track_area);
   }
   const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited |
-    NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag | NSTrackingActiveAlways |
-    NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside | NSTrackingMouseMoved;
+    NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag |
+    NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
   g_mac.track_area = [[NSTrackingArea alloc] initWithRect:[self bounds]
                      options:options owner:self userInfo:nil];
   [self addTrackingArea:g_mac.track_area];
@@ -818,10 +832,19 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
     dx *= 0.1f;
     dy *= 0.1f;
   }
-  if ((fabs(dx) >= 1.0f) || (fabs(dy) >= 1.0f)) {
+  g_mac.scrl[0] += dx;
+  g_mac.scrl[1] += dy;
+
+  if ((fabs(g_mac.scrl[0]) >= 1.0f) ||
+      (fabs(g_mac.scrl[1]) >= 1.0f)) {
     g_sys.keymod |= sys__mac_mods(evt);
-    g_sys.mouse.scrl[0] = casti(dx);
-    g_sys.mouse.scrl[1] = casti(dy);
+
+    g_sys.mouse.scrl[0] = casti(g_mac.scrl[0]);
+    g_sys.mouse.scrl[1] = casti(g_mac.scrl[1]);
+
+    g_mac.scrl[0] -= castf(g_sys.mouse.scrl[0]);
+    g_mac.scrl[1] -= castf(g_sys.mouse.scrl[1]);
+
     g_sys.scrl_mod = 1;
   }
   sys__mac_on_frame();
@@ -869,25 +892,13 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
 }
 @end
 
-@implementation sys__mac_window
-- (instancetype)initWithContentRect:(NSRect)contentRect
-                          styleMask:(NSWindowStyleMask)style
-                            backing:(NSBackingStoreType)backingStoreType
-                              defer:(BOOL)flag {
-  self = [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:flag];
-  if (self) {
-    #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-      [self registerForDraggedTypes:[NSArray arrayWithObjects:NSPasteboardTypeFileURL,NSPasteboardTypeString,nil]];
-    #endif
-  }
-  return self;
-}
 static BOOL
 sys__mac_dnd_files(NSArray *files, enum sys_dnd_state state) {
   assert(files);
   BOOL ret = YES;
   int dnd_file_cnt = casti([files count]);
   for (int at = 0; dnd_file_cnt; ++at) {
+
     struct str lst[64];
     g_sys.dnd.state = SYS_DND_DELIVERY;
     g_sys.dnd.response = SYS_DND_REJECT;
@@ -948,7 +959,22 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 #endif
   return ret;
 }
+
+@implementation sys__mac_window
+- (instancetype)initWithContentRect:(NSRect)contentRect
+                          styleMask:(NSWindowStyleMask)style
+                            backing:(NSBackingStoreType)backingStoreType
+                              defer:(BOOL)flag {
+  self = [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:flag];
+  if (self) {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
+    [self registerForDraggedTypes:[NSArray arrayWithObject:NSPasteboardTypeFileURL]];
+#endif
+  }
+  return self;
+}
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+  NSLog(@"Drag enter Operation\n");
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
   NSPasteboard *pboard = [sender draggingPasteboard];
   BOOL ret = sys__mac_dnd(pboard, SYS_DND_ENTER);
@@ -962,6 +988,7 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 #endif
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+  NSLog(@"Drag update Operation\n");
   NSPoint pos = [g_mac.win mouseLocationOutsideOfEventStream];
   float new_x = castf(pos.x) * g_mac.dpi_scale[0];
   float new_y = castf(pos.y) * g_mac.dpi_scale[1];
@@ -986,6 +1013,7 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 #endif
 }
 - (NSDragOperation)draggingExited:(id<NSDraggingInfo>)sender {
+  NSLog(@"Drag exit Operation\n");
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
   NSPasteboard *pboard = [sender draggingPasteboard];
   BOOL ret = sys__mac_dnd(pboard, SYS_DND_LEFT);
@@ -999,6 +1027,7 @@ sys__mac_dnd(NSPasteboard *pboard, enum sys_dnd_state state) {
 #endif
 }
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+  NSLog(@"Perform Drag Operation\n");
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
   NSPasteboard *pboard = [sender draggingPasteboard];
   return sys__mac_dnd(pboard, SYS_DND_DELIVERY);
@@ -1044,6 +1073,15 @@ main(int argc, char *argv[]) {
   [NSApplication sharedApplication];
   g_mac.app_dlg = [[sys__mac_app_delegate alloc] init];
   NSApp.delegate = g_mac.app_dlg;
+
+  NSEvent* (^keyup_monitor)(NSEvent*) = ^NSEvent* (NSEvent* event) {
+    if ([event modifierFlags] & NSEventModifierFlagCommand) {
+      [[NSApp keyWindow] sendEvent:event];
+    }
+    return event;
+  };
+  g_mac.keyup_monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:keyup_monitor];
+
   [NSApp run];
   return 0;
 }

@@ -1,3 +1,83 @@
+/*@
+  type invariant db_tbl_fltr_elm_valid: \forall struct db_tbl_fltr_elm *e;
+    valid(e) ==>
+    e->type >= DB_TBL_FLTR_ELM_TYP_STR && e->type <= DB_TBL_FLTR_ELM_TYP_TM &&
+    e->col >= 0; // Add an upper bound for e->col if applicable
+    valid(&e->fnd) && valid(&e->col_name) && valid(e->fnd_buf) && valid(e->col_buf);
+
+  type invariant db_tbl_fltr_state_valid: \forall struct db_tbl_fltr_state *f;
+    valid(f) ==>
+    f->state >= DB_TBL_FLTR_LST && f->state <= DB_TBL_FLTR_EDT &&
+    f->unused >= 0 && f->unused <= DB_FLTR_CNT_MSK &&
+    f->cnt >= 0 && f->cnt <= DB_MAX_FLTR_CNT &&
+    (\forall integer i; 0 <= i < f->cnt ==> f->lst[i] >= 0 && f->lst[i] < DB_MAX_FLTR_CNT) && // lst indices are valid
+    (\forall integer i; 0 <= i < DB_MAX_FLTR_CNT ==> valid(&f->elms[i])) && // elms are valid
+    valid(&f->data_rng) &&
+    valid(&f->tbl) && valid(&f->tbl_col) && valid(&f->elm_rng); // ui elements are valid
+
+  type invariant db_tbl_fltr_relation: \forall struct db_tbl_fltr_state *f;
+    valid(f) ==>
+    (\forall integer i; 0 <= i < DB_MAX_FLTR_CNT ==>
+      (f->unused & (1u << i)) != 0 <==> (\forall integer j; 0 <= j < f->cnt ==> f->lst[j] != i));
+
+  type invariant db_tbl_fltr_unused_cnt: \forall struct db_tbl_fltr_state *f;
+    valid(f) ==>
+    (f->cnt == 0 ==> f->unused == DB_FLTR_CNT_MSK) && // If no filters, all elms are unused
+    (f->cnt > 0 ==> f->unused < DB_FLTR_CNT_MSK);
+
+  type invariant db_tbl_fltr_state_data_rng_valid: \forall struct db_tbl_fltr_state *f;
+    valid(f) ==>f->data_rng.lo >= 0 && f->data_rng.hi >= 0 && f->data_rng.lo <= f->data_rng.hi &&
+                f->data_rng.cnt <= DB_MAX_FLTR_CNT && f->data_rng.cnt >= 0;
+
+  type invariant db_tbl_col_lst_state_valid: \forall struct db_tbl_col_lst_state *s;
+    valid(s) ==>
+    s->state >= DB_TBL_COL_STATE_LOCKED && s->state <= DB_TBL_COL_STATE_UNLOCKED &&
+    s->cnt >= 0 && s->cnt <= DB_MAX_TBL_COLS &&
+    s->total >= 0 && s->total <= DB_MAX_TBL_COLS && // Add an upper bound for total
+    valid(&s->rng) && valid(&s->ui) && valid(&s->sel);
+
+  type invariant db_tbl_row_lst_state_valid: \forall struct db_tbl_row_lst_state *s;
+    valid(s) ==>
+    valid(&s->rng) && valid(&s->cols) && valid(&s->data_rng) && valid(&s->ui);
+
+  type invariant db_tbl_state_valid: \forall struct db_tbl_state *s;
+    valid(s) ==>
+    s->kind >= DB_TBL_TYPE_TBL && s->kind <= DB_TBL_TYPE_TRIGGER &&
+    s->state >= TBL_VIEW_SELECT && s->state <= TBL_VIEW_DISPLAY &&
+    s->disp >= DB_TBL_VIEW_DSP_DATA && s->disp <= DB_TBL_VIEW_DSP_CNT &&
+    valid(&s->title) && valid(s->title_buf) &&
+    valid(&s->col) && valid(&s->row) && valid(&s->fltr);
+
+  type invariant db_info_state_valid: \forall struct db_info_state *s;
+    valid(s) ==>
+    s->sel_tab >= DB_TBL_TYPE_TBL && s->sel_tab <= DB_TBL_TYPE_TRIGGER &&
+    (\forall integer i; 0 <= i < DB_TBL_TYPE_CNT ==> s->tab_cnt[i] >= 0) &&
+    s->elm_cnt >= 0 && // Add upper bound for elm_cnt if known
+    valid(&s->elm_rng) && valid(&s->tbl);
+
+  type invariant db_state_valid: \forall struct db_state *s;
+    valid(s) ==>
+    s->unused >= 0 && s->unused <= DB_TBL_CNT_MSK &&
+    s->tab_cnt >= 0 && s->tab_cnt <= DB_TBL_CNT &&
+    s->sel_tab >= 0 && s->sel_tab < s->tab_cnt && // sel_tab must be less than tab_cnt
+    s->show_tab_lst == 0 || s->show_tab_lst == 1 &&
+    (\forall integer i; 0 <= i < s->tab_cnt ==> s->tabs[i] >= 0 && s->tabs[i] < DB_TBL_CNT) && // tabs elements are valid indices
+    (\forall integer i; 0 <= i < DB_TBL_CNT ==> valid(&s->tbls[i])) && // All tbls are valid
+    valid(&s->info) && valid(s->con);
+
+  type invariant db_state_unused_tabs: \forall struct db_state *s;
+    valid(s) ==>
+    (\forall integer i; 0 <= i < DB_TBL_CNT ==>
+      (s->unused & (1u << i)) != 0 <==> (\forall integer j; 0 <= j < s->tab_cnt ==> s->tabs[j] != i));
+
+  type invariant db_state_unused_cnt: \forall struct db_state *s;
+    valid(s) ==>
+    (s->tab_cnt == 0 ==> s->unused == DB_TBL_CNT_MSK) && // If no tabs, all tbls are unused
+    (s->tab_cnt > 0 ==> s->unused < DB_TBL_CNT_MSK); // If there are tabs, at least one tbl is in use
+
+  type invariant tbl_valid: \forall struct tbl(long long, DB_MAX_TBL_COLS) *t;
+    valid(t) ==>t->cnt >= 0 && t->cnt <= DB_MAX_TBL_COLS;
+*/
 /* ---------------------------------------------------------------------------
  *
  *                                Database
@@ -39,6 +119,21 @@ struct db_name_lck {
   struct str name;
   sqlite3_stmt *stmt;
 };
+/*@
+  requires sdb != NULL;
+  requires lck != NULL;
+  requires tbl != NULL;
+
+  requires \valid(sdb);
+  requires \valid(lck);
+  requires \valid(tbl);
+  requires \valid(tbl->title); // Ensure tbl->title is valid
+
+  assigns lck->stmt, lck->name;
+
+  ensures lck->stmt == NULL || \valid(lck->stmt); // stmt is either NULL or valid
+  ensures \str_len(lck->name) > 0; // Name should have some length (not an empty string).
+*/
 static void
 db_tbl_name_acq(struct db_name_lck *lck, struct db_state *sdb,
                 struct db_tbl_state *tbl) {
@@ -66,6 +161,21 @@ db_tbl_name_rel(struct db_name_lck *lck) {
   requires(lck);
   sqlite3_finalize(lck->stmt);
 }
+/*@
+  requires sdb != NULL;
+  requires lck != NULL;
+  requires tbl != NULL;
+  requires col != NULL || (col == NULL && tbl->col.buf.size == 0); // col can be NULL only if the buffer is empty.
+
+  requires \valid(sdb);
+  requires \valid(lck);
+  requires \valid(tbl);
+
+  assigns lck->stmt, lck->name;
+
+  ensures lck->stmt == NULL || \valid(lck->stmt);
+  ensures \str_len(lck->name) > 0;
+*/
 static void
 db_tbl_col_name_acq(struct db_name_lck *lck, struct db_state *sdb,
                     struct db_tbl_view *tbl, struct db_tbl_col *col,
@@ -99,10 +209,28 @@ db_tbl_col_name_rel(struct db_name_lck *lck) {
  *                                Filter
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires fltr != NULL;
+  requires fltr->unused > 0;
+  requires fltr->unused <= DB_FLTR_CNT_MSK;
+  requires fltr->cnt < DB_MAX_FLTR_CNT;
+
+  requires \valid(fltr->elms[0..DB_MAX_FLTR_CNT-1]); // All filter elements must be valid
+  requires \valid(&fltr->unused);
+  requires \valid(&fltr->cnt);
+
+  assigns fltr->unused, fltr->elms[0..DB_MAX_FLTR_CNT-1], fltr->cnt;
+
+  ensures \result >= 0 && \result < DB_MAX_FLTR_CNT;
+  ensures fltr->unused < \old(fltr->unused);
+  ensures (fltr->unused & (1U << \result)) == 0U;
+  ensures fltr->cnt == \old(fltr->cnt) + 1;
+  ensures \forall integer i; 0 <= i < DB_MAX_FLTR_CNT && i != \result ==> fltr->elms[i] == \old(fltr->elms[i]); // Other elements are unchanged
+  ensures \forall integer j; 0 <= j < szof(fltr->elms[0]); \at(fltr->elms[\result],Pre)[j] == 0; // the new element is initialized to zero
+*/
 static int
 db_tbl_fltr_new(struct db_tbl_fltr_state *fltr) {
   requires(fltr);
-  requires(fltr->unused > 0);
   requires(fltr->unused > 0);
   requires(fltr->unused <= DB_FLTR_CNT_MSK);
   requires(fltr->cnt < DB_MAX_FLTR_CNT);
@@ -128,6 +256,20 @@ db_tbl_fltr_new(struct db_tbl_fltr_state *fltr) {
   ensures(ret < cntof(fltr->elms));
   return ret;
 }
+/*@
+  requires fltr != NULL;
+  requires idx >= 0 && idx < DB_MAX_FLTR_CNT;
+  requires \valid(fltr->elms[0..DB_MAX_FLTR_CNT-1]);
+  requires fltr->unused <= DB_FLTR_CNT_MSK;
+  requires !(fltr->unused & (1U << castu(idx))); // The bit for idx must not be set in unused
+  requires fltr->cnt > 0; // There must be at least one filter to delete
+
+  assigns fltr->unused, fltr->elms[idx], fltr->cnt;
+
+  ensures fltr->unused == (\old(fltr->unused) | (1U << castu(idx)));
+  ensures fltr->cnt == \old(fltr->cnt) - 1; // Filter count is decremented
+  ensures \forall integer j; 0 <= j < szof(fltr->elms[0]); \at(fltr->elms[idx],Pre)[j] == 0; // the deleted element is zeroed
+*/
 static void
 db_tbl_fltr_del(struct db_tbl_fltr_state *fltr, int idx) {
   requires(fltr);
@@ -147,6 +289,19 @@ db_tbl_fltr_del(struct db_tbl_fltr_state *fltr, int idx) {
   ensures(fltr->unused == (old_unused|(1u << castu(idx))));
   ensures(fltr->unused > old_unused);
 }
+/*@
+  requires fltr != NULL;
+  requires fltr->cnt >= 0 && fltr->cnt < DB_MAX_FLTR_CNT;
+  requires idx >= 0 && idx < DB_MAX_FLTR_CNT;
+  requires !(fltr->unused & (1U << idx));
+  requires fltr->unused <= DB_FLTR_CNT_MSK;
+
+  assigns fltr->lst[fltr->cnt], fltr->cnt;
+
+  ensures \result >= 0 && \result < DB_MAX_FLTR_CNT;
+  ensures fltr->cnt == \old(fltr->cnt) + 1;
+  ensures fltr->lst[\result] == idx; // Added: Ensures the added element has the correct index
+*/
 static int
 db_tbl_fltr_add(struct db_tbl_fltr_state *fltr, int idx) {
   requires(fltr);
@@ -176,6 +331,26 @@ db_tbl_fltr_add(struct db_tbl_fltr_state *fltr, int idx) {
   ensures(ret < cntof(fltr->elms));
   return ret;
 }
+/*@
+  requires fltr != NULL;
+  requires fltr->cnt > 0 && fltr->cnt <= DB_MAX_FLTR_CNT;
+  requires lst_idx >= 0 && lst_idx < fltr->cnt;
+  requires !(fltr->unused & (1 << fltr->lst[lst_idx])); // The corresponding filter must be in use
+  requires fltr->unused <= DB_FLTR_CNT_MSK;
+
+  assigns fltr->lst[0..DB_MAX_FLTR_CNT-1], fltr->cnt;
+
+  ensures fltr->cnt == \old(fltr->cnt) - 1;
+  ensures \forall integer i; 0 <= i < \old(fltr->cnt);  // All remaining elements are valid
+          (\exists integer j; 0 <= j < \old(fltr->cnt) && i != j ==> fltr->lst[i] == \old(fltr->lst[j])); // All original elements (except the removed one) are still present.
+  ensures \forall integer i; 0 <= i < fltr->cnt ==>  // The order of the elements is preserved (relative to their original positions)
+          (\exists integer j; 0 <= j < \old(fltr->cnt) && i != j ==>
+                (
+                    (j < lst_idx && i < lst_idx && fltr->lst[i] == \old(fltr->lst[j])) ||
+                    (j > lst_idx && i > lst_idx -1 && fltr->lst[i] == \old(fltr->lst[j]))
+                )
+           );
+*/
 static void
 db_tbl_fltr_rm(struct db_tbl_fltr_state *fltr, int lst_idx) {
   requires(fltr);
@@ -198,6 +373,35 @@ db_tbl_fltr_rm(struct db_tbl_fltr_state *fltr, int lst_idx) {
   ensures(fltr->cnt >= 0);
   ensures(fltr->cnt < old_cnt);
 }
+/*@
+  requires sdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+  requires fltr != NULL;
+  requires col >= 0;
+
+  requires fltr->unused > 0;
+  requires str_len(str) > 0 && str_len(str) <= DB_MAX_FLTR_STR;
+  requires fltr->cnt < DB_MAX_FLTR_CNT;
+
+  requires \valid(sdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+  requires \valid(fltr);
+  requires \valid(str);
+
+  assigns fltr->unused, fltr->elms[0..DB_MAX_FLTR_CNT-1], fltr->cnt, fltr->lst[0..DB_MAX_FLTR_CNT-1];
+
+  ensures \result >= 0 && \result < DB_MAX_FLTR_CNT;
+  ensures fltr->cnt == \old(fltr->cnt) + 1;
+  ensures fltr->elms[\result].type == DB_TBL_FLTR_ELM_TYP_STR;
+  ensures \str_eq(fltr->elms[\result].fnd, str); // Or a suitable comparison if str_sqz modifies str
+  ensures fltr->elms[\result].enabled == 1;
+  ensures fltr->elms[\result].col == col;
+  ensures \forall integer i; 0 <= i < DB_MAX_FLTR_CNT && i != \result ==> fltr->elms[i] == \old(fltr->elms[i]);
+  ensures \forall integer j; 0 <= j < szof(fltr->elms[0]); \at(fltr->elms[\result],Pre)[j] == 0;
+  ensures \forall integer i; 0 <= i < \old(fltr->cnt) ==> (\exists integer j; 0 <= j < fltr->cnt ==> fltr->lst[j] == \old(fltr->lst[i]));
+*/
 static int
 db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
                     struct db_tbl_view *vtbl, struct db_tbl_fltr_state *fltr,
@@ -239,6 +443,25 @@ db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
   ensures(ret < cntof(fltr->elms));
   return ret;
 }
+/*@
+  requires fltr != NULL;
+  requires fltr->cnt > 0 && fltr->cnt <= DB_MAX_FLTR_CNT;
+  requires idx >= 0 && idx < fltr->cnt;
+  requires !(fltr->unused & (1U << castu(fltr->lst[idx]))); // Corresponding filter must be in use
+  assigns fltr->lst[0..DB_MAX_FLTR_CNT-1], fltr->cnt, fltr->unused;
+
+  ensures fltr->cnt == \old(fltr->cnt) - 1;
+  ensures fltr->unused == (\old(fltr->unused) | (1U << castu(\old(fltr->lst[idx]))));
+  ensures \forall integer i; 0 <= i < \old(fltr->cnt);
+          (\exists integer j; 0 <= j < \old(fltr->cnt) && i != j ==> fltr->lst[i] == \old(fltr->lst[j])); // All original elements (except the removed one) are still present.
+  ensures \forall integer i; 0 <= i < fltr->cnt ==>
+          (\exists integer j; 0 <= j < \old(fltr->cnt) && i != j ==>
+                (
+                    (j < idx && i < idx && fltr->lst[i] == \old(fltr->lst[j])) ||
+                    (j > idx && i > idx -1 && fltr->lst[i] == \old(fltr->lst[j]))
+                )
+           );
+*/
 static void
 db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
   requires(fltr);
@@ -268,6 +491,14 @@ db_tbl_fltr_view_rm(struct db_tbl_fltr_state *fltr, int idx) {
   ensures((fltr->unused | (1 << idx)) == old_unused);
   ensures(fltr->unused > old_unused);
 }
+/*@
+  requires fltr != NULL;
+  requires \valid(fltr->lst[0..DB_MAX_FLTR_CNT-1]);
+  requires fltr->cnt >= 0 && fltr->cnt <= DB_MAX_FLTR_CNT;
+  assigns fltr->lst[0..DB_MAX_FLTR_CNT-1], fltr->cnt, fltr->unused;
+  ensures fltr->cnt == 0;
+  ensures fltr->unused == DB_FLTR_CNT_MSK;
+*/
 static void
 db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
   requires(fltr);
@@ -280,6 +511,16 @@ db_tbl_fltr_view_clr(struct db_tbl_fltr_state *fltr) {
   fltr->unused = DB_FLTR_CNT_MSK;
   fltr->cnt = 0;
 }
+/*@
+  requires tbl != NULL;
+  requires \valid(tbl);
+  assigns tbl->disp, tbl->fltr.state, tbl->fltr.data_rng, tbl->fltr.ini_col, tbl->fltr.init;
+  ensures tbl->disp == DB_TBL_VIEW_DSP_FILTER;
+  ensures tbl->fltr.state == DB_TBL_FLTR_EDT;
+  ensures tbl->fltr.data_rng.total == tbl->row.rng.total;
+  ensures tbl->fltr.ini_col == col;
+  ensures tbl->fltr.init == 1;
+*/
 static void
 db_tbl_open_fltr(struct db_tbl_state *tbl, long long col) {
   requires(tbl);
@@ -290,12 +531,48 @@ db_tbl_open_fltr(struct db_tbl_state *tbl, long long col) {
   tbl->fltr.ini_col = col;
   tbl->fltr.init = 1;
 }
+/*@
+  requires tbl != NULL;
+  requires \valid(tbl);
+  assigns tbl->disp, tbl->fltr.state;
+  ensures tbl->disp == DB_TBL_VIEW_DSP_DATA;
+  ensures tbl->fltr.state == DB_TBL_FLTR_LST;
+*/
 static void
 db_tbl_close_fltr(struct db_tbl_state *tbl) {
   requires(tbl);
   tbl->disp = DB_TBL_VIEW_DSP_DATA;
   tbl->fltr.state = DB_TBL_FLTR_LST;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+  requires fltr != NULL;
+  requires view != NULL;
+
+  requires fltr->cnt >= 0 && fltr->cnt < DB_MAX_FLTR_CNT;
+  requires low >= 0 && high >= 0 && low <= high;
+  requires low <= stbl->fltr.data_rng.total && high <= stbl->fltr.data_rng.total;
+  requires (high - low) <= DB_MAX_FLTR_ELM; // Use DB_MAX_FLTR_ELM instead of cntof(view->data) for consistency
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+  requires \valid(fltr);
+  requires \valid(view);
+
+  assigns fltr->data_rng, view->buf, view->id, view->rowid[0..DB_MAX_FLTR_ELM-1], view->data[0..DB_MAX_FLTR_ELM-1];
+
+  ensures view->id == stbl->rowid;
+  ensures fltr->data_rng.lo == low;
+  ensures fltr->data_rng.hi == high;
+  ensures fltr->data_rng.cnt >= 0 && fltr->data_rng.cnt <= DB_MAX_FLTR_ELM;
+  ensures view->buf.cnt >= 0 && view->buf.cnt <= DB_TBL_ELM_STR_BUF_SIZ;
+  ensures \result == 0 || \result == -1; // Explicitly state possible return values
+*/
 static int
 db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
                      struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
@@ -427,6 +704,21 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
  *                                Table View
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires sdb != NULL;
+  requires sdb->tab_cnt < DB_TBL_CNT;
+  requires sdb->unused > 0 && sdb->unused <= DB_TBL_CNT_MSK;
+  requires \valid(sdb);
+
+  assigns sdb->unused, sdb->tbls[0..DB_TBL_CNT-1];
+
+  ensures \result >= 0 && \result < DB_TBL_CNT;
+  ensures sdb->unused < \old(sdb->unused);
+  ensures (sdb->unused & (1U << \result)) == 0U;
+  ensures \forall integer i; 0 <= i < DB_TBL_CNT && i != \result ==> sdb->tbls[i] == \old(sdb->tbls[i]);
+  ensures \forall integer j; 0 <= j < szof(sdb->tbls[0]); \at(sdb->tbls[\result],Pre)[j] == 0;
+  ensures sdb->tbls[\result].fltr.unused == DB_FLTR_CNT_MSK;
+*/
 static int
 db_tbl_new(struct db_state *sdb) {
   requires(sdb);
@@ -498,6 +790,41 @@ db_tbl_col_ico(struct str type) {
     return RES_ICO_FONT;
   }
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+  requires sdb->con != NULL;
+
+  requires stbl->col.rng.total <= SQLITE_MAX_COLUMN;
+  requires sel == 0 || sel == 1;
+  requires low >= 0 && high >= 0 && low <= high;
+  requires low <= stbl->col.rng.total && high <= stbl->col.rng.total;
+  requires (high - low) <= DB_MAX_TBL_COLS;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+
+  assigns stbl->row.rng, stbl->col.rng, stbl->row.cols, vtbl->col.buf, vtbl->col.id, vtbl->col.lst[0..DB_MAX_TBL_COLS-1];
+
+  ensures stbl->row.rng.lo == 0;
+  ensures stbl->row.rng.hi == 0;
+  ensures stbl->row.rng.cnt == 0;
+
+  ensures vtbl->col.id == stbl->rowid;
+  ensures vtbl->col.buf.cnt >= 0 && vtbl->col.buf.cnt <= DB_TBL_ELM_STR_BUF_SIZ;
+
+  ensures stbl->col.rng.lo >= 0;
+  ensures stbl->col.rng.hi >= 0 && stbl->col.rng.hi <= stbl->col.rng.total;
+  ensures stbl->col.rng.cnt >= 0 && stbl->col.rng.cnt <= DB_MAX_TBL_COLS;
+
+  ensures stbl->row.cols.lo >= 0;
+  ensures stbl->row.cols.hi >= 0;
+  ensures !sel || (stbl->row.cols.cnt <= stbl->col.sel.cnt);
+*/
 static void
 db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
@@ -628,6 +955,36 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
   ensures(vtbl->col.buf.cnt <= cntof(vtbl->col.buf.mem));
   ensures(vtbl->col.id == stbl->rowid);
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires vtbl != NULL;
+  requires stbl != NULL;
+
+  requires low >= 0;
+  requires low + stbl->row.cols.cnt <= stbl->col.rng.total;
+  requires stbl->row.cols.cnt <= DB_MAX_TBL_ROW_COLS;
+  requires stbl->col.rng.cnt <= stbl->col.rng.total;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(vtbl);
+  requires \valid(stbl);
+
+  assigns stbl->row.rng, stbl->row.cols;
+
+  ensures stbl->row.rng.lo == 0;
+  ensures stbl->row.rng.hi == 0;
+  ensures stbl->row.rng.cnt == 0;
+
+  ensures stbl->row.cols.lo >= 0;
+  ensures stbl->row.cols.hi >= 0;
+  ensures stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt;
+
+  ensures stbl->row.cols.lo >= stbl->col.rng.lo;
+  ensures stbl->row.cols.hi <= stbl->col.rng.hi;
+  ensures stbl->row.cols.cnt <= stbl->col.rng.cnt;
+*/
 static void
 db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
                     struct db_tbl_state *stbl, struct db_tbl_view *vtbl, int low) {
@@ -678,6 +1035,20 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
   ensures(stbl->row.rng.hi == 0);
   ensures(stbl->row.rng.cnt == 0);
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+  requires stbl->fltr.cnt >= 0 && stbl->fltr.cnt <= DB_MAX_FLTR_CNT;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+
+  assigns vdb->sql_qry_buf;
+*/
 static struct str
 db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
                     struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
@@ -714,6 +1085,22 @@ db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
   }
   return sql;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+  requires \valid(vdb->sql_qry_buf);
+
+  assigns vdb->sql_qry_buf;
+
+  ensures \result >= 0;
+*/
 static int
 db_tbl_qry_row_cnt(struct db_state *sdb, struct db_view *vdb,
                    struct db_tbl_state *stbl, struct db_tbl_view *vtbl) {
@@ -742,6 +1129,36 @@ db_tbl_qry_row_cnt(struct db_state *sdb, struct db_view *vdb,
   ensures(cnt >= 0);
   return cnt;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires vtbl != NULL;
+
+  requires low >= 0 && high >= 0 && low <= high;
+  requires low <= stbl->row.rng.total && high <= stbl->row.rng.total;
+  requires (high - low) <= DB_MAX_TBL_ROWS;
+
+  requires stbl->row.cols.lo >= 0 && stbl->row.cols.hi >= 0 && stbl->row.cols.hi >= stbl->row.cols.lo;
+  requires stbl->row.cols.hi == stbl->row.cols.lo + stbl->row.cols.cnt;
+  requires stbl->row.cols.lo >= stbl->col.rng.lo && stbl->row.cols.hi <= stbl->col.rng.hi;
+  requires stbl->row.cols.cnt <= stbl->col.rng.cnt;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(vtbl);
+
+  assigns stbl->row.rng, vtbl->row.buf, vtbl->row.id, vtbl->row.rowids[0..DB_MAX_TBL_ROWS-1], vtbl->row.lst[0..DB_MAX_TBL_ELM-1];
+
+  ensures stbl->row.rng.lo == low;
+  ensures stbl->row.rng.hi == high;
+  ensures stbl->row.rng.cnt >= 0 && stbl->row.rng.cnt <= DB_MAX_TBL_ROWS;
+
+  ensures vtbl->row.buf.cnt >= 0 && vtbl->row.buf.cnt <= DB_TBL_ELM_STR_BUF_SIZ;
+  ensures vtbl->row.id == stbl->rowid;
+  ensures \result == 0 || \result == -1;
+*/
 static int
 db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
@@ -857,6 +1274,24 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   ensures(vtbl->row.id == stbl->rowid);
   return 0;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires stbl != NULL;
+  requires view != NULL;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(stbl);
+  requires \valid(view);
+
+  assigns stbl->row.rng;
+
+  ensures stbl->row.rng.total == \old(stbl->row.rng.total);
+  ensures stbl->row.rng.cnt == 0;
+  ensures stbl->row.rng.lo == 0;
+  ensures stbl->row.rng.hi == 0;
+*/
 static void
 db_tbl_rev(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *stbl,
            struct db_tbl_view *view) {
@@ -871,6 +1306,45 @@ db_tbl_rev(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *stbl,
   stbl->row.rng.lo = 0;
   stbl->row.rng.hi = 0;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires ctx != NULL;
+
+  requires str_is_val(name);
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(ctx);
+  requires \valid(name);
+  requires \valid(sdb->tbls[idx]); // idx-th table must be valid
+
+  requires idx >= 0 && idx < DB_TBL_CNT;
+  requires \valid(vdb->sql_qry_buf);
+
+  assigns sdb->tbls[idx].row.rng, sdb->tbls[idx].col.rng, sdb->tbls[idx].title,
+          sdb->tbls[idx].qry_name, sdb->tbls[idx].disp, sdb->tbls[idx].state,
+          sdb->tbls[idx].fltr.unused, sdb->tbls[idx].rowid, sdb->tbls[idx].kind,
+          sdb->tbls[idx].row.cols, sdb->tbls[idx].col.cnt,
+          sdb->tbls[idx].row.ui.state, sdb->tbls[idx].col.ui.state,
+          sdb->tbls[idx].fltr.tbl.state, sdb->tbls[idx].fltr.tbl_col.state,
+          vdb->sql_qry_buf; // Also assigns the sql_qry_buf.
+
+  ensures \str_eq(sdb->tbls[idx].title, name) || \str_len(name) > DB_MAX_TBL_NAME; // Either title is equal to name or truncated.
+  ensures sdb->tbls[idx].qry_name == (\str_len(name) > \str_len(sdb->tbls[idx].title));
+  ensures sdb->tbls[idx].disp == DB_TBL_VIEW_DSP_DATA;
+  ensures sdb->tbls[idx].state == TBL_VIEW_DISPLAY;
+  ensures sdb->tbls[idx].fltr.unused == DB_FLTR_CNT_MSK;
+  ensures sdb->tbls[idx].rowid == rowid;
+  ensures sdb->tbls[idx].kind == kind;
+  ensures sdb->tbls[idx].col.rng.total >= 0;
+  ensures sdb->tbls[idx].col.cnt >= 0 && sdb->tbls[idx].col.cnt <= DB_MAX_TBL_COLS;
+  ensures sdb->tbls[idx].row.cols.cnt >= 0 && sdb->tbls[idx].row.cols.cnt <= DB_MAX_TBL_ROW_COLS;
+  ensures sdb->tbls[idx].row.cols.total == sdb->tbls[idx].col.rng.total;
+  ensures sdb->tbls[idx].row.cols.hi == sdb->tbls[idx].row.cols.cnt;
+  ensures sdb->tbls[idx].row.cols.lo == 0;
+  ensures sdb->tbls[idx].row.rng.total >= 0;
+  ensures vdb->sql_qry_buf.cnt >= 0 && vdb->sql_qry_buf.cnt <= DB_SQL_QRY_BUF_SIZ;
+*/
 static void
 db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
              struct gui_ctx *ctx, struct str name, long long rowid,
@@ -958,6 +1432,18 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
     tbl->row.rng.total = 0;
   }
 }
+/*@
+  requires sdb != NULL;
+  requires idx >= 0 && idx < DB_TBL_CNT;
+  requires \valid(sdb);
+  requires sdb->unused >= 0 && sdb->unused <= DB_TBL_CNT_MSK;
+  requires !(sdb->unused & (1U << castu(idx)));
+  assigns sdb->unused, sdb->tbls[idx];
+
+  ensures sdb->unused == (\old(sdb->unused) | (1U << castu(idx)));
+  ensures \forall integer j; 0 <= j < szof(sdb->tbls[0]); \at(sdb->tbls[idx],Pre)[j] != 0 ==> \at(sdb->tbls[idx],Post)[j] == 0; // tbl is reset if it was used.
+  ensures \forall integer i; 0 <= i < DB_TBL_CNT && i != idx ==> sdb->tbls[i] == \old(sdb->tbls[i]); // Other tbls are unchanged
+*/
 static void
 db_tbl_del(struct db_state *sdb, int idx) {
   requires(sdb);
@@ -978,6 +1464,21 @@ db_tbl_del(struct db_state *sdb, int idx) {
   ensures(sdb->unused == (old_unused|(1u << castu(idx))));
   ensures(sdb->unused > old_unused);
 }
+/*@
+  requires sdb != NULL;
+  requires sdb->tab_cnt >= 0 && sdb->tab_cnt <= DB_TBL_CNT;
+  requires idx >= 0 && idx < DB_TBL_CNT;
+  requires sdb->unused >= 0 && sdb->unused <= DB_TBL_CNT_MSK;
+  requires !(sdb->unused & (1U << castu(idx)));
+  requires \valid(sdb);
+
+  assigns sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1];
+
+  ensures sdb->tab_cnt == \old(sdb->tab_cnt) + 1;
+  ensures sdb->tabs[\result] == castb(idx);
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i]));
+  ensures \result >= 0 && \result < DB_TBL_CNT;
+*/
 static int
 db_tbl_add(struct db_state *sdb, int idx) {
   requires(sdb);
@@ -1007,6 +1508,29 @@ db_tbl_add(struct db_state *sdb, int idx) {
   ensures(ret < cntof(sdb->tabs));
   return ret;
 }
+/*@
+  requires sdb != NULL;
+  requires sdb->tab_cnt > 0 && sdb->tab_cnt <= DB_TBL_CNT;
+  requires tab_idx >= 0 && tab_idx < sdb->tab_cnt;
+  requires sdb->sel_tab < sdb->tab_cnt;
+  requires sdb->unused >= 0 && sdb->unused <= DB_TBL_CNT_MSK;
+  requires !(sdb->unused & (1u << sdb->tabs[tab_idx]));
+  requires \valid(sdb);
+
+  assigns sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->sel_tab;
+
+  ensures sdb->tab_cnt == \old(sdb->tab_cnt) - 1;
+  ensures sdb->sel_tab == clamp(0, \old(sdb->sel_tab), sdb->tab_cnt - 1);
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) && i != tab_idx ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i]));
+  ensures \forall integer i; 0 <= i < sdb->tab_cnt ==>
+          (\exists integer j; 0 <= j < \old(sdb->tab_cnt) && i != j ==>
+                (
+                    (j < tab_idx && i < tab_idx && sdb->tabs[i] == \old(sdb->tabs[j])) ||
+                    (j > tab_idx && i > tab_idx -1 && sdb->tabs[i] == \old(sdb->tabs[j]))
+                )
+           );
+
+*/
 static void
 db_tbl_rm(struct db_state *sdb, int tab_idx) {
   requires(sdb);
@@ -1038,7 +1562,14 @@ db_tbl_rm(struct db_state *sdb, int tab_idx) {
   ensures(sdb->sel_tab < cntof(sdb->tabs));
   ensures(sdb->tab_cnt <= old_tab_cnt);
 }
-static int
+/*@
+  requires fltr != NULL;
+  requires \valid(fltr->lst[0..DB_MAX_FLTR_CNT-1]);
+  requires \valid(fltr->elms[0..DB_MAX_FLTR_CNT-1]);
+  assigns nothing
+  ensures \result == 0 || \result == 1;
+*/
+static purist int
 db_tbl_fltr_enabled(struct db_tbl_fltr_state *fltr) {
   requires(fltr);
   for arr_loopn(i, fltr->lst, fltr->cnt) {
@@ -1057,6 +1588,15 @@ db_tbl_fltr_enabled(struct db_tbl_fltr_state *fltr) {
  *                                Info
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires sdb != NULL;
+  requires tab >= 0 && tab < DB_TBL_TYPE_CNT; // Corrected range for tab
+  requires \valid(sdb);
+  requires \valid(sdb->con); // Added validity for the connection
+  requires \valid(fltr);
+  assigns vdb->sql_qry_buf; // sql_qry_buf is modified
+  ensures \result >= 0;
+*/
 static int
 db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
   static const char *type[] = {
@@ -1091,6 +1631,20 @@ db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
   ensures(cnt >= 0);
   return cnt;
 }
+/*@
+  requires vinfo != NULL;
+  requires sinfo != NULL;
+  requires sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT;
+
+  requires \valid(sinfo);
+  requires \valid(vinfo);
+  requires \valid(vinfo->elms[0..DB_MAX_INFO_ELM_CNT-1]);
+
+  assigns sinfo->elm_cnt, vinfo->elms[sinfo->elm_cnt];
+
+  ensures sinfo->elm_cnt == \old(sinfo->elm_cnt) + 1;
+  ensures \result == vinfo->elms + \old(sinfo->elm_cnt);
+*/
 static struct db_info_elm*
 db_info_elm_new(struct db_info_state *sinfo, struct db_info_view *vinfo) {
   requires(vinfo != 0);
@@ -1106,6 +1660,23 @@ db_info_elm_new(struct db_info_state *sinfo, struct db_info_view *vinfo) {
   ensures(elm == vinfo->elms + old_cnt);
   return elm;
 }
+/*@
+  requires vinfo != NULL;
+  requires sinfo != NULL;
+  requires sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT;
+
+  requires \valid(sinfo);
+  requires \valid(vinfo);
+  requires \valid(name);
+  requires \valid(sql);
+
+  assigns sinfo->elm_cnt, vinfo->elms[sinfo->elm_cnt-1], vinfo->buf; // Modified the last element and the buffer
+
+  ensures sinfo->elm_cnt == \old(sinfo->elm_cnt) + 1;
+  ensures \str_eq(vinfo->elms[\old(sinfo->elm_cnt)].name, name) || \str_len(name) > DB_MAX_TBL_NAME;
+  ensures \str_eq(vinfo->elms[\old(sinfo->elm_cnt)].sql, sql) || \str_len(sql) > DB_MAX_TBL_SQL;
+  ensures vinfo->elms[\old(sinfo->elm_cnt)].rowid == rowid;
+*/
 static void
 db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
                 long long rowid, struct str name, struct str sql) {
@@ -1132,6 +1703,30 @@ db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
   ensures(str_buf_len(elm->name) <= DB_MAX_TBL_NAME);
   ensures(str_buf_len(elm->sql) <= DB_MAX_TBL_SQL);
 }
+/*@
+  requires sdb != NULL;
+  requires sinfo != NULL;
+  requires vinfo != NULL;
+
+  requires low >= 0 && low <= high;
+  requires high <= sinfo->tab_cnt[sinfo->sel_tab];
+  requires (high - low) <= DB_MAX_INFO_ELM_CNT;
+
+  requires \valid(sdb);
+  requires \valid(sinfo);
+  requires \valid(vinfo);
+  requires \valid(sdb->con);
+
+  assigns sinfo->elm_cnt, sinfo->elm_rng, vinfo->buf, vinfo->id, vinfo->elms[0..DB_MAX_INFO_ELM_CNT-1], vdb->sql_qry_buf;
+
+  ensures sinfo->elm_cnt <= DB_MAX_INFO_ELM_CNT;
+  ensures sinfo->elm_rng.lo == low;
+  ensures sinfo->elm_rng.hi == high;
+  ensures sinfo->elm_rng.cnt == high - low;
+  ensures vinfo->buf.cnt <= DB_TBL_ELM_STR_BUF_SIZ;
+  ensures vinfo->id == sdb->id;
+  ensures \result == 0 || \result == -1;
+*/
 static int
 db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
                 struct db_info_view *vinfo, int low, int high) {
@@ -1197,6 +1792,20 @@ db_info_qry_elm(struct db_state *sdb, struct db_info_state *sinfo,
   ensures(vinfo->id == sdb->id);
   return 0;
 }
+/*@
+  requires sdb != NULL;
+  requires sel != NULL;
+  requires sinfo != NULL;
+  requires vinfo != NULL;
+
+  requires \valid(sdb);
+  requires \valid(sel);
+  requires \valid(sinfo);
+  requires \valid(vinfo);
+  requires \valid(sdb->con);
+
+  assigns vinfo->sel;
+*/
 static void
 db_info_sel_elms(struct db_state *sdb, struct db_info_state *sinfo,
                  struct db_info_view *vinfo, const struct gui_lst_sel *sel) {
@@ -1250,11 +1859,33 @@ db_info_sel_elms(struct db_state *sdb, struct db_info_state *sinfo,
  *                              Database
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires mem != NULL;
+  requires siz > 0;
+  ensures \result == 1 <==> (\old(sqlite3_config(SQLITE_CONFIG_HEAP, mem, siz, 64)) == SQLITE_OK);
+*/
 static int
 db_init(void *mem, int siz) {
   int err = sqlite3_config(SQLITE_CONFIG_HEAP, mem, siz, 64);
   return err == SQLITE_OK;
 }
+/*@
+  requires sdb != NULL;
+  requires ctx != NULL;
+  requires str_is_val(path);
+
+  requires \valid(sdb);
+  requires \valid(ctx);
+  requires \valid(path);
+
+  assigns sdb->id, sdb->unused, sdb->con, sdb->info.tbl.state, sdb->info.tbl.off, sdb->info.tab_cnt, sdb->info.tab_act, sdb->info.sel_tab, sdb->tbls[0]; // All assigned fields
+
+  ensures \result == 1 <==> (\old(sqlite3_open(str_beg(path), &sdb->con)) == SQLITE_OK);
+  ensures sdb->unused == DB_TBL_CNT_MSK - 1;
+  ensures sdb->info.sel_tab >= DB_TBL_TYPE_TBL && sdb->info.sel_tab <= DB_TBL_TYPE_TRIGGER;
+  ensures \forall integer i; 0 <= i < DB_TBL_TYPE_CNT ==> sdb->info.tab_cnt[i] >= 0;
+  ensures vdb->sql_qry_buf.cnt >= 0 && vdb->sql_qry_buf.cnt <= DB_SQL_QRY_BUF_SIZ;
+*/
 static int
 db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
   assert(sdb);
@@ -1290,6 +1921,18 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
   ensures(sdb->info.sel_tab < cntof(sdb->info.tab_cnt));
   return 1;
 }
+/*@
+  requires sdb != NULL;
+  requires sdb->tab_cnt >= 0 && sdb->tab_cnt <= DB_TBL_CNT;
+  requires \valid(sdb);
+  requires \valid(sdb->con);
+
+  assigns sdb->unused, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->tbls[0..DB_TBL_CNT-1], sdb->con;
+
+  ensures sdb->unused == DB_TBL_CNT_MSK;
+  ensures sdb->tab_cnt == 0;
+  ensures sdb->con == NULL || !\valid(sdb->con);
+*/
 static void
 db_free(struct db_state *sdb) {
   ensures(sdb);
@@ -1310,6 +1953,21 @@ db_free(struct db_state *sdb) {
     sqlite3_close(sdb->con);
   }
 }
+/*@
+  requires sdb != NULL;
+  requires dst_idx >= 0 && dst_idx < sdb->tab_cnt;
+  requires src_idx >= 0 && src_idx < sdb->tab_cnt;
+  requires \valid(sdb);
+
+  requires !(sdb->unused & (1U << castu(sdb->tabs[dst_idx]))); // dst table must be in use
+  requires !(sdb->unused & (1U << castu(sdb->tabs[src_idx]))); // src table must be in use
+
+  assigns sdb->tabs[0..DB_TBL_CNT-1];
+
+  ensures sdb->tabs[dst_idx] == \old(sdb->tabs[src_idx]);
+  ensures sdb->tabs[src_idx] == \old(sdb->tabs[dst_idx]);
+  ensures \forall integer i; 0 <= i < sdb->tab_cnt && i != dst_idx && i != src_idx ==> sdb->tabs[i] == \old(sdb->tabs[i]);
+*/
 static void
 db_tab_resort(struct db_state *sdb, int dst_idx, int src_idx) {
   requires(sdb);
@@ -1340,6 +1998,35 @@ db_tab_resort(struct db_state *sdb, int dst_idx, int src_idx) {
   ensures(sdb->tabs[dst_idx] == old_src);
   ensures(sdb->tabs[src_idx] == old_dst);
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires ctx != NULL;
+
+  requires sdb->unused > 0;
+  requires view >= 0 && view < DB_TBL_CNT;
+  requires sdb->tab_cnt < DB_TBL_CNT;
+  requires !(sdb->unused & (1U << castu(view)));
+  requires type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(ctx);
+  requires \valid(tbl_name);
+
+  assigns sdb->sel_tab, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->tbls[view].row.rng, sdb->tbls[view].col.rng, sdb->tbls[view].title,
+          sdb->tbls[view].qry_name, sdb->tbls[view].disp, sdb->tbls[view].state,
+          sdb->tbls[view].fltr.unused, sdb->tbls[view].rowid, sdb->tbls[view].kind,
+          sdb->tbls[view].row.cols, sdb->tbls[view].col.cnt,
+          sdb->tbls[view].row.ui.state, sdb->tbls[view].col.ui.state,
+          sdb->tbls[view].fltr.tbl.state, sdb->tbls[view].fltr.tbl_col.state, vdb->sql_qry_buf; // All assigned fields
+
+  ensures \result == sdb->sel_tab;
+  ensures sdb->sel_tab >= 0 && sdb->sel_tab < sdb->tab_cnt;
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i]));
+  ensures sdb->info.sel_tab >= DB_TBL_TYPE_TBL && sdb->info.sel_tab <= DB_TBL_TYPE_TRIGGER;
+  ensures vdb->sql_qry_buf.cnt >= 0 && vdb->sql_qry_buf.cnt <= DB_SQL_QRY_BUF_SIZ;
+*/
 static int
 db_tab_open(struct db_state *sdb, struct db_view *vdb, int view,
             enum db_tbl_type type, struct str tbl_name, long long rowid,
@@ -1366,6 +2053,33 @@ db_tab_open(struct db_state *sdb, struct db_view *vdb, int view,
   ensures(sdb->sel_tab < cntof(sdb->tabs));
   return sdb->sel_tab;
 }
+/*@
+  requires sdb != NULL;
+  requires vdb != NULL;
+  requires ctx != NULL;
+
+  requires sdb->unused > 0;
+  requires sdb->tab_cnt < DB_TBL_CNT;
+  requires type == DB_TBL_TYPE_TBL || type == DB_TBL_TYPE_VIEW;
+
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(ctx);
+  requires \valid(tbl_name);
+
+  assigns sdb->sel_tab, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->tbls[0..DB_TBL_CNT-1].row.rng, sdb->tbls[0..DB_TBL_CNT-1].col.rng, sdb->tbls[0..DB_TBL_CNT-1].title,
+          sdb->tbls[0..DB_TBL_CNT-1].qry_name, sdb->tbls[0..DB_TBL_CNT-1].disp, sdb->tbls[0..DB_TBL_CNT-1].state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.unused, sdb->tbls[0..DB_TBL_CNT-1].rowid, sdb->tbls[0..DB_TBL_CNT-1].kind,
+          sdb->tbls[0..DB_TBL_CNT-1].row.cols, sdb->tbls[0..DB_TBL_CNT-1].col.cnt,
+          sdb->tbls[0..DB_TBL_CNT-1].row.ui.state, sdb->tbls[0..DB_TBL_CNT-1].col.ui.state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl.state, sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl_col.state, vdb->sql_qry_buf, sdb->unused; // All assigned fields
+
+  ensures \result < sdb->tab_cnt;
+  ensures \result >= 0;
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i]));
+  ensures sdb->info.sel_tab >= DB_TBL_TYPE_TBL && sdb->info.sel_tab <= DB_TBL_TYPE_TRIGGER;
+  ensures vdb->sql_qry_buf.cnt >= 0 && vdb->sql_qry_buf.cnt <= DB_SQL_QRY_BUF_SIZ;
+*/
 static int
 db_tab_open_new(struct db_state *sdb, struct db_view *vdb, enum db_tbl_type type,
                 struct str tbl_name, long long rowid, struct gui_ctx *ctx) {
@@ -1386,6 +2100,20 @@ db_tab_open_new(struct db_state *sdb, struct db_view *vdb, enum db_tbl_type type
   ensures(ret >= 0);
   return ret;
 }
+/*@
+  requires sdb != NULL;
+  requires sdb->unused >= 0 && sdb->unused <= DB_TBL_CNT_MSK;
+  requires sdb->tab_cnt >= 0 && sdb->tab_cnt <= DB_TBL_CNT;
+  requires \valid(sdb);
+
+  assigns sdb->unused, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->sel_tab;
+
+  ensures sdb->tab_cnt == \old(sdb->tab_cnt) + 1;
+  ensures sdb->sel_tab == 0;
+  ensures sdb->unused < \old(sdb->unused);
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i]));
+  ensures \result == 0;
+*/
 static int
 db_tab_open_empty(struct db_state *sdb) {
   requires(sdb);
@@ -1415,7 +2143,7 @@ db_tab_open_empty(struct db_state *sdb) {
   int ret = sdb->sel_tab = 0;
 
   ensures(sdb->tab_cnt >= 0);
-  ensures(sdb->tab_cnt <= old_tab_cnt);
+  ensures(sdb->tab_cnt >= old_tab_cnt);
   ensures(sdb->tab_cnt == old_tab_cnt + 1);
 
   ensures(sdb->sel_tab >= 0);
@@ -1432,6 +2160,39 @@ db_tab_open_empty(struct db_state *sdb) {
   ensures(ret < cntof(sdb->tabs));
   return ret;
 }
+/*@
+  requires ctx != NULL;
+  requires sdb != NULL;
+  requires vdb != NULL;
+
+  requires sdb->unused > 0;
+  requires view >= 0 && view < DB_TBL_CNT;
+  requires sdb->tab_cnt < DB_TBL_CNT;
+
+  requires \valid(ctx);
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(sdb->con);
+
+  assigns sdb->sel_tab, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->tbls[0..DB_TBL_CNT-1].row.rng, sdb->tbls[0..DB_TBL_CNT-1].col.rng, sdb->tbls[0..DB_TBL_CNT-1].title,
+          sdb->tbls[0..DB_TBL_CNT-1].qry_name, sdb->tbls[0..DB_TBL_CNT-1].disp, sdb->tbls[0..DB_TBL_CNT-1].state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.unused, sdb->tbls[0..DB_TBL_CNT-1].rowid, sdb->tbls[0..DB_TBL_CNT-1].kind,
+          sdb->tbls[0..DB_TBL_CNT-1].row.cols, sdb->tbls[0..DB_TBL_CNT-1].col.cnt,
+          sdb->tbls[0..DB_TBL_CNT-1].row.ui.state, sdb->tbls[0..DB_TBL_CNT-1].col.ui.state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl.state, sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl_col.state, vdb->sql_qry_buf, sdb->unused; // All assigned fields
+
+  ensures sdb->tab_cnt >= 0;
+  ensures sdb->tab_cnt <= DB_TBL_CNT;
+  ensures sdb->tab_cnt <= cntof(sdb->tabs);
+
+  ensures sdb->sel_tab >= 0;
+  ensures sdb->sel_tab < sdb->tab_cnt;
+  ensures sdb->sel_tab < DB_TBL_CNT;
+  ensures sdb->sel_tab < cntof(sdb->tabs);
+
+  ensures sdb->unused >= 0;
+  ensures sdb->unused <= DB_TBL_CNT_MSK;
+*/
 static void
 db_tab_open_tbl_id(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
                    int view, long long tbl_id) {
@@ -1473,6 +2234,39 @@ db_tab_open_tbl_id(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ct
   ensures(sdb->unused >= 0);
   ensures(sdb->unused <= DB_TBL_CNT_MSK);
 }
+/*@
+  requires ctx != NULL;
+  requires sdb != NULL;
+  requires vdb != NULL;
+
+  requires sdb->unused > 0;
+  requires view >= 0 && view < DB_TBL_CNT;
+  requires sdb->tab_cnt < DB_TBL_CNT;
+
+  requires \valid(ctx);
+  requires \valid(sdb);
+  requires \valid(vdb);
+  requires \valid(sdb->con);
+
+  assigns sdb->sel_tab, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->tbls[0..DB_TBL_CNT-1].row.rng, sdb->tbls[0..DB_TBL_CNT-1].col.rng, sdb->tbls[0..DB_TBL_CNT-1].title,
+          sdb->tbls[0..DB_TBL_CNT-1].qry_name, sdb->tbls[0..DB_TBL_CNT-1].disp, sdb->tbls[0..DB_TBL_CNT-1].state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.unused, sdb->tbls[0..DB_TBL_CNT-1].rowid, sdb->tbls[0..DB_TBL_CNT-1].kind,
+          sdb->tbls[0..DB_TBL_CNT-1].row.cols, sdb->tbls[0..DB_TBL_CNT-1].col.cnt,
+          sdb->tbls[0..DB_TBL_CNT-1].row.ui.state, sdb->tbls[0..DB_TBL_CNT-1].col.ui.state,
+          sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl.state, sdb->tbls[0..DB_TBL_CNT-1].fltr.tbl_col.state, vdb->sql_qry_buf, sdb->unused; // All assigned fields
+
+  ensures sdb->tab_cnt >= \old(sdb->tab_cnt);
+  ensures sdb->tab_cnt <= DB_TBL_CNT;
+  ensures sdb->tab_cnt <= cntof(sdb->tabs);
+
+  ensures sdb->sel_tab >= 0;
+  ensures sdb->sel_tab < sdb->tab_cnt;
+  ensures sdb->sel_tab < DB_TBL_CNT;
+  ensures sdb->sel_tab < cntof(sdb->tabs);
+
+  ensures sdb->unused >= 0;
+  ensures sdb->unused <= DB_TBL_CNT_MSK;
+*/
 static void
 db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
                     struct gui_ctx *ctx, int view) {
@@ -1501,6 +2295,33 @@ db_tab_open_tbl_sel(struct db_state *sdb, struct db_view *vdb,
   ensures(sdb->unused >= 0);
   ensures(sdb->unused <= DB_TBL_CNT_MSK);
 }
+/*@
+  requires sdb != NULL;
+  requires tab_idx >= 0 && tab_idx < sdb->tab_cnt;
+  requires sdb->tab_cnt > 0 && sdb->tab_cnt <= DB_TBL_CNT;
+
+  requires \valid(sdb);
+  requires !(sdb->unused & (1u << sdb->tabs[tab_idx]));
+  requires \valid(sdb->con);
+
+  assigns sdb->unused, sdb->tab_cnt, sdb->tabs[0..DB_TBL_CNT-1], sdb->sel_tab, sdb->tbls[sdb->tabs[tab_idx]]; // All assigned fields
+
+  ensures sdb->tab_cnt == \old(sdb->tab_cnt) - 1;
+  ensures sdb->sel_tab == clamp(0, \old(sdb->sel_tab), sdb->tab_cnt - 1);
+  ensures sdb->unused == (\old(sdb->unused) | (1u << sdb->tabs[tab_idx]));
+
+  ensures \forall integer i; 0 <= i < \old(sdb->tab_cnt) && i != tab_idx ==> (\exists integer j; 0 <= j < sdb->tab_cnt ==> sdb->tabs[j] == \old(sdb->tabs[i])); // all old elements (except the removed one) are present in the new tabs array
+  ensures \forall integer i; 0 <= i < sdb->tab_cnt ==>
+          (\exists integer j; 0 <= j < \old(sdb->tab_cnt) && i != j ==>
+                (
+                    (j < tab_idx && i < tab_idx && sdb->tabs[i] == \old(sdb->tabs[j])) ||
+                    (j > tab_idx && i > tab_idx -1 && sdb->tabs[i] == \old(sdb->tabs[j]))
+                )
+           );
+
+  ensures \forall integer j; 0 <= j < szof(sdb->tbls[0]); \at(sdb->tbls[sdb->tabs[tab_idx]],Pre)[j] != 0 ==> \at(sdb->tbls[sdb->tabs[tab_idx]],Post)[j] == 0;
+  ensures \forall integer i; 0 <= i < DB_TBL_CNT && i != sdb->tabs[tab_idx] ==> sdb->tbls[i] == \old(sdb->tbls[i]);
+*/
 static void
 db_tab_close(struct db_state *sdb, int tab_idx) {
   requires(sdb);
@@ -1571,6 +2392,7 @@ ui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
 static int
 ui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
                struct str txt, enum res_ico_id icon) {
+
   requires(ctx);
   requires(btn);
   requires(icon);

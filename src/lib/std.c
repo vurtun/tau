@@ -1,3 +1,15 @@
+/*@
+  type invariant str_valid: \forall struct rng *r;
+    valid(r) ==> r->hi >= r->lo && r->cnt == r->hi - r->lo && r->cnt <= r->total;
+
+  type invariant str_valid: \forall struct str *s;
+    valid(s) ==>
+    valid(&s->rng) &&
+    s->rng.lo >= 0 &&
+    s->rng.hi >= s->rng.lo &&
+    s->rng.cnt == s->rng.hi - s->rng.lo &&
+    s->rng.cnt <= s->rng.total;
+*/
 #if __has_include(<stdckdint.h>)
   #include <stdckdint.h>
 #else
@@ -6,26 +18,74 @@
   #define ckd_mul(R, A, B) __builtin_mul_overflow ((A), (B), (R))
 #endif
 
+/*@
+  requires ovf != NULL;
+  assigns *ovf; // Modifies the overflow flag
+  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
+  ensures \result == a + b || (*ovf == 1 && \result == 0); // Result is correct sum or 0 on overflow
+*/
 static purist inline int
 chk_add(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_add(&ret, a, b);
   return ret;
 }
+/*@
+  requires ovf != NULL;
+  assigns *ovf; // Modifies the overflow flag
+  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
+  ensures \result == a - b || (*ovf == 1 && \result == 0); // Result is correct difference or 0 on overflow
+*/
 static purist inline int
 chk_sub(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_sub(&ret, a, b);
   return ret;
 }
+/*@
+  requires ovf != NULL;
+  assigns *ovf; // Modifies the overflow flag
+  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
+  ensures \result == a * b || (*ovf == 1 && \result == 0); // Result is correct product or 0 on overflow
+*/
 static purist inline int
 chk_mul(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_mul(&ret, a, b);
   return ret;
 }
+/*@
+  requires n >= 0;
+  assigns \nothing; // purist function
+  axiom ilog2_def: \forall integer n; n >= 0 ==>
+                   (n == 0 ? ilog2(n) == 0 :
+                    (1 << ilog2(n)) <= n < (1 << (ilog2(n) + 1)));
+  ensures \result == ilog2(n);
+  ensures (n == 0) ==> \result == 0;
+  ensures (n > 0) ==> (1 << \result) <= n < (1 << (\result + 1));
+  ensures \result == (n == 0 ? 0 : (int)sizeof(unsigned long) * CHAR_BIT - 1 - __builtin_clzl((unsigned long)n)); // If using gcc/clang
+*/
+static int
+ilog2(int n) {
+  if (!n) return 0;
+#ifdef _MSC_VER
+  unsigned long msbp = 0;
+  _BitScanReverse(&msbp, (unsigned long)n);
+  return (int)msbp;
+#else
+  return (int)sizeof(unsigned long) * CHAR_BIT - 1 - __builtin_clzl((unsigned long)n);
+#endif
+}
+/*@
+  requires input >= 0;
+  assigns \nothing; // purist function
+  ensures \result >= input;
+  ensures \result <= 2 * input;
+  ensures \result == (input == 0 ? 1 : 1 << ilog2(input - (input == 0 ? 0 : 1)));
+*/
 static purist inline int
 npow2(int input) {
+  requires(input >= 0);
   unsigned int val = castu(input);
   val--;
   val |= val >> 1;
@@ -34,7 +94,12 @@ npow2(int input) {
   val |= val >> 8;
   val |= val >> 16;
   val++;
-  return casti(val);
+
+  int ret = casti(val);
+  ensures(ret >= input);
+  ensures(ret <= 2 * input);
+  ensures(ret == 1 << casti(ilog2(input)));
+  return ret;
 }
 /* ---------------------------------------------------------------------------
  *                                Foreach
@@ -51,11 +116,26 @@ npow2(int input) {
  *                                Memory
  * ---------------------------------------------------------------------------
  */
+/*@
+  @requires cnt >= 0;
+  @requires dst != NULL || cnt == 0;
+  @requires src != NULL || cnt == 0;
+  @requires dst != src || cnt == 0;
+
+  @requires \valid(((char*)dst)+(0..cnt - 1));
+  @requires \valid_read(((char*)src)+(0..cnt - 1));
+  @requires \separated(((char *)dst)+(0..cnt-1),((char *)src)+(0..cnt-1));
+
+  @assigns ((char*)dst)[0..cnt - 1] \from ((char*)src)[0..cnt-1];
+  @ensures \forall integer i; 0 <= i < cnt; ((unsigned char*)dst)[i] == ((const unsigned char*)src)[i];
+  @ensures memcmp((char*)dst,(char*)src,cnt) == 0;
+  @*/
 static inline void
 mcpy(void* restrict dst, void const *restrict src, int cnt) {
-  assert(cnt >= 0);
-  assert(dst != 0 || !cnt);
-  assert(src != 0 || !cnt);
+  requires(cnt >= 0);
+  requires(dst != 0 || !cnt);
+  requires(src != 0 || !cnt);
+  requires(dst != src || !cnt);
 
   unsigned char *restrict dst8 = dst;
   const unsigned char *restrict src8 = src;
@@ -63,10 +143,19 @@ mcpy(void* restrict dst, void const *restrict src, int cnt) {
     dst8[i] = src8[i];
   }
 }
+/*@
+  requires addr != NULL;
+  requires \valid(((char*)addr)+(0..cnt - 1));
+  requires val >=0 && val <= 0xff
+  requires cnt >= 0;
+  assigns *addr[0..cnt-1];
+  ensures \forall integer i; 0 <= i < cnt; ((unsigned char*)addr)[i] == (unsigned char)val;
+*/
 static inline void
 mset(void *addr, int val, int cnt) {
-  assert(addr);
-  assert(cnt >= 0);
+  requires(addr);
+  requires(cnt >= 0);
+
   unsigned char *dst = addr;
   for loop(i, cnt) {
     dst[i] = castb(val);
@@ -112,13 +201,26 @@ mset(void *addr, int val, int cnt) {
 #define rng_cut_lhs(r,n) *(r) = rng_rhs(s,n)
 #define rng_cut_rhs(r,n) *(r) = rng_lhs(s,n)
 
-static force_inline int
+/*@
+  requires cnt >= 1;
+  assigns \nothing; // purist function
+  ensures \result >= 0 && \result < cnt;
+*/
+static purist force_inline int
 rng__bnd(int idx, int cnt) {
   int lft = max(cnt, 1) - 1;
   int val = (idx < 0) ? (cnt - idx) : idx;
   return clamp(val, 0, lft);
 }
-static force_inline struct rng
+/*@
+  requires low <= high;
+  assigns \nothing; // purist function
+  ensures \result.lo == low;
+  ensures \result.hi == high;
+  ensures \result.cnt == abs(high - low);
+  ensures \result.total == cnt;
+*/
+static purist force_inline struct rng
 rng__mk(int low, int high, int cnt) {
   requires(low <= high);
   struct rng ret = {.lo = low, .hi = high};
@@ -126,14 +228,31 @@ rng__mk(int low, int high, int cnt) {
   ret.total = cnt;
   return ret;
 }
-static force_inline struct rng
+/*@
+  requires rng != NULL;
+  assigns \nothing; // purist function
+  ensures \result.lo == rng->lo + beg;
+  ensures \result.hi == rng->lo + end;
+  ensures \result.cnt == abs(end - beg);
+  ensures \result.total == rng->total;
+*/
+static purist force_inline struct rng
 rng_sub(const struct rng *rng, int beg, int end) {
   requires(rng);
   struct rng ret = rng(beg, end, rng->total);
   rng_shft(&ret, rng->lo);
   return ret;
 }
-static force_inline struct rng
+/*@
+  requires rng != NULL;
+  requires val != NULL;
+  assigns \nothing; // purist function
+  ensures \result.lo == rng->lo + val->lo;
+  ensures \result.hi == rng->lo + val->hi;
+  ensures \result.cnt == val->cnt;
+  ensures \result.total == rng->total;
+*/
+static purist force_inline struct rng
 rng_put(const struct rng *rng, const struct rng *val) {
   requires(rng);
   requires(val);
@@ -149,9 +268,35 @@ rng_put(const struct rng *rng, const struct rng *val) {
  */
 #define FNV1A32_HASH_INITIAL 2166136261U
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
+/*@
+  requires ptr != NULL || cnt == 0;
+  requires cnt >= 0;
+  requires hash >= 0;
 
+  assigns \nothing; // purist function
+
+  ensures \result >= 0;
+
+  // Frame condition (optional, but highly recommended for loops)
+  loop invariant i: 0 <= i <= cnt;
+
+  // Helper function to represent one step of the FNV-1a calculation
+  function unsigned fnv1a32_step(unsigned h, unsigned char byte) {
+    return (h ^ byte) * 16777619u;
+  }
+
+  // Postcondition using the helper function to describe the FNV-1a algorithm
+  ensures \result ==
+          (cnt == 0 ? \old(hash) :
+           \forall integer j; 0 <= j < cnt ==>
+               \result == fnv1a32_step(\at(hash,Pre), ptr[j]));
+*/
 static purist inline no_sanitize_int unsigned
 fnv1a32(const void *ptr, int cnt, unsigned hash) {
+  ensures(ptr);
+  ensures(cnt >= 0);
+  ensures(hash >= 0);
+
   const unsigned char *ptr8 = ptr;
   if (!ptr) {
     return FNV1A32_HASH_INITIAL;
@@ -161,8 +306,33 @@ fnv1a32(const void *ptr, int cnt, unsigned hash) {
   }
   return hash;
 }
+/*@
+  requires ptr != NULL || len == 0;
+  requires len >= 0;
+  requires hash >= 0;
+
+  assigns \nothing; // purist function
+
+  ensures \result >= 0;
+
+  loop invariant i: 0 <= i <= len;
+
+  // Helper function to represent one step of the FNV-1a 64-bit calculation
+  function unsigned long long fnv1a64_step(unsigned long long h, unsigned char byte) {
+    return (h ^ byte) * 1099511628211ULL; // Note the ULL suffix
+  }
+
+  // Postcondition using the helper function
+  ensures \result == (len == 0 || ptr == NULL ? \old(hash) :
+                     \forall integer j; 0 <= j < len ==>
+                         \result == fnv1a64_step(\at(hash,Pre), ptr[j]));
+*/
 static purist inline no_sanitize_int unsigned long long
 fnv1a64(const void *ptr, int len, unsigned long long hash) {
+  ensures(ptr);
+  ensures(len >= 0);
+  ensures(hash >= 0);
+
   const unsigned char *ptr8 = ptr;
   if (!ptr || !len) {
     return FNV1A64_HASH_INITIAL;
@@ -198,33 +368,67 @@ hash_lld(long long lld) {
  *                                Random
  * ---------------------------------------------------------------------------
  */
-static inline unsigned long long
+/*@
+  requires val >= 0; // Assuming val is non-negative
+  assigns \nothing; // purist function
+  ensures \result >= 0; // Result should also be non-negative
+*/
+static purist inline unsigned long long
 rnd_gen(unsigned long long val, int idx) {
   return val + castull(idx) * 0x9E3779B97F4A7C15llu;
 }
-static inline unsigned long long
+/*@
+  requires val >= 0; // Assuming val is non-negative
+  assigns \nothing; // purist function
+  ensures \result >= 0; // Result should also be non-negative
+*/
+static purist inline unsigned long long
 rnd_mix(unsigned long long val) {
   val = (val ^ (val >> 30)) * 0xBF58476D1CE4E5B9llu;
   val = (val ^ (val >> 27)) * 0x94D049BB133111EBllu;
   return val ^ (val >> 31llu);
 }
+/*@
+  requires val != NULL;
+  assigns *val;
+  ensures \result >= 0; // Result should be non-negative
+  ensures *val >= 0;   // The value pointed to by val should be non-negative
+*/
 static inline unsigned long long
 rnd_split_mix(unsigned long long *val, int idx) {
   requires(val);
   *val = rnd_gen(*val, idx);
   return rnd_mix(*val);
 }
+/*@
+  requires val != NULL;
+  assigns *val;
+  ensures \result >= 0;  // Result is non-negative
+  ensures *val >= 0;  // The value pointed to by val is non-negative
+*/
 static inline unsigned long long
 rnd(unsigned long long *val) {
   requires(val);
   return rnd_split_mix(val, 1);
 }
+/*@
+  requires val != NULL;
+  assigns *val;
+  ensures \result >= 0 && \result <= UINT_MAX; // Result is within unsigned int range
+  ensures *val >= 0;  // The value pointed to by val is non-negative
+*/
 static inline unsigned
 rndu(unsigned long long *val) {
   requires(val);
   unsigned long long ret = rnd(val);
   return castu(ret & 0xffffffffu);
 }
+/*@
+  requires val != NULL;
+  assigns *val;
+  ensures \result >= INT_MIN && \result <= INT_MAX; // Result is within int range
+  ensures *val >= 0;  // The value pointed to by val is non-negative
+*/
 static inline int
 rndi(unsigned long long *val) {
   requires(val);
@@ -233,12 +437,25 @@ rndi(unsigned long long *val) {
   assert(norm >= INT_MIN && norm <= INT_MAX);
   return casti(norm);
 }
+/*@
+  requires val != NULL;
+  assigns *val;
+  ensures \result >= 0.0 && \result <= 1.0; // Result is between 0 and 1 (inclusive)
+  ensures *val >= 0;  // The value pointed to by val is non-negative
+*/
 static inline double
 rndn(unsigned long long *val) {
   requires(val);
   unsigned rnd = rndu(val);
   return castd(rnd) / castd(UINT_MAX);
 }
+/*@
+  requires x != NULL;
+  requires mini <= maxi; // Or requires mini >= 0 && maxi >= 0 if you want to enforce non-negative inputs
+  assigns *x;
+  ensures \result >= mini;
+  ensures \result <= maxi;
+*/
 static unsigned
 rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
   requires(x);
@@ -258,6 +475,12 @@ rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
     return mini + v % n;
   }
 }
+/*@
+  requires x != NULL;
+  assigns *x;
+  ensures \result >= 0.0f;
+  ensures \result <= 1.0f;
+*/
 static inline float
 rndf01(unsigned long long *x) {
   requires(x);
@@ -266,6 +489,13 @@ rndf01(unsigned long long *x) {
   double div = castd((unsigned)-1);
   return castf(du/div);
 }
+/*@
+  requires x != NULL;
+  requires mini <= maxi; // Or requires that mini and maxi are within some valid range if needed
+  assigns *x;
+  ensures \result >= mini;
+  ensures \result <= maxi;
+*/
 static float
 rnduf(unsigned long long *x, float mini, float maxi) {
   requires(x);
@@ -309,6 +539,11 @@ rnduf(unsigned long long *x, float mini, float maxi) {
  *                                Sequence
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires seq!= NULL;
+  requires \valid(seq[0..rng.cnt-1]); // seq is valid up to rng.cnt-1
+  assigns seq[0..rng.cnt-1]; // Modifies the elements of seq
+*/
 static inline void
 seq_rng(int *seq, struct rng rng) {
   requires(seq);
@@ -316,6 +551,11 @@ seq_rng(int *seq, struct rng rng) {
     seq[k] = i;
   }
 }
+/*@
+  requires seq != NULL;
+  requires \valid(seq[0..rng.cnt-1]); // seq is valid up to rng.cnt-1
+  assigns seq[0..rng.cnt-1]; // Modifies the elements of seq
+*/
 static inline void
 seq_rngu(unsigned *seq, struct rng rng) {
   requires(seq);
@@ -323,6 +563,13 @@ seq_rngu(unsigned *seq, struct rng rng) {
     seq[k] = castu(i);
   }
 }
+/*@
+  requires seq != NULL;
+  requires n > 0;
+  requires r != NULL;
+  requires \valid(seq[0..n-1]); // seq is valid up to n-1
+  assigns seq[0..n-1]; // Modifies the elements of seq
+*/
 static inline void
 seq_rnd(int *seq, int n, unsigned long long *r) {
   requires(r);
@@ -332,6 +579,12 @@ seq_rnd(int *seq, int n, unsigned long long *r) {
     iswap(seq[i], seq[at]);
   }
 }
+/*@
+  requires p != NULL;
+  requires n > 0;
+  requires \valid(p[0..n-1]); // p is valid up to n-1
+  assigns p[0..n-1]; // Modifies the elements of p
+*/
 static inline void
 seq_fix(int *p, int n) {
   requires(p);
@@ -344,6 +597,12 @@ seq_fix(int *p, int n) {
  *                                  Bits
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires x >= 0 && x <= UINT_MAX; // x is a 32-bit unsigned int
+  assigns \nothing; // purist function
+  ensures \result == (\forall integer i; 0 <= i < 32 ==>((x >> i) & 1) == ((\result >> (31 - i)) & 1));
+  ensures \result >= 0 && \result <= UINT_MAX; // Result is also a 32-bit unsigned int
+*/
 static purist inline unsigned
 bit_rev32(unsigned x){
   x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
@@ -352,6 +611,11 @@ bit_rev32(unsigned x){
   x = (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
   return x;
 }
+/*@
+  requires x >= 0 && x <= ULLONG_MAX; // x is a 64-bit unsigned int
+  assigns \nothing; // purist function
+  ensures \result >= 0 && \result <= ULLONG_MAX;  // Result is also a 64-bit unsigned int
+*/
 static purist inline unsigned long long
 bit_rev64(unsigned long long x){
   unsigned x1 = castu(x & 0xffffffffu);
@@ -377,45 +641,134 @@ bit_eqv(unsigned x, unsigned y) {
 #define bit_loop(i,x,s,n) \
   (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
 static int bit_xor(unsigned long *addr, int nr);
+/*@
+  requires \valid_read(addr+(0..bits_to_long(nr)));
+  requires \initialized(addr+(0..bits_to_long(nr)));
+  requires nr >= 0;
+  assigns \nothing;
+  ensures \result == (\old(addr[bit_word(nr)]) & (1ul << msk)) != 0);
 
+  behavior normal:
+    assumes \valid_read(addr+(0..bits_to_long(nr)));
+    assumes \initialized(addr+(0..bits_to_long(nr)));
+  complete behaviors normal;
+@*/
 static purist inline int
 bit_tst(const unsigned long *addr, int nr) {
   requires(addr);
   unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
   return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
 }
+/*@
+  requires \valid(addr);
+  requires \initialized(addr);
+  requires nr >= 0;
+
+  assigns *addr;
+  ensures \result == (\old(bit_tst(addr, nr)));
+  ensures \result == 1 ==> !bit_tst(addr, nr);
+
+  behavior normal:
+    assumes \valid(addr+(0..bits_to_long(nr)));
+    assumes \initialized(addr+(0..bits_to_long(nr)));
+  complete behaviors normal;
+@*/
 static inline int
 bit_tst_clr(unsigned long *addr, int nr) {
   requires(addr);
+  requires(nr >= 0);
   if (bit_tst(addr, nr)) {
     bit_xor(addr, nr);
     return 1;
   }
   return 0;
 }
+/*@
+  requires \valid(addr);
+  requires \initialized(addr);
+  requires nr >= 0;
+
+  assigns *p;
+
+  ensures \result == !!(\old(*p) & m);
+  ensures *p == (\old(*p) | m);
+
+  behavior normal:
+    assumes \valid(addr + bit_word(nr));
+    assumes \initialized(addr + bit_word(nr));
+  complete behaviors normal;
+@*/
 static inline int
 bit_set(unsigned long *addr, int nr) {
+  requires(addr);
+  requires(nr >= 0);
+
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
-  int ret = casti(*p &m);
+  unsigned long old_p = *p;
+  int ret = casti(!!(*p & m));
   *p |= m;
+
+  ensures(ret == casti(!!(old_p & m)));
+  ensures(*p == (old_p | m));
   return ret;
 }
+/*@
+  requires addr != NULL;
+  requires nr >= 0;
+  assigns *addr++;
+  ensures \result == \old(*addr);
+  ensures cond ? (*addr == \old(*addr) | bit_mask(nr)) : true;
+*/
 static inline void
 bit_set_on(unsigned long *addr, int nr, int cond) {
+  requires(addr);
+  requires(nr >= 0);
+
   if (cond) {
     bit_set(addr, nr);
   }
 }
+/*@
+  requires \valid(addr);
+  requires \initialized(addr);
+  requires nr >= 0;
+
+  assigns *p;
+
+  ensures \result == !!(\old(*p) & m);
+  ensures *p == (\old(*p) & ~m);
+
+  behavior normal:
+    assumes \valid(addr + bit_word(nr));
+    assumes \initialized(addr + bit_word(nr));
+
+  behavior invalid_address:
+    assumes !\valid(addr + bit_word(nr));
+    ensures \false;
+@*/
 static inline int
 bit_clr(unsigned long *addr, int nr) {
   requires(addr);
+  requires(nr >= 0);
+
   unsigned long m = bit_mask(nr);
   unsigned long *p = addr + bit_word(nr);
-  int ret = casti((*p & m));
+  unsigned long old_p = *p;
+  int ret = casti(!!(*p & m));
   *p &= ~m;
+
+  ensures(ret == casti(!!(old_p & m)));
+  ensures(*p == (old_p & ~m));
   return ret;
 }
+/*@
+  requires addr != NULL;
+  requires nr >= 0;
+  assigns *addr++;
+  ensures \result == \old(*addr);
+  ensures cond ? (*addr == \old(*addr) & ~bit_mask(nr)) : true;
+*/
 static inline void
 bit_clr_on(unsigned long *addr, int nr, int cond) {
   requires(addr);
@@ -423,6 +776,11 @@ bit_clr_on(unsigned long *addr, int nr, int cond) {
     bit_clr(addr, nr);
   }
 }
+/*@
+  requires addr != NULL;
+  assigns *addr++;
+  ensures \result == (\old(*addr) ^ bit_mask(nr)) & bit_mask(nr);
+  */
 static inline int
 bit_xor(unsigned long *addr, int nr) {
   requires(addr);
@@ -431,12 +789,27 @@ bit_xor(unsigned long *addr, int nr) {
   *p ^= m;
   return (*p & m) ? 1 : 0;
 }
+/*@
+  requires addr != NULL;
+  requires nbits >= 0;
+  assigns *addr++;
+  ensures \forall integer i; 0 <= i < nbits ==>
+      (\forall integer j; 0 <= j < bits_to_long(nbits);
+          addr[j] == (byte << (i % BITS_PER_LONG)) & bit_mask(i));
+*/
 static inline void
 bit_fill(unsigned long *addr, int byte, int nbits) {
   requires(addr);
   int n = bits_to_long(nbits);
   mset(addr, byte, n * szof(long));
 }
+/*@
+  requires addr != NULL;
+  requires 0 <= idx && idx < nbits;
+  ensures 0 <= \result && \result <= nbits;
+  ensures \result == nbits ==>
+      \forall integer i; 0 <= i < nbits; !(addr[bit_word(i)] & bit_mask(i));
+*/
 static int
 bit_ffs(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
@@ -450,10 +823,17 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
       continue;
     }
     int pos = cpu_bit_ffs64(c);
-    return (int)(i * BITS_PER_LONG) + pos;
+    return min((int)(i * BITS_PER_LONG) + pos, nbits);
   }
   return nbits;
 }
+/*@
+  requires addr != NULL;
+  requires 0 <= idx && idx < nbits;
+  ensures 0 <= \result && \result <= nbits;
+  ensures \result == nbits ==>
+      \forall integer i; 0 <= i < nbits; !(~addr[bit_word(i)] & bit_mask(i));
+*/
 static int
 bit_ffz(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
@@ -469,11 +849,21 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
       continue;
     }
     int pos = cpu_bit_ffs64(c);
-    return (int)(i * BITS_PER_LONG) + pos;
+    return min((int)(i * BITS_PER_LONG) + pos, nbits);
   }
   return nbits;
 }
-static int
+/*@
+  requires \valid_read(addr+(0..bits_to_long(nbits)-1));
+  requires \initialized(addr+(0..bits_to_long(nbits)-1));
+  requires nbits >= 0;
+  requires idx < nbits;
+  ensures 0 <= \result <= nbits;
+  behavior normal:
+    assigns \nothing;
+  complete behaviors normal;
+@*/
+static purist int
 bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
   requires(nbits >= 0);
@@ -496,37 +886,55 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
     }
     cnt += cpu_bit_cnt64(w);
   }
+  ensures(cnt >= 0);
+  ensures(cnt <= nbits);
   return cnt;
 }
-static int
+/*@
+  requires addr != NULL;
+  requires nbits >= 0;
+  ensures 0 <= \result && \result <= nbits;
+  */
+static purist int
 bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
   requires(nbits >= 0);
+  requires(idx < nbits);
 
   unsigned long widx = bit_word(idx);
   unsigned long cmsk = max(1U, bit_mask(idx)) - 1U;
   if ((unsigned long)nbits < BITS_PER_LONG) {
     cmsk |= ~(max(1U, bit_mask(nbits)) - 1U);
   }
+  unsigned long w = addr[widx]|cmsk;
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
-  unsigned long w = addr[widx] & ~cmsk;
   int cnt = cpu_bit_cnt64(~w);
+
   for (unsigned long i = widx + 1; i < n; ++i) {
     w = addr[i];
     if ((unsigned long)nbits - BITS_PER_LONG * i < BITS_PER_LONG) {
       cmsk |= ~(bit_mask(nbits) - 1U);
-      w = w & ~cmsk;
+      w = w|cmsk;
     }
     cnt += cpu_bit_cnt64(~w);
   }
-  return min(nbits, cnt);
+  ensures(cnt >= 0);
+  ensures(cnt <= nbits);
+  return cnt;
 }
-static int
+/*@
+  requires addr != NULL;
+  requires nbits >= 0;
+  requires off < nbits;
+  assigns nothing;
+  ensures 0 <= \result && \result < nbits;
+  */
+static purist int
 bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
   requires(nbits >= 0);
   requires(off < nbits);
-  if (!idx) {
+  if (!idx && !off) {
     return bit_ffs(addr, nbits, idx);
   }
   for (int i = 0; i <= idx && off < nbits; ++off) {
@@ -536,12 +944,19 @@ bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   }
   return off;
 }
-static int
+/*@
+  requires addr != NULL;
+  requires nbits >= 0;
+  requires off < nbits;
+  assigns nothing
+  ensures 0 <= \result && \result < nbits;
+*/
+static purist int
 bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
   requires(nbits >= 0);
   requires(off < nbits);
-  if (!idx) {
+  if (!idx && !off) {
     return bit_ffz(addr, nbits, idx);
   }
   for (int i = 0; i <= idx && off < nbits; ++off) {
@@ -550,6 +965,540 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
     }
   }
   return off;
+}
+static void
+ut_bit(void) {
+  {
+    unsigned long data[2] = {0}; // Initialize test data.  Adjust size as needed.
+
+    /* test setting and then checking a bit */
+    data[0] = 0;
+    data[0] |= bit_mask(5);
+    assert(bit_tst(data, 5) == 1);
+    assert(bit_tst(data, 6) == 0);
+
+    data[1] = 0;
+    data[1] |= bit_mask(BITS_PER_LONG + 10); // Set a bit in the next word
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 1);
+    assert(bit_tst(data, BITS_PER_LONG + 11) == 0);
+
+    data[0] = 0;
+    assert(bit_tst(data, 0) == 0); // Test bit 0
+    data[0] |= bit_mask(0);
+    assert(bit_tst(data, 0) == 1);
+
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 0); // Last bit of a word
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 1);
+
+    data[0] = ~0ul;
+    for (int i = 0; i < BITS_PER_LONG; ++i) {
+      assert(bit_tst(data, i) == 1);
+    }
+    data[1] = ~0ul;
+    for (int i = BITS_PER_LONG; i < 2 * BITS_PER_LONG; ++i) {
+      assert(bit_tst(data, i) == 1);
+    }
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (bit is set)
+    data[0] |= bit_mask(5);
+    assert(bit_tst_clr(data, 5) == 1); // Should clear and return 1
+    assert(bit_tst(data, 5) == 0);    // Verify that the bit is cleared
+
+    data[1] |= bit_mask(BITS_PER_LONG + 10);
+    assert(bit_tst_clr(data, BITS_PER_LONG + 10) == 1);
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 0);
+
+    // 2. Normal expected inputs (bit is not set)
+    assert(bit_tst_clr(data, 7) == 0); // Should return 0 (bit not set)
+    assert(bit_tst(data, 7) == 0);    // Bit should still be 0
+
+    // 3. Edge cases
+    data[0] |= bit_mask(0);
+    assert(bit_tst_clr(data, 0) == 1);
+    assert(bit_tst(data, 0) == 0);
+
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_tst_clr(data, BITS_PER_LONG - 1) == 1);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 0);
+
+    // Test with all bits set
+    data[0] = ~0ul;
+    for (int i = 0; i < BITS_PER_LONG; ++i) {
+      assert(bit_tst_clr(data, i) == 1);
+      assert(bit_tst(data, i) == 0);
+    }
+    data[1] = ~0ul;
+    for (int i = BITS_PER_LONG; i < 2 * BITS_PER_LONG; ++i) {
+      assert(bit_tst_clr(data, i) == 1);
+      assert(bit_tst(data, i) == 0);
+    }
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (bit is initially clear)
+    assert(bit_set(data, 5) == 0); // Should set and return 0
+    assert(bit_tst(data, 5) == 1);    // Verify that the bit is set
+
+    assert(bit_set(data, BITS_PER_LONG + 10) == 0);
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 1);
+
+    // 2. Normal expected inputs (bit is already set)
+    assert(bit_set(data, 5) == 1); // Should return 1 (bit was already set)
+    assert(bit_tst(data, 5) == 1);    // Bit should still be set
+
+    // 3. Edge cases
+    assert(bit_set(data, 0) == 0);
+    assert(bit_tst(data, 0) == 1);
+
+    assert(bit_set(data, BITS_PER_LONG - 1) == 0);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 1);
+
+    // Test with all bits initially set
+    data[0] = ~0ul;
+    for (int i = 0; i < BITS_PER_LONG; ++i) {
+      assert(bit_set(data, i) == 1);  // All bits should already be set
+      assert(bit_tst(data, i) == 1);
+    }
+    data[1] = ~0ul;
+    for (int i = BITS_PER_LONG; i < 2 * BITS_PER_LONG; ++i) {
+      assert(bit_set(data, i) == 1);  // All bits should already be set
+      assert(bit_tst(data, i) == 1);
+    }
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (bit is initially set)
+    data[0] |= bit_mask(5);  // Set the bit
+    assert(bit_clr(data, 5) == 1); // Should clear and return 1 (was set)
+    assert(bit_tst(data, 5) == 0);    // Verify that the bit is cleared
+
+    data[1] |= bit_mask(BITS_PER_LONG + 10);
+    assert(bit_clr(data, BITS_PER_LONG + 10) == 1);
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 0);
+
+    // 2. Normal expected inputs (bit is initially clear)
+    assert(bit_clr(data, 7) == 0); // Should return 0 (was already clear)
+    assert(bit_tst(data, 7) == 0);    // Bit should still be clear
+
+    // 3. Edge cases
+    data[0] |= bit_mask(0);
+    assert(bit_clr(data, 0) == 1);
+    assert(bit_tst(data, 0) == 0);
+
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_clr(data, BITS_PER_LONG - 1) == 1);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 0);
+
+     // Test with all bits initially set
+    data[0] = ~0ul;
+    for (int i = 0; i < BITS_PER_LONG; ++i) {
+      assert(bit_clr(data, i) == 1);  // All bits should have been set
+      assert(bit_tst(data, i) == 0);
+    }
+    data[1] = ~0ul;
+    for (int i = BITS_PER_LONG; i < 2 * BITS_PER_LONG; ++i) {
+      assert(bit_clr(data, i) == 1);  // All bits should have been set
+      assert(bit_tst(data, i) == 0);
+    }
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (bit initially clear)
+    assert(bit_xor(data, 5) == 1); // Should set and return 1
+    assert(bit_tst(data, 5) == 1);
+
+    assert(bit_xor(data, BITS_PER_LONG + 10) == 1);
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 1);
+
+    // 2. Normal expected inputs (bit already set)
+    assert(bit_xor(data, 5) == 0); // Should clear and return 0
+    assert(bit_tst(data, 5) == 0);
+
+    assert(bit_xor(data, BITS_PER_LONG + 10) == 0);
+    assert(bit_tst(data, BITS_PER_LONG + 10) == 0);
+
+    // 3. Edge cases
+    assert(bit_xor(data, 0) == 1);
+    assert(bit_tst(data, 0) == 1);
+    assert(bit_xor(data, 0) == 0);
+    assert(bit_tst(data, 0) == 0);
+
+    assert(bit_xor(data, BITS_PER_LONG - 1) == 1);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 1);
+    assert(bit_xor(data, BITS_PER_LONG - 1) == 0);
+    assert(bit_tst(data, BITS_PER_LONG - 1) == 0);
+
+    // Test with all bits initially set
+    data[0] = ~0ul;
+    for (int i = 0; i < BITS_PER_LONG; ++i) {
+      assert(bit_xor(data, i) == 0);  // All bits should have been set, so xor clears them
+      assert(bit_tst(data, i) == 0);
+    }
+    data[1] = ~0ul;
+    for (int i = BITS_PER_LONG; i < 2 * BITS_PER_LONG; ++i) {
+      assert(bit_xor(data, i) == 0);  // All bits should have been set, so xor clears them
+      assert(bit_tst(data, i) == 0);
+    }
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (one bit set)
+    data[0] |= bit_mask(5);
+    assert(bit_ffs(data, 64, 0) == 5);
+    assert(bit_ffs(data, 64, 5) == 5); // Start at the set bit
+    assert(bit_ffs(data, 64, 6) == 64); // Start after the set bit
+
+    data[1] |= bit_mask(BITS_PER_LONG + 10);
+    assert(bit_ffs(data, 128, 0) == 5);
+    assert(bit_ffs(data, 128, BITS_PER_LONG + 10) == BITS_PER_LONG + 10);
+    assert(bit_ffs(data, 128, BITS_PER_LONG + 11) == 128);
+
+    // 2. No bits set
+    data[0] = data[1] = 0;
+    assert(bit_ffs(data, 64, 0) == 64); // Or whatever nbits should return.
+    assert(bit_ffs(data, 128, 0) == 128);
+
+    // 3. Multiple bits set in the same word
+    data[0] |= bit_mask(2) | bit_mask(7);
+    assert(bit_ffs(data, 64, 0) == 2); // Finds the lowest set bit
+    assert(bit_ffs(data, 64, 3) == 7);
+
+    // 4. Multiple bits set across words
+    data[0] = data[1] = 0;
+    data[0] |= bit_mask(3);
+    data[1] |= bit_mask(BITS_PER_LONG + 1);
+    assert(bit_ffs(data, 128, 0) == 3);
+    assert(bit_ffs(data, 128, 4) == BITS_PER_LONG + 1);
+
+    // 5. Start index within a word
+    data[0] = data[1] = 0;
+    data[0] |= bit_mask(5);
+    assert(bit_ffs(data, 64, 3) == 5); // Start in middle of first word
+    assert(bit_ffs(data, 64, 7) == 64); // Start past the set bit
+
+    // 6. nbits smaller than actual data size.
+    assert(bit_ffs(data, 5, 0) == 5); // nbits is smaller than the set bit.
+
+    // 7. Edge Cases
+    data[0] = 0;
+    data[0] |= bit_mask(0);
+    assert(bit_ffs(data, 64, 0) == 0);
+
+    data[0] = 0;
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_ffs(data, 64, 0) == BITS_PER_LONG - 1);
+
+    // 8. All bits set
+    data[0] = ~0ul;
+    assert(bit_ffs(data, 64, 0) == 0); // Find first set bit.
+    data[1] = ~0ul;
+    assert(bit_ffs(data, 128, 0) == 0);
+  }
+  {
+    unsigned long data[2] = {~0ul, ~0ul}; // Initialize with all bits set
+
+    // 1. Normal expected inputs (one bit clear)
+    data[0] &= ~bit_mask(5);
+    assert(bit_ffz(data, 64, 0) == 5);
+    assert(bit_ffz(data, 64, 5) == 5); // Start at the cleared bit
+    assert(bit_ffz(data, 64, 6) == 64); // Start after the cleared bit
+
+    data[1] &= ~bit_mask(BITS_PER_LONG + 10);
+    assert(bit_ffz(data, 128, 0) == 5);
+    assert(bit_ffz(data, 128, BITS_PER_LONG + 10) == BITS_PER_LONG + 10);
+    assert(bit_ffz(data, 128, BITS_PER_LONG + 11) == 128);
+
+    // 2. No bits clear (all bits set)
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    assert(bit_ffz(data, 64, 0) == 64); // Or however nbits should return.
+    assert(bit_ffz(data, 128, 0) == 128);
+
+    // 3. Multiple bits clear in the same word
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[0] &= ~(bit_mask(2) | bit_mask(7));
+    assert(bit_ffz(data, 64, 0) == 2); // Finds the lowest cleared bit
+    assert(bit_ffz(data, 64, 3) == 7);
+
+    // 4. Multiple bits clear across words
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[0] &= ~bit_mask(3);
+    data[1] &= ~bit_mask(BITS_PER_LONG + 1);
+    assert(bit_ffz(data, 128, 0) == 3);
+    assert(bit_ffz(data, 128, 4) == BITS_PER_LONG + 1);
+
+    // 5. Start index within a word
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[0] &= ~bit_mask(5);
+    assert(bit_ffz(data, 64, 3) == 5); // Start in middle of first word
+    assert(bit_ffz(data, 64, 7) == 64); // Start past the cleared bit
+
+    // 6. nbits smaller than actual data size.
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[0] &= ~bit_mask(5);
+    assert(bit_ffz(data, 5, 0) == 5); // nbits is smaller than the cleared bit.
+
+    // 7. Edge Cases
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(0);
+    assert(bit_ffz(data, 64, 0) == 0);
+
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(BITS_PER_LONG - 1);
+    assert(bit_ffz(data, 64, 0) == BITS_PER_LONG - 1);
+
+    // 8. All bits clear
+    data[0] = 0;
+    assert(bit_ffz(data, 64, 0) == 0); // Find first clear bit.
+    data[1] = 0;
+    assert(bit_ffz(data, 128, 0) == 0);
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (a few bits set)
+    data[0] |= bit_mask(2) | bit_mask(5) | bit_mask(7);
+    assert(bit_cnt_set(data, 64, 0) == 3);
+    assert(bit_cnt_set(data, 64, 3) == 2); // Start at bit 2
+    assert(bit_cnt_set(data, 64, 7) == 1); // Start at bit 5
+    assert(bit_cnt_set(data, 64, 8) == 0); // Start at bit 7
+
+    data[0] = 0;
+    data[1] |= bit_mask(BITS_PER_LONG + 1) | bit_mask(BITS_PER_LONG + 9);
+    assert(bit_cnt_set(data, 128, 0) == 2);
+    assert(bit_cnt_set(data, 128, BITS_PER_LONG + 2) == 1);
+    assert(bit_cnt_set(data, 128, BITS_PER_LONG + 10) == 0);
+
+    // 2. No bits set
+    data[0] = data[1] = 0;
+    assert(bit_cnt_set(data, 64, 0) == 0);
+    assert(bit_cnt_set(data, 128, 0) == 0);
+
+    // 3. All bits set
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    assert(bit_cnt_set(data, 64, 0) == BITS_PER_LONG);
+    assert(bit_cnt_set(data, 128, 0) == 2 * BITS_PER_LONG);
+
+     // 4. nbits smaller than BITS_PER_LONG
+    data[0] = 0;
+    data[0] |= bit_mask(2) | bit_mask(5);
+    assert(bit_cnt_set(data, 7, 0) == 2);
+    assert(bit_cnt_set(data, 4, 0) == 1); // Test nbits smaller than first set bit.
+    assert(bit_cnt_set(data, 2, 0) == 0); // Test nbits exactly equal to the first bit.
+    assert(bit_cnt_set(data, 1, 0) == 0); // Test nbits smaller than the first bit.
+
+    // 5. Edge cases
+    data[0] = 0;
+    data[0] |= bit_mask(0);
+    assert(bit_cnt_set(data, 64, 0) == 1);
+
+    data[0] = 0;
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_cnt_set(data, 64, 0) == 1);
+
+    // 6. idx near nbits
+    data[0] = 0;
+    data[0] |= bit_mask(62);
+    assert(bit_cnt_set(data, 64, 60) == 1);
+    assert(bit_cnt_set(data, 64, 62) == 1);
+    assert(bit_cnt_set(data, 64, 63) == 0);
+
+    // 7. idx equals nbits -1
+    data[0] = 0;
+    data[0] |= bit_mask(62);
+    assert(bit_cnt_set(data, 63, 62) == 1); // nbits is 63 and idx is 62.
+  }
+  {
+    unsigned long data[2] = {~0ul, ~0ul}; // Initialize with all bits set
+
+    // 1. Normal expected inputs (a few bits cleared)
+    data[0] &= ~(bit_mask(2) | bit_mask(5) | bit_mask(7));
+    assert(bit_cnt_zero(data, 64, 0) == 3);
+    assert(bit_cnt_zero(data, 64, 3) == 2); // Start at bit 2
+    assert(bit_cnt_zero(data, 64, 6) == 1); // Start at bit 5
+    assert(bit_cnt_zero(data, 64, 8) == 0); // Start at bit 7
+
+    data[1] &= ~(bit_mask(BITS_PER_LONG + 1) | bit_mask(BITS_PER_LONG + 9));
+    assert(bit_cnt_zero(data, 128, 0) == 5);
+    assert(bit_cnt_zero(data, 128, BITS_PER_LONG + 1) == 2);
+    assert(bit_cnt_zero(data, 128, BITS_PER_LONG + 9) == 1);
+    assert(bit_cnt_zero(data, 128, BITS_PER_LONG + 10) == 0);
+
+    // 2. No bits cleared (all bits set)
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    assert(bit_cnt_zero(data, 64, 0) == 0);
+    assert(bit_cnt_zero(data, 128, 0) == 0);
+
+    // 3. All bits cleared
+    data[0] = 0;
+    data[1] = 0;
+    assert(bit_cnt_zero(data, 64, 0) == BITS_PER_LONG);
+    assert(bit_cnt_zero(data, 128, 0) == 2 * BITS_PER_LONG);
+
+    // 4. nbits smaller than BITS_PER_LONG
+    data[0] = ~0ul;
+    data[0] &= ~(bit_mask(2) | bit_mask(5));
+    assert(bit_cnt_zero(data, 7, 0) == 2);
+    assert(bit_cnt_zero(data, 4, 0) == 1); // Test nbits smaller than first cleared bit.
+    assert(bit_cnt_zero(data, 2, 0) == 0); // Test nbits exactly equal to the first bit.
+    assert(bit_cnt_zero(data, 1, 0) == 0); // Test nbits smaller than the first bit.
+
+    // 5. Edge cases
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(0);
+    assert(bit_cnt_zero(data, 64, 0) == 1);
+
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(BITS_PER_LONG - 1);
+    assert(bit_cnt_zero(data, 64, 0) == 1);
+
+    // 6. idx near nbits
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(62);
+    assert(bit_cnt_zero(data, 64, 60) == 1);
+    assert(bit_cnt_zero(data, 64, 62) == 1);
+    assert(bit_cnt_zero(data, 64, 63) == 0);
+
+    // 7. idx equals nbits - 1
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(62);
+    assert(bit_cnt_zero(data, 63, 62) == 1); // nbits is 63 and idx is 62.
+
+    //8. nbits less than BITS_PER_LONG
+    data[0] = ~0ul;
+    data[0] &= ~(bit_mask(2) | bit_mask(5));
+    assert(bit_cnt_zero(data, 6, 0) == 2);
+    assert(bit_cnt_zero(data, 3, 0) == 1);
+    assert(bit_cnt_zero(data, 2, 0) == 0);
+    assert(bit_cnt_zero(data, 1, 0) == 0);
+  }
+  {
+    unsigned long data[2] = {0};
+
+    // 1. Normal expected inputs (bits set)
+    data[0] |= bit_mask(2) | bit_mask(5) | bit_mask(7);
+    assert(bit_set_at(data, 64, 0, 0) == 2); // First set bit
+    assert(bit_set_at(data, 64, 0, 1) == 5); // Second set bit
+    assert(bit_set_at(data, 64, 0, 2) == 7); // Third set bit
+    assert(bit_set_at(data, 64, 0, 3) == 64); // No fourth set bit
+
+    data[0] = 0ul;
+    data[1] |= bit_mask(BITS_PER_LONG + 1) | bit_mask(BITS_PER_LONG + 9);
+    assert(bit_set_at(data, 128, 0, 0) == BITS_PER_LONG + 1);
+    assert(bit_set_at(data, 128, 0, 1) == BITS_PER_LONG + 9);
+    assert(bit_set_at(data, 128, 0, 2) == 128);
+
+    // 2. No bits set
+    data[0] = data[1] = 0ul;
+    assert(bit_set_at(data, 64, 0, 0) == 64);
+    assert(bit_set_at(data, 128, 0, 0) == 128);
+
+    // 3. Start offset in the middle of a word
+    data[0] |= bit_mask(5) | bit_mask(7);
+    assert(bit_set_at(data, 64, 3, 0) == 5);
+    assert(bit_set_at(data, 64, 6, 0) == 7);
+    assert(bit_set_at(data, 64, 8, 0) == 64);
+
+    // 4. Start offset in the middle of a word, multiple words
+    data[0] = data[1] = 0ul;
+    data[0] |= bit_mask(5);
+    data[1] |= bit_mask(BITS_PER_LONG + 2);
+    assert(bit_set_at(data, 128, 3, 0) == 5);
+    assert(bit_set_at(data, 128, 6, 0) == BITS_PER_LONG + 2);
+    assert(bit_set_at(data, 128, BITS_PER_LONG + 3, 0) == 128);
+
+    // 5. idx = 0
+    data[0] |= bit_mask(5) | bit_mask(7);
+    data[0] |= bit_mask(2);
+    assert(bit_set_at(data, 64, 0, 0) == 2);
+
+    // 6. Edge Cases
+    data[0] = 0;
+    data[0] |= bit_mask(0);
+    assert(bit_set_at(data, 64, 0, 0) == 0);
+
+    data[0] = 0;
+    data[0] |= bit_mask(BITS_PER_LONG - 1);
+    assert(bit_set_at(data, 64, 0, 0) == BITS_PER_LONG - 1);
+
+    // 7. nbits smaller than data size
+    data[0] = data[1] = 0;
+    data[0] |= bit_mask(2);
+    assert(bit_set_at(data, 5, 0, 0) == 2);
+    assert(bit_set_at(data, 1, 0, 0) == 1); // No set bits within the range
+  }
+  {
+    unsigned long data[2] = {~0ul, ~0ul}; // Initialize with all bits set
+
+    // 1. Normal expected inputs (bits cleared)
+    data[0] &= ~(bit_mask(2) | bit_mask(5) | bit_mask(7));
+    assert(bit_zero_at(data, 64, 0, 0) == 2); // First cleared bit
+    assert(bit_zero_at(data, 64, 0, 1) == 5); // Second cleared bit
+    assert(bit_zero_at(data, 64, 0, 2) == 7); // Third cleared bit
+    assert(bit_zero_at(data, 64, 0, 3) == 64); // No fourth cleared bit
+
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[1] &= ~(bit_mask(BITS_PER_LONG + 1) | bit_mask(BITS_PER_LONG + 9));
+    assert(bit_zero_at(data, 128, 0, 0) == BITS_PER_LONG + 1);
+    assert(bit_zero_at(data, 128, 0, 1) == BITS_PER_LONG + 9);
+    assert(bit_zero_at(data, 128, 0, 2) == 128);
+
+    // 2. No bits cleared (all bits set)
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    assert(bit_zero_at(data, 64, 0, 0) == 64);
+    assert(bit_zero_at(data, 128, 0, 0) == 128);
+
+    // 3. Start offset in the middle of a word
+    data[0] &= ~(bit_mask(5) | bit_mask(7));
+    assert(bit_zero_at(data, 64, 3, 0) == 5);
+    assert(bit_zero_at(data, 64, 6, 0) == 7);
+    assert(bit_zero_at(data, 64, 8, 0) == 64);
+
+    // 4. Start offset in the middle of a word, multiple words
+    data[0] = ~0ul;
+    data[1] = ~0ul;
+    data[0] &= ~bit_mask(5);
+    data[1] &= ~bit_mask(BITS_PER_LONG + 2);
+    assert(bit_zero_at(data, 128, 3, 0) == 5);
+    assert(bit_zero_at(data, 128, 6, 0) == BITS_PER_LONG + 2);
+    assert(bit_zero_at(data, 128, BITS_PER_LONG + 3, 0) == 128);
+
+    // 5. idx = 0
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(2);
+    assert(bit_zero_at(data, 64, 0, 0) == 2);
+
+    // 6. Edge Cases
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(0);
+    assert(bit_zero_at(data, 64, 0, 0) == 0);
+
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(BITS_PER_LONG - 1);
+    assert(bit_zero_at(data, 64, 0, 0) == BITS_PER_LONG - 1);
+
+    // 7. nbits smaller than data size
+    data[0] = ~0ul;
+    data[0] &= ~bit_mask(2);
+    assert(bit_zero_at(data, 5, 0, 0) == 2);
+    assert(bit_zero_at(data, 1, 0, 0) == 1); // No cleared bits within the range
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -567,7 +1516,7 @@ bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
 #define is_printable(c) ((c) >= 32 && (c) <= 126)
 // clang-format on
 
-static int
+static purist int
 is_space(long c) {
   switch (c) {
   default: return 0;
@@ -596,7 +1545,7 @@ is_space(long c) {
     return 1;
   }
 }
-static int
+static purist int
 is_quote(long c) {
   switch (c) {
   default: return 0;
@@ -616,7 +1565,7 @@ is_quote(long c) {
     return 1;
   }
 }
-static int
+static purist int
 is_punct(long c) {
   switch (c) {
   default: return is_quote(c);
@@ -788,7 +1737,27 @@ is_punct(long c) {
    str_len(it); it = str_split_cut(&rest, delim))
 // clang-format on
 
-static inline struct str
+/*@
+  requires ptr != NULL && begin != NULL && end != NULL; // All or none can be NULL
+  // requires begin >= ptr; // begin must be within or equal to ptr
+  // requires end >= begin; // end must be within or equal to begin
+  // requires total >= 0; // total must be non-negative
+
+  assigns \nothing; // purist function
+
+  // Define a predicate to check if a str is valid
+  predicate str_is_valid(struct str s) {
+    return s.ptr != NULL ==> (s.rng.lo >= 0 && s.rng.hi >= s.rng.lo && s.rng.hi < s.rng.total && s.rng.cnt >= 0 && s.rng.cnt <= s.rng.hi - s.rng.lo && s.rng.total >= 0);
+  }
+
+  ensures \result.ptr == ptr;
+  ensures \result.rng.lo == (begin == NULL || ptr == NULL ? 0 : casti(begin - ptr));
+  ensures \result.rng.hi == (end == NULL || ptr == NULL ? 0 : casti(end - ptr));
+  ensures \result.rng.cnt == (begin == NULL || end == NULL ? 0 : casti(end - begin));
+  ensures \result.rng.total == total;
+  ensures str_is_valid(\result);
+*/
+static purist inline struct str
 strptr(const char *ptr, const char *begin, const char *end, int total) {
   if (ptr == 0 || begin == 0 || end == 0) {
     return str_nil;
@@ -800,7 +1769,20 @@ strptr(const char *ptr, const char *begin, const char *end, int total) {
   str.rng = (struct rng){low, hih, cnt, total};
   return str;
 }
-static inline struct str
+/*@
+  requires begin != NULL || end == NULL; // Either both or end can be NULL
+  requires end >= begin; // end must be within or equal to begin
+
+  assigns \nothing; // purist function
+
+  ensures \result.ptr == begin;
+  ensures \result.rng.lo == 0;
+  ensures \result.rng.hi == (end == NULL ? 0 : casti(end - begin));
+  ensures \result.rng.cnt == (end == NULL ? 0 : casti(end - begin));
+  ensures \result.rng.total == (end == NULL ? 0 : casti(end - begin));
+  ensures str_is_valid(\result);
+*/
+static purist inline struct str
 strp(const char *begin, const char *end) {
   if (begin == 0 || end == 0) {
     return str_nil;
@@ -808,7 +1790,12 @@ strp(const char *begin, const char *end) {
   int cnt = casti(end - begin);
   return strptr(begin, begin, end, cnt);
 }
-static unsigned long long
+/*@
+  requires str_is_val(str);
+  assigns \nothing; // purist function
+  ensures \result >= 0;
+*/
+static purist unsigned long long
 str__hash(struct str str, unsigned long long id) {
   assert(str_len(str) >= 0);
   if (str_is_inv(str)) {
@@ -816,12 +1803,23 @@ str__hash(struct str str, unsigned long long id) {
   }
   return fnv1a64(str_beg(str), str_len(str), id);
 }
-static unsigned long long
+/*@
+  requires str_is_val(str);
+  assigns \nothing; // purist function
+  ensures \result >= 0;
+*/
+static purist unsigned long long
 str_hash(struct str str) {
   assert(str_len(str) >= 0);
   return str__hash(str, FNV1A64_HASH_INITIAL);
 }
-static int
+/*@
+  requires str_is_val(lhs);
+  requires str_is_val(rhs);
+  assigns \nothing; // purist function
+  ensures \result == -1 || \result == 0 || \result == 1;
+*/
+static purist int
 str_cmp(struct str lhs, struct str rhs) {
   assert(lhs.ptr);
   assert(str_len(lhs) >= 0);
@@ -843,12 +1841,18 @@ str_cmp(struct str lhs, struct str rhs) {
   }
   return 0;
 }
-static int
+/*@
+  requires str_is_val(hay);
+  requires str_is_val(needle);
+  assigns \nothing; // purist function
+  ensures \result >= 0; // Return value is a valid index or str_len(hay)
+*/
+static purist int
 str_fnd(struct str hay, struct str needle) {
   assert(str_len(hay) >= 0);
   assert(str_len(needle) >= 0);
   if (str_len(hay) == 0 ||
-      str_len(hay) == 0) {
+      str_len(needle) == 0) {
     return str_len(hay);
   }
   if (str_len(needle) == 1) {
@@ -858,10 +1862,16 @@ str_fnd(struct str hay, struct str needle) {
     }
     return str_len(hay);
   } else {
-    return cpu_str_fnd(str_beg(hay), str_len(hay), str_beg(needle), castsz(str_len(needle)));
+    return cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
   }
 }
-static int
+/*@
+  requires str_is_val(hay);
+  requires str_is_val(needle);
+  assigns \nothing; // purist function
+  ensures \result == 0 || \result == 1; // Returns 0 (false) or 1 (true)
+*/
+static purist inline int
 str_has(struct str hay, struct str needle) {
   assert(hay.ptr);
   assert(str_len(hay) >= 0);
@@ -869,6 +1879,13 @@ str_has(struct str hay, struct str needle) {
   assert(str_len(needle) >= 0);
   return str_fnd(hay, needle) >= str_len(hay);
 }
+/*@
+  requires str != NULL;
+  requires str_is_val(*str);
+  requires str_is_val(delim);
+  assigns *str; // Modifies the str pointer
+  ensures \result.ptr != NULL ==> str_is_val(\result); // Result is a valid str or str_nil
+*/
 static struct str
 str_split_cut(struct str *str, struct str delim) {
   assert(str);
@@ -888,20 +1905,128 @@ str_split_cut(struct str *str, struct str delim) {
 }
 static void
 ut_str(void) {
-  char test_str[64] = "cmd[stk?utf/boot/usr/str_bootbany.exe";
-  const struct str hay = str0(test_str);
-  int dot_pos = str_fnd(hay, strv("["));
-  assert(dot_pos == 3);
-  int cmd_pos = str_fnd(hay, strv("cmd"));
-  assert(cmd_pos == 0);
-  int str_pos = str_fnd(hay, strv("?utf"));
-  assert(str_pos == 7);
-  int long_pos = str_fnd(hay, strv("boot/usr/str_bootbany"));
-  assert(long_pos == 12);
-  int close_no = str_fnd(hay, strv("str/"));
-  assert(close_no == str_len(hay));
-  int no = str_fnd(hay, strv("rock"));
-  assert(no == str_len(hay));
+  {
+    char test_str[] = "abcde";
+    const char *begin = test_str + 1; // Start of the substring
+    const char *end = test_str + 4; // End of the substring (not inclusive)
+    struct str expected_str = {.ptr = test_str, .rng = {.lo = 1, .hi = 4, .cnt = 3, .total = 5}};
+    struct str actual_str = strptr(test_str, begin, end, cstrn(test_str));
+    assert(memcmp(&expected_str, &actual_str, sizeof(struct str)) == 0);
+  }
+  {
+    char test_str[] = "abcde";
+
+    // Test case 1: ptr at the beginning
+    const char *ptr = test_str;
+    const char *begin = test_str;
+    const char *end = test_str + 2;
+    struct str expected_str = {.ptr = ptr, .rng = {.lo = 0, .hi = 2, .cnt = 2, .total = 5}};
+    struct str actual_str = strptr(ptr, begin, end, cstrn(test_str));
+    assert(memcmp(&expected_str, &actual_str, sizeof(struct str)) == 0);
+  }
+  {
+    char test_str[] = "abcde";
+    // Test case 2: ptr at the end
+    const char *ptr = test_str + cstrn(test_str) - 1;
+    const char *begin = test_str + cstrn(test_str) - 2;
+    const char *end = test_str + cstrn(test_str);
+    struct str expected_str = {.ptr = ptr, .rng = {.lo = 4, .hi = 5, .cnt = 1, .total = 5}};
+    struct str actual_str = strptr(ptr, begin, end, cstrn(test_str));
+    assert(memcmp(&expected_str, &actual_str, 1) == 0);
+  }
+  {
+    char test_str[] = "abcde";
+    const char *begin = test_str + 1; // Start of the substring
+    const char *end = test_str + 4; // End of the substring (not inclusive)
+    struct str expected_str = {.ptr = begin, .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    struct str actual_str = strp(begin, end);
+    assert(memcmp(&expected_str, &actual_str, sizeof(struct str)) == 0);
+  }
+  {
+    // Test case 2: Empty string
+    char empty_str[] = "";
+    const char *begin = empty_str;
+    const char *end = empty_str;
+    struct str expected_str = {.ptr = begin, .rng = {.lo = 0, .hi = 0, .cnt = 0, .total = 0}};
+    struct str actual_str = strp(begin, end);
+    assert(memcmp(&expected_str, &actual_str, sizeof(struct str)) == 0);
+  }
+  {
+    char test_str[] = "abcde";
+
+    // Test case 1: begin and end at the same position
+    const char *begin = test_str + 2;
+    const char *end = test_str + 2;
+    struct str expected_str = {.ptr = begin, .rng = {.lo = 0, .hi = 0, .cnt = 0, .total = 0}};
+    struct str actual_str = strp(begin, end);
+    assert(memcmp(&expected_str, &actual_str, sizeof(struct str)) == 0);
+  }
+  {
+    struct str lhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    struct str rhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    assert(str_cmp(lhs, rhs) == 0);
+  }
+  {
+    struct str lhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    struct str rhs = {.ptr = "abd", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    assert(str_cmp(lhs, rhs) == -1);
+  }
+  {
+    struct str lhs = {.ptr = "abd", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    struct str rhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    assert(str_cmp(lhs, rhs) == 1);
+  }
+  {
+    struct str lhs = {.ptr = "ab", .rng = {.lo = 0, .hi = 2, .cnt = 2, .total = 2}};
+    struct str rhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    assert(str_cmp(lhs, rhs) == -1);
+  }
+   {
+    struct str lhs = {.ptr = "abc", .rng = {.lo = 0, .hi = 3, .cnt = 3, .total = 3}};
+    struct str rhs = {.ptr = "ab", .rng = {.lo = 0, .hi = 2, .cnt = 2, .total = 2}};
+    assert(str_cmp(lhs, rhs) == 1);
+  }
+  {
+    char test_str[64] = "cmd[stk?utf/boot/usr/str_bootbany.exe";
+    const struct str hay = str0(test_str);
+    int dot_pos = str_fnd(hay, strv("["));
+    assert(dot_pos == 3);
+    int cmd_pos = str_fnd(hay, strv("cmd"));
+    assert(cmd_pos == 0);
+    int str_pos = str_fnd(hay, strv("?utf"));
+    assert(str_pos == 7);
+    int long_pos = str_fnd(hay, strv("boot/usr/str_bootbany"));
+    assert(long_pos == 12);
+    int close_no = str_fnd(hay, strv("str/"));
+    assert(close_no == str_len(hay));
+    int no = str_fnd(hay, strv("rock"));
+    assert(no == str_len(hay));
+  }
+  {
+    struct str str = {.ptr = "hello world", .rng = {.lo = 0, .hi = 11, .cnt = 11, .total = 11}};
+    struct str delim = {.ptr = " ", .rng = {.lo = 0, .hi = 1, .cnt = 1, .total = 1}};
+    struct str expected_ret = {.ptr = "hello", .rng = {.lo = 0, .hi = 5, .cnt = 5, .total = 11}};
+    struct str actual_ret = str_split_cut(&str, delim);
+    assert(memcmp(&expected_ret.rng, &actual_ret.rng, sizeof(struct rng)) == 0);
+    assert(expected_ret.ptr = str.ptr);
+    assert(!memcmp(str.ptr + str.rng.lo, "world", 5) && str.rng.lo == 6 && str.rng.hi == 11 && str.rng.cnt == 5 && str.rng.total == 11);
+  }
+  {
+    struct str str = {.ptr = "hello", .rng = {.lo = 0, .hi = 5, .cnt = 5, .total = 5}};
+    struct str delim = {.ptr = " ", .rng = {.lo = 0, .hi = 1, .cnt = 1, .total = 1}};
+    struct str expected_ret = {.ptr = "hello", .rng = {.lo = 0, .hi = 5, .cnt = 5, .total = 5}};
+    struct str actual_ret = str_split_cut(&str, delim);
+    assert(memcmp(&expected_ret, &actual_ret, sizeof(struct str)) == 0);
+    assert(str.ptr == NULL && str.rng.lo == 0 && str.rng.hi == 0 && str.rng.cnt == 0 && str.rng.total == 0);
+  }
+  {
+    struct str str = {.ptr = "hello", .rng = {.lo = 0, .hi = 5, .cnt = 5, .total = 5}};
+    struct str delim = {.ptr = "", .rng = {.lo = 0, .hi = 0, .cnt = 0, .total = 0}};
+    struct str expected_ret = {.ptr = "hello", .rng = {.lo = 0, .hi = 5, .cnt = 5, .total = 5}};
+    struct str actual_ret = str_split_cut(&str, delim);
+    assert(memcmp(&expected_ret, &actual_ret, sizeof(struct str)) == 0);
+    assert(str.ptr == NULL && str.rng.lo == 0 && str.rng.hi == 0 && str.rng.cnt == 0 && str.rng.total == 0);
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -925,6 +2050,13 @@ static const unsigned utf_max[UTF_SIZ+1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10F
 #define utf_loop_rev(rune, it, rest, src)\
   (struct str rest = src, it = utf_dec_rev(rune, &rest); str_len(it); it = utf_dec_rev(rune, &rest))
 
+/*@
+  requires str != NULL;
+  requires str_is_val(*str) || str_is_inv(*str); // str can be valid or invalid
+  assigns *str, *rune; // Modifies str and rune (if not NULL)
+  ensures \result.ptr != NULL ==> str_is_val(\result); // Result is a valid str or str_nil
+  ensures str->ptr == \old(str->ptr) + \old(\result.rng.cnt);
+*/
 static struct str
 utf_dec(unsigned *rune, struct str *str) {
   assert(str);
@@ -972,6 +2104,14 @@ utf_get(struct str str) {
   utf_dec(&rune, &str);
   return rune;
 }
+/*@
+  requires str != NULL;
+  requires str_is_val(*str) || str_is_inv(*str);
+  assigns *str, *rune;
+  ensures \result.ptr != NULL ==> str_is_val(\result);
+  ensures (str_is_empty(\old(*str)) || !str_is_empty(*str) ) ;
+  ensures \result.ptr == \old(str->ptr) + \old(str->rng.lo); // Start of the decoded character
+*/
 static struct str
 utf_dec_rev(unsigned *rune, struct str *str) {
   const char *ptr = str_end(*str);
@@ -988,6 +2128,14 @@ utf_dec_rev(unsigned *rune, struct str *str) {
   *rune = UTF_INVALID;
   return str_nil;
 }
+/*@
+  requires buf != NULL;
+  requires cap >= 0;
+  requires rune >= 0 && rune <= 0x10FFFF; // Valid Unicode code point range
+  assigns buf[0..cap-1]; // Modifies the buffer
+  ensures \result == 0 ==> !utf_val(rune, 0) || cap < cnt || !cnt || cnt > UTF_SIZ; // Returns 0 if rune is invalid or buffer too small or count is invalid
+  ensures \result > 0 ==> \result <= cap && \result <= UTF_SIZ; // Returns count if encoding successful
+*/
 static int
 utf_enc(char *buf, int cap, unsigned rune) {
   int cnt = 0;
@@ -1005,6 +2153,11 @@ utf_enc(char *buf, int cap, unsigned rune) {
   buf[0] = utf_enc_byte(rune, cnt);
   return cnt;
 }
+/*@
+  requires str_is_val(str);
+  assigns *rune; // Modifies rune (if not NULL)
+  ensures \result.ptr != NULL ==> str_is_val(\result);
+*/
 static struct str
 utf_at(unsigned *rune, struct str str, int idx) {
   int i = 0;
@@ -1026,7 +2179,12 @@ utf_at(unsigned *rune, struct str str, int idx) {
   }
   return strptr(str.ptr, str_end(str), str_end(str), str.rng.total);
 }
-static int
+/*@
+  requires str_is_val(str);
+  assigns \nothing;
+  ensures \result >= 0;
+*/
+static purist int
 utf_at_idx(struct str str, int idx) {
   struct str view = utf_at(0, str, idx);
   if (str_len(view)) {
@@ -1034,7 +2192,12 @@ utf_at_idx(struct str str, int idx) {
   }
   return str_len(str);
 }
-static int
+/*@
+  requires str_is_val(str);
+  assigns \nothing;
+  ensures \result >= 0;
+*/
+static purist int
 utf_len(struct str str) {
   int i = 0;
   unsigned rune = 0;
@@ -1043,10 +2206,187 @@ utf_len(struct str str) {
   }
   return i;
 }
+static void
+ut_utf(void) {
+  {
+    static const struct str test_cases[] = {
+      strv("a"),       // ASCII character
+      strv("\u00C4"),   // Umlaut character (Ä)
+      strv("\u20AC"),   // Euro symbol (€)
+      strv("\u4E00"),   // CJK character (一)
+    };
+    static const long runes[] = {
+      'a', 196, 8364, 19968
+    };
+    for arr_loopv(i, test_cases) {
+      unsigned rune;
+      struct str str = test_cases[i];
+      struct str result = utf_dec(&rune, &str);
+      assert(result.ptr != NULL); // Ensure a valid str is returned
+      assert(str_is_empty(str));   // Ensure str is advanced
+      assert(rune == runes[i]); // Check decoded character (ASCII)
+    }
+  }
+  {
+    // Test cases for incomplete UTF-8 sequences (truncated in the middle)
+    static const struct str test_cases[] = {
+      strv("\xC3"),    // Missing continuation byte
+      strv("\xE0\x80"), // Missing continuation byte
+    };
+    for arr_loopv(i, test_cases) {
+      unsigned rune;
+      struct str str = test_cases[i];
+      struct str result = utf_dec(&rune, &str);
+      assert(result.ptr == str.ptr); // Ensure str remains unchanged
+      assert(rune == UTF_INVALID);   // Ensure UTF_INVALID is returned
+    }
+  }
+  {
+    // Test case for an empty string
+    struct str str = str_nil;
+    unsigned rune;
+    struct str result = utf_dec_rev(&rune, &str);
+    assert(result.ptr == str.ptr);  // Ensure str remains unchanged
+    assert(rune == UTF_INVALID);    // Ensure UTF_INVALID is returned
+  }
+  {
+    unsigned test_code_points[] = {
+      'a',                // ASCII character
+      0x00C4,             // Umlaut character (Ä)
+      0x20AC,             // Euro symbol (€)
+      0x4E00,             // CJK character (一)
+    };
+    for (size_t i = 0; i < cntof(test_code_points); ++i) {
+      unsigned rune = test_code_points[i];
+      char buf[UTF_SIZ];
+      int bytes_written = utf_enc(buf, UTF_SIZ, rune);
+      assert(bytes_written > 0);
+
+      // Check if the encoded bytes represent the correct rune
+      unsigned decoded_rune = 0;
+      struct str str = strptr(buf, buf, buf + bytes_written, bytes_written);
+      struct str result = utf_dec(&decoded_rune, &str);
+      assert(result.ptr != NULL);
+      assert(str_is_empty(str));
+      assert(decoded_rune == rune);
+    }
+  }
+  {
+    // Test cases for invalid code points
+    unsigned invalid_code_points[] = {
+      0x110000,       // Code point outside of valid range
+      0xD800,         // Surrogate pair (low)
+    };
+    for (size_t i = 0; i < cntof(invalid_code_points); ++i) {
+      unsigned rune = invalid_code_points[i];
+      char buf[UTF_SIZ];
+      int bytes_written = utf_enc(buf, UTF_SIZ, rune);
+      assert(bytes_written == 0); // Ensure no bytes are written for invalid code points
+    }
+  }
+  {
+    // Test case for insufficient buffer size
+    unsigned rune = 0x10FFFF; // Maximum valid code point
+    char buf[2]; // Buffer size is too small
+    int bytes_written = utf_enc(buf, sizeof(buf), rune);
+    assert(bytes_written == 0); // Ensure no bytes are written
+  }
+  {
+      // Test case for accessing a valid character index within a UTF-8 string
+    const char* str_literal = "Hello, 世界";
+    struct str str = str0(str_literal);
+
+    // Access the second character (world)
+    int idx = 1;
+    unsigned rune;
+    struct str result = utf_at(&rune, str, idx);
+    assert(result.ptr != NULL); // Ensure a valid str is returned
+    assert(!str_is_empty(str));   // Ensure str is advanced
+    assert(result.rng.lo = 1);
+    assert(rune == 101);       // Check decoded character (world)
+  }
+  {
+    // Test case for accessing an index beyond the string length
+    struct str str = strv("Hello");
+
+    // Access index 5 (out of bounds)
+    int idx = 5;
+    unsigned rune;
+    struct str result = utf_at(&rune, str, idx);
+    assert(result.rng.lo == str.rng.hi);  // Ensure str remains unchanged
+    assert(result.rng.hi == str.rng.hi);  // Ensure str remains unchanged
+    assert(result.rng.cnt == 0);
+    assert(result.ptr = str.ptr);
+    assert(result.rng.total = str.rng.total);
+    assert(rune == UTF_INVALID);        // Ensure UTF_INVALID is returned
+  }
+  {
+    // Test case for accessing an index in an empty string
+    struct str str = str_nil;
+
+    // Access index 0
+    int idx = 0;
+    unsigned rune;
+    struct str result = utf_at(&rune, str, idx);
+    assert(result.ptr == str.ptr);  // Ensure str remains unchanged
+    assert(rune == UTF_INVALID);    // Ensure UTF_INVALID is returned
+  }
+  {
+    struct str str = strv("Hello, 世界");
+
+    // Get the byte offset of the second character (world)
+    int idx = 1;
+    int byte_offset = utf_at_idx(str, idx);
+    assert(byte_offset > 0);
+
+    // Verify that the character at the calculated byte offset is the expected character
+    struct str char_str = strptr(str.ptr + byte_offset, str.ptr + byte_offset, str.ptr + byte_offset + 1, str.rng.total);
+    unsigned rune;
+    struct str result = utf_dec(&rune, &char_str);
+    assert(result.ptr != NULL);
+    assert(rune == 101); // Check decoded character (world)
+  }
+  {
+    const char* str_literal = "Hello";
+    struct str str = str0(str_literal);
+    // Access index beyond the string length
+    int idx = 5;
+    int byte_offset = utf_at_idx(str, idx);
+    assert(byte_offset == str_len(str)); // Byte offset should be at the end of the string
+  }
+  {
+    struct str str = str_nil;
+    int idx = 0;
+    int byte_offset = utf_at_idx(str, idx);
+    assert(byte_offset == 0); // Byte offset should be 0 for empty string
+  }
+  {
+    const char* str_literal = "Hello, 世界";
+    struct str str = str0(str_literal);
+    int length = utf_len(str);
+    assert(length == 9); // Expected number of characters
+  }
+  {
+    struct str str = str_nil;
+    int length = utf_len(str);
+    assert(length == 0);
+  }
+}
+
 /* ---------------------------------------------------------------------------
  *                                String
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires buf != NULL;
+  requires cnt >= 0;
+  requires str_is_val(str) || str_is_inv(str); // str can be valid or invalid
+
+  assigns buf[0..cnt-1];  // Modifies the buffer
+
+  ensures (str_is_empty(str) || str_len(str) > cnt) ==> \result == str_inv;
+  ensures str_len(str) <= cnt ==> \result.ptr == buf && \result.rng.cnt == str_len(str) && \result.rng.total == cnt;
+*/
 static inline struct str
 str_set(char *buf, int cnt, struct str str) {
   assert(buf);
@@ -1059,6 +2399,17 @@ str_set(char *buf, int cnt, struct str str) {
   mcpy(buf, str_beg(str), str_len(str));
   return strn(buf, str_len(str));
 }
+/*@
+  requires buf != NULL;
+  requires cnt >= 0;
+  requires str_is_val(str);
+
+  assigns buf[0..cnt-1]; // Modifies the buffer
+
+  ensures \result.ptr == buf;
+  ensures \result.rng.cnt == min(cnt, str_len(str));
+  ensures \result.rng.total == cnt;
+*/
 static inline struct str
 str_sqz(char *buf, int cnt, struct str str) {
   assert(buf);
@@ -1068,6 +2419,18 @@ str_sqz(char *buf, int cnt, struct str str) {
   mcpy(buf, str_beg(str), len);
   return strn(buf,len);
 }
+/*@
+  requires buf != NULL;
+  requires cap >= 0;
+  requires str_is_val(in);
+  requires str_is_val(str);
+
+  assigns buf[0..cap-1]; // Modifies the buffer
+
+  ensures \result.ptr == buf;
+  ensures \result.rng.cnt <= cap; // Result length is not greater than capacity
+  ensures \result.rng.total == cap;
+*/
 static struct str
 str_add(char *buf, int cap, struct str in, struct str str) {
   assert(buf);
@@ -1077,10 +2440,10 @@ str_add(char *buf, int cap, struct str in, struct str str) {
   }
   int nnn = 0;
   unsigned rune = 0;
-  int cnt = cap - str_len(str);
+  int cnt = max(0, cap - str_len(in));
   for utf_loop(&rune, itr, _, str) {
     int len = casti(str_end(itr) - str_beg(str));
-    if (len >= cnt) {
+    if (len > cnt) {
       break;
     }
     nnn = len;
@@ -1088,12 +2451,34 @@ str_add(char *buf, int cap, struct str in, struct str str) {
   mcpy(buf + str_len(in), str_beg(str), nnn);
   return strn(buf, str_len(in) + nnn);
 }
+/*@
+  requires buf != NULL;
+  requires str_is_val(in);
+  assigns buf[0..str_len(in)-cnt-1]; // Modifies the buffer
+
+  ensures \result.ptr == buf;
+  ensures \result.rng.cnt == max(0, str_len(in) - cnt);
+  ensures \result.rng.total == \old(in.rng.total); // Total remains the same (important!)
+*/
 static struct str
 str_rm(char *buf, struct str in, int cnt) {
   assert(buf);
   int left = max(0, str_len(in) - cnt);
   return strn(buf, left);
 }
+/*@
+  requires buf != NULL;
+  requires cap >= 0;
+  requires str_is_val(in);
+  requires str_is_val(str);
+
+  assigns buf[0..cap-1]; // Modifies the buffer
+
+  ensures \result.ptr == buf;
+  ensures \result.rng.cnt == min(cap, str_len(in) + str_len(str));
+  ensures \result.rng.cnt <= cap;
+  ensures \result.rng.total == cap;
+*/
 static struct str
 str_put(char *buf, int cap, struct str in, int pos, struct str str) {
   assert(buf);
@@ -1101,32 +2486,59 @@ str_put(char *buf, int cap, struct str in, int pos, struct str str) {
     return str_add(buf, cap, in, str);
   }
   if (str_len(in) + str_len(str) < cap) {
+    /* string fits into buffer */
     memmove(buf + pos + str_len(str), buf + pos, castsz(str_len(in) - pos));
     mcpy(buf + pos, str_beg(str), str_len(str));
     return strn(buf, str_len(in) + str_len(str));
   }
-  unsigned rune = 0;
-  int cnt = cap - str_len(str);
-  for utf_loop(&rune, itr, _, str) {
-    int len = casti(str_end(itr) - str_beg(str));
-    if (len >= -cnt) {
-      break;
+  int cnt = cap - pos;
+  int cpy = str_len(str);
+  if (pos + str_len(str) < cap) {
+    int mv = cap - (pos + str_len(str));
+    memmove(buf + pos + str_len(str), buf + pos, castsz(mv));
+  } else if (pos + str_len(str) > cap) {
+    cpy = 0;
+    unsigned rune = 0;
+    for utf_loop(&rune, itr, _, str) {
+      int len = casti(str_end(itr) - str_beg(str));
+      if (len > cnt) {
+        break;
+      }
+      cpy = len;
     }
   }
-  memmove(buf + pos + str_len(str), buf + pos, cast(size_t, str_len(in) - pos));
-  mcpy(buf + pos, str_beg(str), str_len(str));
-  return strn(buf, str_len(str) + str_len(in));
+  mcpy(buf + pos, str_beg(str), cpy);
+  return strn(buf, cap + cpy - cnt);
 }
+
+/*@
+  requires buf != NULL;
+  requires str_is_val(in);
+  requires pos >= 0; // Or requires 0 <= pos <= str_len(in) if you want to be more strict
+  requires len >= 0; // Or requires 0 <= len <= str_len(in) - pos if you want to be more strict
+
+  assigns buf[0..str_len(in)-len-1]; // Modifies the buffer
+
+  ensures \result.ptr == buf;
+  ensures \result.rng.cnt == str_len(in) - min(len, str_len(in) - pos); // Correct length after deletion
+  ensures \result.rng.total == \old(in.rng.total); // Total remains the same
+*/
 static struct str
 str_del(char *buf, struct str in, int pos, int len) {
   assert(buf);
-  if (pos >= str_len(in)) {
-    return str_rm(buf, in, len);
+  if (pos < 0 || pos >= str_len(in) || len < 0) {
+    return in;
   }
   assert(pos + len <= str_len(in));
   memmove(buf + pos, buf + pos + len, castsz(str_len(in) - pos));
   return strn(buf, str_len(in) - len);
 }
+/*@
+  requires buf != NULL;
+  requires n >= 0;
+  requires fmt != NULL;
+  assigns buf[0..n-1]; // Modifies the buffer
+*/
 static struct str
 str_fmtsn(char *buf, int n, const char *fmt, ...) {
   assert(buf);
@@ -1137,6 +2549,14 @@ str_fmtsn(char *buf, int n, const char *fmt, ...) {
   va_end(va);
   return strn(buf, ret);
 }
+/*@
+  requires b != NULL;
+  requires cap >= 0;
+  requires str_is_val(in);
+  requires fmt != NULL;
+
+  assigns b[0..cap-1]; // Modifies the buffer
+*/
 static struct str
 str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
   assert(b);
@@ -1147,6 +2567,349 @@ str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
   int ret = fmtvsn(dst, left, fmt, va);
   va_end(va);
   return strn(b, str_len(in) + ret);
+}
+static void
+ut_str2(void) {
+  {
+    char buf[10] = {0};
+    struct str str = strv("hello");
+    struct str result = str_set(buf, sizeof(buf), str);
+
+    assert(memcmp(buf, "hello", 5) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 5);
+    assert(result.rng.cnt == 5);
+    assert(result.rng.total == 5);
+  }
+  {
+    char buf[10];
+    struct str str = str_nil;
+    struct str result = str_set(buf, sizeof(buf), str);
+
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
+  {
+    char buf[3];
+    struct str str = strv("hello");
+    struct str result = str_set(buf, sizeof(buf), str);
+    assert(result.ptr == NULL); // str_inv
+  }
+  {
+    char buf[10];
+    struct str str = strv("hello world");
+    struct str result = str_sqz(buf, 5, str);
+
+    assert(memcmp(buf, "hello", 5) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 5);
+    assert(result.rng.cnt == 5);
+    assert(result.rng.total == 5);
+  }
+  {
+    char buf[10];
+    struct str str = strv("hello world");
+    struct str result = str_sqz(buf, 3, str);
+
+    assert(memcmp(buf, "hel", 3) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 3);
+    assert(result.rng.cnt == 3);
+    assert(result.rng.total == 3);
+  }
+  {
+    char buf[10];
+    struct str str = str_nil;
+    struct str result = str_sqz(buf, sizeof(buf), str);
+
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
+    { // Test 1: Success
+    char buf[20];
+    strcpy(buf, "Hello, ");
+    struct str in = strn(buf, 7);
+    struct str str = strv("world");
+    struct str result = str_add(buf, sizeof(buf), in, str);
+
+    assert(memcmp(buf, "Hello, world", castsz(str_len(result))) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 12);
+    assert(result.rng.cnt == 12);
+    assert(result.rng.total == 12);
+  }
+  { // Test 2: Insufficient buffer space
+    char buf[8];
+    strcpy(buf, "Hello, ");
+    struct str in = strn(buf, 7);
+    struct str str = strv("world!");
+    struct str result = str_add(buf, sizeof(buf), in, str);
+
+    assert(memcmp(buf, "Hello, w", 8) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 8);
+    assert(result.rng.cnt == 8);
+    assert(result.rng.total == 8);
+  }
+  { // Test 3: Empty input string
+    char buf[20] = {0};
+    strcpy(buf, "Hello, ");
+    struct str in = strn(buf, 7);
+    struct str str = str_nil;
+    struct str result = str_add(buf, sizeof(buf), in, str);
+
+    assert(memcmp(buf, "Hello, ", strlen("Hello, ")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 7);
+    assert(result.rng.cnt == 7);
+    assert(result.rng.total == 7);
+  }
+  { // Test 4: Empty buffer and input string
+    char buf[10];
+    struct str in = strn(buf,0);
+    struct str str = str_nil;
+    struct str result = str_add(buf, sizeof(buf), in, str);
+
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
+  { // Test 1: Remove characters from the end
+    char buf[10];
+    strcpy(buf, "hello");
+    struct str str = strn(buf, 5);
+    struct str result = str_rm(buf, str, 2);
+
+    assert(memcmp(buf, "hel", 3) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 3);
+    assert(result.rng.cnt == 3);
+    assert(result.rng.total == 3);
+  }
+
+  { // Test 2: Remove more characters than available
+    char buf[10];
+    strcpy(buf, "hello");
+    struct str str = strn(buf, 5);
+    struct str result = str_rm(buf, str, 10);
+
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
+
+  { // Test 3: Remove no characters
+    char buf[10];
+    strcpy(buf, "hello");
+    struct str str = strn(buf, 5);
+    struct str result = str_rm(buf, str, 0);
+
+    assert(memcmp(buf, "hello", 5) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 5);
+    assert(result.rng.cnt == 5);
+    assert(result.rng.total == 5);
+  }
+
+  { // Test 4: Empty string
+    char buf[10];
+    struct str str = strn(buf, 0);
+    struct str result = str_rm(buf, str, 0);
+
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
+    { // Test 1: Insert at the beginning
+    char buf[20] = {0};
+    strcpy(buf, "world");
+    struct str in = strn(buf, 5);
+    struct str str = strv("Hello, ");
+    struct str result = str_put(buf, sizeof(buf), in, 0, str);
+
+    assert(memcmp(buf, "Hello, world", castsz(str_len(result))) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 12);
+    assert(result.rng.cnt == 12);
+    assert(result.rng.total == 12);
+  }
+
+  { // Test 2: Insert in the middle
+    char buf[20];
+    strcpy(buf,"He, world!");
+    struct str in = str0(buf);
+    struct str str = strv("llo");
+    struct str result = str_put(buf, sizeof(buf), in, 2, str);
+
+    assert(memcmp(buf, "Hello, world!", castsz(str_len(result))) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 13);
+    assert(result.rng.cnt == 13);
+    assert(result.rng.total == 13);
+  }
+
+  { // Test 3: Insert at the end (delegates to str_add)
+    char buf[20];
+    strcpy(buf,"Hello, ");
+    struct str in = str0(buf);
+    struct str str = strv("world");
+    struct str result = str_put(buf, sizeof(buf), in, 7, str);
+
+    assert(memcmp(buf, "Hello, world", castsz(str_len(result))) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 12);
+    assert(result.rng.cnt == 12);
+    assert(result.rng.total == 12);
+  }
+
+  { // Test 4: Insufficient buffer space
+    char buf[5] = {0};
+    strcpy(buf, "Hell");
+    struct str in = str0(buf);
+    struct str str = strv(" world!");
+    struct str result = str_put(buf, sizeof(buf), in, 2, str);
+
+    assert(memcmp(buf, "He wo", 5) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 5);
+    assert(result.rng.cnt == 5);
+    assert(result.rng.total == 5);
+  }
+
+  { // Test 5: Invalid insertion position
+    char buf[5] = {0};
+    strcpy(buf, "Hell");
+    struct str in = str0(buf);
+    struct str str = strv(" world!");
+    struct str result = str_put(buf, sizeof(buf), in, 10, str);
+
+    assert(memcmp(buf, "Hell", 4) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 5);
+    assert(result.rng.cnt == 5);
+    assert(result.rng.total == 5);
+  }
+
+  { // Test 6: Empty input string
+    char buf[20];
+    strcpy(buf, "Hello, ");
+    struct str in = str0(buf);
+    struct str str = str_nil;
+    struct str result = str_put(buf, sizeof(buf), in, 2, str);
+
+    assert(memcmp(buf, "Hello, ", strlen("Hello, ")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 7);
+    assert(result.rng.cnt == 7);
+    assert(result.rng.total == 7);
+  }
+    { // Test 1: Delete from the beginning
+    char buf[20];
+    strcpy(buf, "hello world");
+    struct str str = str0(buf);
+    struct str result = str_del(buf, str, 0, 2);
+
+    assert(memcmp(buf, "llo world", strlen("llo world")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 9);
+    assert(result.rng.cnt == 9);
+    assert(result.rng.total == 9);
+  }
+
+  { // Test 2: Delete from the middle
+    char buf[20];
+    strcpy(buf, "hello world");
+    struct str str = str0(buf);
+    struct str result = str_del(buf, str, 5, 3);
+
+    assert(memcmp(buf, "hellorld", strlen("hellorld")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 8);
+    assert(result.rng.cnt == 8);
+    assert(result.rng.total == 8);
+  }
+
+  { // Test 3: Delete from the end
+    char buf[20];
+    strcpy(buf, "hello world");
+    struct str str = str0(buf);
+    struct str result = str_del(buf, str, 7, 3);
+
+    assert(memcmp(buf, "hello wd", strlen("hello wd")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 8);
+    assert(result.rng.cnt == 8);
+    assert(result.rng.total == 8);
+  }
+
+  { // Test 4: Invalid position (out of bounds)
+    char buf[20];
+    strcpy(buf, "hello world");
+    struct str str = str0(buf);
+    struct str result = str_del(buf, str, 15, 3);
+
+    assert(memcmp(buf, "hello world", strlen("hello world")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 11);
+    assert(result.rng.cnt == 11);
+    assert(result.rng.total == 11);
+  }
+
+  { // Test 5: Invalid length (negative)
+    char buf[20];
+    strcpy(buf, "hello world");
+    struct str str = str0(buf);
+    struct str result = str_del(buf, str, 5, -1);
+
+    assert(memcmp(buf, "hello world", strlen("hello world")) == 0);
+    assert(result.ptr == buf);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 11);
+    assert(result.rng.cnt == 11);
+    assert(result.rng.total == 11);
+  }
+
+  { // Test 6: Empty string
+    char buf[20];
+    struct str str = str_nil;
+    struct str result = str_del(buf, str, 0, 0);
+
+    assert(result.ptr == 0);
+    assert(result.rng.lo == 0);
+    assert(result.rng.hi == 0);
+    assert(result.rng.cnt == 0);
+    assert(result.rng.total == 0);
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1184,7 +2947,13 @@ str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
 #define min_flt_time(t)   castf(castd(t)*(1.0/10000000000.0))
 #define hour_flt_time(t)  castf(castd(t)*(1.0/3600000000000.0))
 
-static long long
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX); // Valid range or infinity
+  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX); // Valid range or infinity
+  assigns \nothing; // purist function
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 0 && a == time_inf && b == time_inf) || (\result == 0 && a == time_ninf && b == time_ninf) || (\result == 0 && a == time_inf && b == time_ninf) || (\result == 0 && a == time_ninf && b == time_inf); // Result within valid range or infinity or 0 if both are inf/ninf
+*/
+static purist long long
 time_sub(long long a, long long b) {
   if (a == time_inf) {
     return (b == time_inf) ? 0ll : time_inf;
@@ -1197,7 +2966,13 @@ time_sub(long long a, long long b) {
   }
   return a - b;
 }
-static long long
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX); // Valid range or infinity
+  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX); // Valid range or infinity
+  assigns \nothing; // purist function
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 0 && a == time_inf && b == time_ninf) || (\result == 0 && a == time_ninf && b == time_inf); // Result within valid range or infinity or 0 if both are inf and -inf
+*/
+static purist long long
 time_add(long long a, long long b) {
   if (a == time_inf) {
     return (b == time_ninf) ? 0ll : time_inf;
@@ -1210,6 +2985,14 @@ time_add(long long a, long long b) {
   }
   return a + b;
 }
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
+  assigns \nothing; // purist function
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
+  ensures (a == time_inf) ==> \result == time_ninf;
+  ensures (a == time_ninf) ==> \result == time_inf;
+  ensures (a >= LLONG_MIN && a <= LLONG_MAX) ==> \result == -a;
+*/
 static long long
 time_neg(long long a) {
   if (a == time_inf) {
@@ -1220,10 +3003,24 @@ time_neg(long long a) {
     return -a;
   }
 }
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
+  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX);
+  assigns \nothing; // purist function
+  // This is a simplified postcondition.  A fully precise postcondition for multiplication
+  // involving infinity and normal values would need to consider the sign of b.
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
+*/
 static long long
 time_mul(long long a, long long b) {
   return a * b;
 }
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
+  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX) || b != 0; // b can be inf/ninf or non-zero
+  assigns \nothing; // purist function
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 1 && a == time_inf && b == time_inf) || (\result == -1 && a == time_inf && b == time_ninf) || (\result == 1 && a == time_ninf && b == time_ninf) || (\result == -1 && a == time_ninf && b == time_inf);
+*/
 static long long
 time_div(long long a, long long b) {
   if (a == time_inf) {
@@ -1249,6 +3046,14 @@ time_div(long long a, long long b) {
   }
   return a / b;
 }
+/*@
+  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
+  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX) || b != 0; // b can be inf/ninf or non-zero
+  assigns \nothing; // purist function
+  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
+  ensures (a == time_inf || a == time_ninf) ==> \result == a;
+  ensures (b == time_inf || b == time_ninf) ==> \result == 0; // Or undefined, depending on your semantics.
+*/
 static long long
 time_mod(long long a, long long b) {
   assert(b != 0ll);
@@ -1265,6 +3070,12 @@ time_mod(long long a, long long b) {
  *                                  Path
  * ---------------------------------------------------------------------------
  */
+/*@
+  requires path != NULL;
+  assigns path[0..\strlen(path)-1]; // Modifies the path string in place
+  ensures \forall integer i; 0 <= i < \strlen(path) ==> path[i] == '/' || (path[i] != '\\' && \old(path)[i] == path[i]); // Replaces '\' with '/' and leaves other characters the same, or the character was already a '/'.
+  ensures \strlen(path) > 0 ==> path[\strlen(path)-1] != '/'; // Removes trailing '/' if present
+*/
 static void
 path_norm(char *path) {
   char *ptr = path;
@@ -1277,6 +3088,11 @@ path_norm(char *path) {
     ptr[-1] = 0;
   }
 }
+/*@
+  requires str_is_val(path);
+  assigns \nothing; // purist function
+  ensures \result.ptr != NULL ==> str_is_val(\result);
+*/
 static struct str
 path_file(struct str path) {
   for (const char *p = str_end(path); p > str_beg(path); --p) {
@@ -1286,6 +3102,11 @@ path_file(struct str path) {
   }
   return path;
 }
+/*@
+  requires str_is_val(path);
+  assigns \nothing; // purist function
+  ensures \result.ptr == NULL || str_is_val(\result);
+*/
 static struct str
 path_ext(struct str path) {
   for (const char *p = str_end(path); p > str_beg(path); --p) {
@@ -1309,6 +3130,19 @@ path_ext(struct str path) {
 #define str_buf_len(hdl) casti((hdl) & 0xffff)
 // clang-format on
 
+/*@
+  requires cnt != NULL;
+  requires *cnt >= 0 && *cnt <= 0xffff;
+  requires cap >= 0 && cap <= 0x10000; // cap cannot exceed 16-bit value
+  requires *cnt <= cap;
+  requires mem != NULL;
+  requires str_is_val(s) || str_is_inv(s);
+
+  assigns *cnt, mem[0..cap-1]; // Modifies the count and the memory
+
+  ensures \result >= 0; // Return value is a handle
+  ensures (*cnt >= 0 && *cnt <= cap); // cnt stays within bounds
+*/
 static unsigned
 str_buf__push(int *cnt, char *mem, int cap, struct str s) {
   requires(cnt);
@@ -1328,6 +3162,20 @@ str_buf__push(int *cnt, char *mem, int cap, struct str s) {
   *cnt += n;
   return ret;
 }
+/*@
+  requires cnt != NULL;
+  requires cap >= 0 && cap <= 0x10000;
+  requires *cnt >= 0 && *cnt <= 0x10000;
+  requires *cnt <= cap;
+  requires mem != NULL;
+  requires str_is_val(s) || str_is_inv(s);
+  requires max_len >= 0;
+
+  assigns *cnt, mem[0..cap-1]; // Modifies the count and the memory
+
+  ensures \result >= 0; // Return value is a handle
+  ensures (*cnt >= 0 && *cnt <= cap); // cnt stays within bounds
+*/
 static unsigned
 str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
   requires(cnt);
@@ -1348,7 +3196,20 @@ str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
   unsigned ret = (off << 16u)|(str_len(p) & 0xffff);
   return ret;
 }
-static struct str
+/*@
+  requires mem != NULL;
+  requires cnt >= 0 && cnt <= 0x10000; // cnt cannot exceed 16-bit value
+  requires str_buf_len(hdl) >= 0 && str_buf_len(hdl) <= 0xffff; // Length from handle cannot exceed 16-bit value
+  requires str_buf_off(hdl) >= 0 && str_buf_off(hdl) <= 0xffff; // Offset from handle cannot exceed 16-bit value
+  requires str_buf_len(hdl) + str_buf_off(hdl) <= cnt; // Length + offset must be within cnt
+
+  assigns \nothing; // purist function
+
+  ensures \result.ptr == mem + str_buf_off(hdl);
+  ensures \result.rng.cnt == str_buf_len(hdl);
+  ensures \result.rng.total == cnt;
+*/
+static purist struct str
 str_buf__get(char *mem, int cnt, unsigned hdl) {
   requires(mem);
   requires(cnt >= 0);
@@ -1360,6 +3221,13 @@ str_buf__get(char *mem, int cnt, unsigned hdl) {
   int len = str_buf_len(hdl);
   return strn(mem + off, len);
 }
+/*@
+  requires mem != NULL;
+  requires cnt != NULL;
+  requires *cnt >= 0 && *cnt <= 0x10000;
+  assigns *cnt; // Modifies the count
+  ensures *cnt == 0;
+*/
 static void
 str_buf__clr(char *mem, int *cnt) {
   requires(mem);
@@ -1394,18 +3262,53 @@ str_buf__clr(char *mem, int *cnt) {
 } while(0)
 // clang-format on
 
-static inline unsigned long long
+/*@
+  requires key >= 0 && key <= 0x7fffffffffffffffllu; // Key must be non-negative and within the valid range
+  assigns \nothing; // purist function
+  ensures \result >= 0; // Hash is always non-negative
+*/
+static purist force_inline unsigned long long
 tbl__hash(unsigned long long key) {
   unsigned long long hsh = key & 0x7fffffffffffffffllu;
   return hsh | (hsh == 0);
 }
-static void
-tbl__swap(void *a, void *b, void *tmp, int siz) {
+/*@
+  requires a != NULL;
+  requires b != NULL;
+  requires siz > 0 && siz <= 64; // size of a single element, up to 64 bytes
+  requires a != b; // a and b point to different memory locations
+  requires \valid_read(a); // a points to a readable element of the specified size
+  requires \valid_read(b); // b points to a readable element of the specified size
+  assigns *a, *b; // Modifies the elements pointed to by a and b
+
+  // More precise ensures clauses:
+  ensures \old(*((char*)a)) == *((char*)b); // After swap, a contains the original value of b
+  ensures \old(*((char*)b)) == *((char*)a); // After swap, b contains the original value of a
+*/
+static force_inline void
+tbl__swap(void *restrict a, void *restrict b, int siz) {
+  requires(siz <= 64);
+  char tmp[64];
   mcpy(tmp, a, siz);
   mcpy(a, b, siz);
   mcpy(b, tmp, siz);
 }
-static inline long long
+/*@
+  requires keys!= NULL;
+  requires vals!= NULL || val == NULL; // vals can be NULL if val is also NULL
+  requires cnt!= NULL;
+  requires *cnt >= 0;
+  requires idx >= 0; // Index must be non-negative
+  requires hsh >= 0; // Hash must be non-negative
+  requires val_siz > 0; // Value size must be positive
+  requires \valid(keys[0..]); // Keys array must be valid (up to some unspecified bound)
+  assigns keys[idx], *cnt; // Modifies the keys array and the count
+
+  ensures \result == idx; // Returns the index
+  ensures *cnt == \old(*cnt) + 1; // Increments the count
+  ensures keys[idx] == hsh; // Stores the hash
+*/
+static force_inline long long
 tbl__store(unsigned long long *keys, void *vals, int *cnt,
            unsigned long long idx, unsigned long long hsh,
            void* val, int val_siz) {
@@ -1421,13 +3324,26 @@ tbl__store(unsigned long long *keys, void *vals, int *cnt,
   *cnt += 1;
   return castll(idx);
 }
+/*@
+  requires keys != NULL;
+  requires vals != NULL || val == NULL; // vals can be NULL if val is also NULL
+  requires cnt != NULL;
+  requires *cnt >= 0;
+  requires cap > 0; // Capacity must be positive
+  requires val_siz > 0; // Value size must be positive
+  requires \valid(keys[0..cap-1]); // Keys array must be valid up to cap-1
+  assigns keys[0..cap-1], *cnt; // Modifies the keys array and the count
+  ensures \result >= 0; // Returns a non-negative index or cap if full
+*/
 static long long
 tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
          unsigned long long key, void *val, int val_siz) {
 
-  assert(keys);
   assert(cnt);
-
+  assert(keys);
+  if (*cnt >= cap) {
+    return castll(cap);
+  }
   unsigned long long hsh = tbl__hash(key);
   unsigned long long siz = castull(cap);
   unsigned long long idx = hsh % siz;
@@ -1438,24 +3354,30 @@ tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
     if (!slot) {
       return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
     }
+    if (tbl__is_del(slot)) {
+      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
+    }
     unsigned long long d = tbl__dist(slot, siz, idx);
     if (d++ > dist++) {
       continue;
     }
-    if (tbl__is_del(slot)) {
-      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
-    }
     iswap(hsh, keys[idx]);
     if (vals) {
-      void *tmp_val = (unsigned char*)vals + cap * val_siz;
       void *cur_val = (unsigned char*)vals + idx * (unsigned long long)val_siz;
-      tbl__swap(cur_val, val, tmp_val, val_siz);
+      tbl__swap(cur_val, val, val_siz);
     }
     dist = d;
   } while ((idx = ((idx + 1) % siz)) != beg);
   return castll(siz);
 }
-static int
+/*@
+  requires set != NULL;
+  requires cap > 0;
+  requires \valid(set[0..cap-1]); // set array must be valid
+  assigns \nothing; // purist function
+  ensures \result >= 0 && \result <= cap; // Returns a non-negative index or cap if not found
+*/
+static purist int
 tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {
   assert(set);
   unsigned long long h = tbl__hash(key);
@@ -1471,6 +3393,18 @@ tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {
   } while ((i = ((i + 1) % n)) != b);
   return cap;
 }
+/*@
+  requires set != NULL;
+  requires cap > 0;
+  requires cnt != NULL;
+  requires *cnt >= 0;
+  requires \valid(set[0..cap-1]);
+
+  assigns set[0..cap-1], *cnt;
+
+  ensures \result >= 0 && \result <= cap; // Returns a valid index or cap
+  ensures *cnt <= \old(*cnt); // Count can only decrease
+*/
 static int
 tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
   assert(set);
@@ -1484,7 +3418,15 @@ tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
   }
   return i;
 }
-static int
+/*@
+  requires keys != NULL;
+  requires cap > 0;
+  requires i >= 0;
+  requires \valid(keys[0..cap-1]);
+  assigns \nothing; // purist function
+  ensures \result >= 0 && \result <= cap; // Returns a valid index or cap
+*/
+static purist int
 tbl__nxt_idx(unsigned long long *keys, int cap, int i) {
   assert(keys);
   for (; i < cap; ++i) {
@@ -1493,5 +3435,122 @@ tbl__nxt_idx(unsigned long long *keys, int cap, int i) {
     }
   }
   return cap;
+}
+static void
+ut_tbl(void) {
+  typedef struct {
+    int id;
+    char name[32];
+  } Person;
+
+  // 1. Normal expected inputs (int values)
+  {
+    struct tbl(int, 16) table_int = {0};
+    tbl_clr(&table_int);
+
+    assert(table_int.cnt == 0);
+
+    tbl_put(&table_int, 10, &(int){100});
+    tbl_put(&table_int, 20, &(int){200});
+    tbl_put(&table_int, 30, &(int){300});
+
+    assert(table_int.cnt == 3);
+    assert(tbl_has(&table_int, 10));
+    assert(tbl_has(&table_int, 20));
+    assert(tbl_has(&table_int, 30));
+    assert(!tbl_has(&table_int, 40));
+
+    int *val = tbl_get(&table_int, tbl_fnd(&table_int, 20));
+    assert(val != 0 && *val == 200);
+
+    tbl_del(&table_int, 20);
+    assert(!tbl_has(&table_int, 20));
+    assert(table_int.cnt == 2);
+
+    tbl_clr(&table_int);
+    assert(table_int.cnt == 0);
+  }
+  // 2. Normal expected inputs (Person struct values)
+  {
+    struct tbl(Person, 8) table_person = {0};
+    tbl_clr(&table_person);
+
+    Person p1 = {1, "Alice"};
+    Person p2 = {2, "Bob"};
+    tbl_put(&table_person, 1, &p1);
+    tbl_put(&table_person, 2, &p2);
+
+    assert(tbl_has(&table_person, 1));
+    assert(tbl_has(&table_person, 2));
+
+    int itr = tbl_fnd(&table_person, 2);
+    Person *found_person = (Person *)tbl_get(&table_person, itr);
+    assert(found_person != 0);
+    {
+      assert((found_person->id - p2.id) == 0);
+      assert(!strcmp(found_person->name, p2.name));
+    }
+  }
+  // 3. Edge cases (full table, collisions, deletions)
+  {
+    struct tbl(int, 4) table_edge = {0};
+    tbl_clr(&table_edge);
+
+    tbl_put(&table_edge, 2, &(int){1});
+    tbl_put(&table_edge, 5, &(int){5}); // Collision with 1 (assuming a simple modulo hash)
+    tbl_put(&table_edge, 9, &(int){9}); // Collision with 1 and 5
+    tbl_put(&table_edge, 13, &(int){13}); // Collision with 1, 5 and 9
+    tbl_put(&table_edge, 27, &(int){27}); // Collision with 1, 5 and 9
+
+    assert(table_edge.cnt == 5);
+    assert(tbl_has(&table_edge, 2));
+    assert(tbl_has(&table_edge, 5));
+    assert(tbl_has(&table_edge, 9));
+    assert(tbl_has(&table_edge, 13));
+    assert(tbl_has(&table_edge, 27));
+
+    // Try to insert when full (should fail gracefully)
+    long long result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, &(int){17}, szof(int));
+    assert(result == cntof(table_edge.keys)); // Check for "table full" return value
+    assert(table_edge.cnt == 5); // Count should not have changed
+
+    tbl_del(&table_edge, 5);
+    assert(!tbl_has(&table_edge, 5));
+    assert(table_edge.cnt == 4);
+
+    result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, &(int){17}, szof(int));
+    assert(result < cntof(table_edge.keys)); // Check for "table full" return value
+    assert(table_edge.cnt == 5); // Count should not have changed
+  }
+  // 5. More Comprehensive Collision Testing (important)
+  {
+    struct tbl(int, 16) collision_table = {0};
+    tbl_clr(&collision_table);
+    for (int i = 0; i < 16; i++) {
+      unsigned long long key = castull(i) * 16;
+      tbl_put(&collision_table, key, &(int){i}); // All keys will have the same hash.
+    }
+    assert(collision_table.cnt == 16);
+    for (int i = 0; i < 16; i++) {
+      unsigned long long key = castull(i) * 16;
+      assert(tbl_has(&collision_table, key));
+    }
+    for (int i = 0; i < 16; i++) {
+      unsigned long long key = castull(i * 16);
+      int itr = tbl_fnd(&collision_table, key);
+      int *val = tbl_get(&collision_table, itr);
+      assert(val != 0 && *val == i);
+    }
+  }
+  {
+    // 6. Test with different value sizes
+    struct tbl(long long, 16) long_table = {0};
+    tbl_clr(&long_table);
+    tbl_put(&long_table, 1, &(long long){100});
+    assert(tbl_has(&long_table, 1));
+    int itr = tbl_fnd(&long_table, 1);
+    long long *long_val = tbl_get(&long_table, itr);
+    assert(long_val != 0 && *long_val == 100);
+  }
 }
 

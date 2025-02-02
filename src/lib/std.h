@@ -69,7 +69,7 @@
 #define fall_through __attribute__((fallthrough));
 
 #define BITS_PER_BYTE CHAR_BIT
-#define BITS_PER_LONG (BITS_PER_BYTE * sizeof(unsigned long))
+#define BITS_PER_LONG casti(BITS_PER_BYTE * sizeof(unsigned long))
 #define bit_mask(nr) (1ull << ((unsigned long)(nr) % BITS_PER_LONG))
 #define bit_word(nr) ((unsigned long)(nr) / BITS_PER_LONG)
 #define bit_word_idx(nr) ((unsigned long)(nr) & (BITS_PER_LONG - 1))
@@ -101,12 +101,6 @@ struct str_fnd_tbl {
 };
 struct color {
   unsigned char r, g, b, a;
-};
-struct guid {
-  unsigned d1;
-  unsigned short d2;
-  unsigned short d3;
-  unsigned char d4[8];
 };
 #define confine for
 #define dyn(T) T*
