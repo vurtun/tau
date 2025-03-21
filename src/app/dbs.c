@@ -125,6 +125,9 @@ db__tbl_fltr_val(struct db_tbl_fltr_state *fltr) {
   assert(fltr->cnt < cntof(fltr->elms));
   assert(fltr->cnt < DB_MAX_FLTR_CNT);
 
+  assert(rng__is_val(&fltr->data_rng));
+  assert(rng__is_val(&fltr->elm_rng));
+
   assert(fltr->state >= DB_TBL_FLTR_LST);
   assert(fltr->state <= DB_TBL_FLTR_EDT);
   for arr_loopv(i, fltr->elms) {
@@ -133,10 +136,6 @@ db__tbl_fltr_val(struct db_tbl_fltr_state *fltr) {
   assert(fltr->data_rng.cnt >= 0);
   assert(fltr->data_rng.lo >= 0);
   assert(fltr->data_rng.hi >= 0);
-  assert(fltr->data_rng.cnt <= DB_MAX_FLTR_CNT);
-
-  assert(rng__is_val(&fltr->data_rng));
-  assert(rng__is_val(&fltr->elm_rng));
   return 1;
 }
 static void
@@ -233,9 +232,9 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   /* query total filtered element count */
   int err = 0;
   sqlite3_stmt *stmt = 0;
-  if (str_len(view->fnd_str)) {
+  if (str_len(view->fnd_str) > 2) {
     struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
-      "SELECT COUNT(*) FROM %.*s WHERE %.*s LIKE '%%'||?||'%%';",
+      "SELECT COUNT(*) FROM \"%.*s\" WHERE \"%.*s\" LIKE '%%'||?||'%%';",
       strf(tlck.name), strf(clck.name));
     if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
       err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
@@ -244,7 +243,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
     }
   } else {
     struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
-      "SELECT COUNT(*) FROM '%.*s';", strf(tlck.name));
+      "SELECT COUNT(*) FROM \"%.*s\";", strf(tlck.name));
     if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
       err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
       assert(err == SQLITE_OK);
@@ -266,7 +265,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   /* setup query table for filered elements */
   if (str_len(view->fnd_str)) {
     struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
-      "SELECT rowid, %.*s FROM %.*s WHERE %.*s LIKE '%%'||?||'%%' LIMIT ?,?;",
+      "SELECT rowid, \"%.*s\" FROM \"%.*s\" WHERE \"%.*s\" LIKE '%%'||?||'%%' LIMIT ?,?;",
       strf(clck.name), strf(tlck.name), strf(clck.name));
     err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_text(stmt, 1, db_str(view->fnd_str), SQLITE_STATIC);
@@ -275,7 +274,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
     assert(err == SQLITE_OK);
   } else {
     struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
-      "SELECT rowid, %.*s FROM %.*s LIMIT ?,?;", strf(clck.name), strf(tlck.name));
+      "SELECT rowid, \"%.*s\" FROM \"%.*s\" LIMIT ?,?;", strf(clck.name), strf(tlck.name));
     err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_int(stmt, 1, low);
     sqlite3_bind_int(stmt, 2, high-low);
@@ -305,7 +304,6 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
   }
   db_tbl_col_name_rel(&clck);
   db_tbl_name_rel(&tlck);
-  stmt = 0;
 
   ensures(view->id == stbl->rowid);
   ensures((stmt && fltr->data_rng.lo == low) || (!stmt && fltr->data_rng.lo == 0));
@@ -611,7 +609,7 @@ db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
   /* fill with active filter conditions */
   const char *pre = " WHERE";
   sql = str_add_fmt(vdb->sql_qry_buf, cntof(vdb->sql_qry_buf), sql,
-    " FROM '%.*s' ", strf(tbl_name));
+    " FROM \"%.*s\" ", strf(tbl_name));
   for arr_loopv(idx, stbl->fltr.elms) {
     struct db_tbl_fltr_elm *elm = &stbl->fltr.elms[idx];
     if (!elm->active || !elm->enabled) {
@@ -620,7 +618,7 @@ db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
     struct db_name_lck clck = {0};
     db_tbl_col_name_acq(&clck, sdb, vtbl, 0, tbl_name, elm->col);
     sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql,
-      "%s %.*s LIKE '%%%.*s%%'", pre, strf(clck.name), strf(elm->fnd));
+      "%s \"%.*s\" LIKE '%%%.*s%%'", pre, strf(clck.name), strf(elm->fnd));
     db_tbl_col_name_rel(&clck);
     pre = " AND";
   }
@@ -743,7 +741,7 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
           assert(elm_idx < cntof(vtbl->row.lst));
           vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
         } else {
-          vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, strv("blob"), DB_MAX_TBL_ELM_DATA);
+          vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, strv("[blob]"), DB_MAX_TBL_ELM_DATA);
         }
         elm_idx++;
       }
@@ -1388,6 +1386,7 @@ ui_db_tbl_fltr_lst_view(struct db_state *sdb, struct db_view *vdb,
       if (del_idx >= 0) {
         mset(&fltr->elms[del_idx], 0, szof(fltr->elms[0]));
         db_tbl_rev(sdb, vdb, stbl, vtbl);
+        fltr->cnt--;
       }
     }
     gui.tbl.end(ctx, &tbl, pan, fltr->tbl.off);
@@ -1428,17 +1427,22 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
     if (back.clk) {
       db_tbl_close_fltr(stbl);
     }
-    confine gui_disable_on_scope(&gui, ctx, !str_len(view->fnd_str)) {
+    int dis = !str_len(view->fnd_str) || fltr->cnt >= DB_MAX_FLTR_CNT;
+    confine gui_disable_on_scope(&gui, ctx, dis) {
       struct gui_btn add = {0};
       add.box = gui.cut.bot(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
       gui.btn.txt(ctx, &add, pan, strv("Add"), 0);
       if (add.clk) {
-#if 0
-        assert(str_len(view->fnd_str) > 0);
-        db_tbl_fltr_add_str(sdb, stbl, vtbl, fltr, fltr->ini_col, view->fnd_str);
-        db_tbl_close_fltr(stbl);
-        db_tbl_rev(sdb, vdb, stbl, vtbl);
-#endif
+        for arr_loopv(idx, fltr->elms) {
+          struct db_tbl_fltr_elm *elm = &fltr->elms[idx];
+          if (!elm->active) {
+            assert(str_len(view->fnd_str) > 0);
+            db_tbl_fltr_add_str(sdb, stbl, vtbl, fltr, idx, fltr->ini_col, view->fnd_str);
+            db_tbl_close_fltr(stbl);
+            db_tbl_rev(sdb, vdb, stbl, vtbl);
+            break;
+          }
+        }
       }
     }
     /* search list */

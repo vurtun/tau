@@ -9,7 +9,7 @@ enum {
   DB_MAX_TBL_COLS               = 128,
   DB_MAX_TBL_ROW_COLS           = 8,
   DB_MAX_TBL_ROWS               = 128,
-  DB_MAX_TBL_ELM                = (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS),
+  DB_MAX_TBL_ELM                = (DB_MAX_TBL_ROWS * DB_MAX_TBL_ROW_COLS),
   DB_MAX_TBL_COL_NAME           = 64,
   DB_MAX_TBL_COL_TYPE           = 64,
   DB_MAX_TBL_ELM_DATA           = 64,

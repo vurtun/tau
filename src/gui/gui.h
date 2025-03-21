@@ -951,7 +951,7 @@ struct gui_dnd_src_arg {
   enum gui_mouse_btn_id drag_btn;
 };
 struct gui_args {
-  unsigned scale; /* fixed point 16:16 */
+  unsigned scale; /* fixed point Q16.16 */
   enum gui_col_scheme scm;
 };
 struct gui_ctx {
