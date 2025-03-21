@@ -1,38 +1,35 @@
 #define DBS_VERISON 1
 
 enum {
-  DB_MAX_FILTER               = 32,
-  DB_TBL_CNT                  = 16,
-  DB_MAX_TBL_NAME             = 64,
-  DB_MAX_TBL_TITLE            = 32,
-  DB_MAX_TBL_SQL              = 64,
-  DB_MAX_TBL_COLS             = 64,
-  DB_MAX_TBL_ROW_COLS         = 8,
-  DB_MAX_TBL_ROWS             = 128,
-  DB_MAX_TBL_ELM              = (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS),
-  DB_MAX_TBL_COL_NAME         = 64,
-  DB_MAX_TBL_COL_TYPE         = 64,
-  DB_MAX_TBL_ELM_DATA         = 64,
-  DB_MAX_INFO_ELM_CNT         = 128,
-  DB_MAX_FLTR_STR             = 32,
-  DB_MAX_FLTR_CNT             = 8,
-  DB_MAX_FLTR_ELM             = 128,
-  DB_MAX_FLTR_ELM_STR         = 64,
+  DB_MAX_FILTER                 = 32,
+  DB_TBL_CNT                    = 32,
+  DB_MAX_TBL_NAME               = 64,
+  DB_MAX_TBL_TITLE              = 32,
+  DB_MAX_TBL_SQL                = 64,
+  DB_MAX_TBL_COLS               = 128,
+  DB_MAX_TBL_ROW_COLS           = 8,
+  DB_MAX_TBL_ROWS               = 128,
+  DB_MAX_TBL_ELM                = (DB_MAX_TBL_ROWS*DB_MAX_TBL_ROW_COLS),
+  DB_MAX_TBL_COL_NAME           = 64,
+  DB_MAX_TBL_COL_TYPE           = 64,
+  DB_MAX_TBL_ELM_DATA           = 64,
+  DB_MAX_INFO_ELM_CNT           = 128,
+  DB_MAX_FLTR_STR               = 32,
+  DB_MAX_FLTR_CNT               = 8,
+  DB_MAX_FLTR_ELM               = 128,
+  DB_MAX_FLTR_ELM_STR           = 64,
 
-  DB_INFO_NAME_STR_BUF_SIZ    = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME),
-  DB_INFO_SQL_STR_BUF_SIZ     = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL),
-  DB_INFO_STR_BUF_SIZ         = (DB_INFO_NAME_STR_BUF_SIZ + DB_INFO_SQL_STR_BUF_SIZ),
-  DB_TBL_COL_NAME_STR_BUF_SIZ = (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_NAME),
-  DB_TBL_COL_TYPE_STR_BUF_SIZ = (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_TYPE),
-  DB_TBL_COL_STR_BUF_SIZ      = (DB_TBL_COL_NAME_STR_BUF_SIZ + DB_TBL_COL_TYPE_STR_BUF_SIZ),
-  DB_TBL_ELM_STR_BUF_SIZ      = (DB_MAX_TBL_ELM*DB_MAX_TBL_ELM_DATA),
-  DB_TBL_FLTR_STR_BUF_SIZ     = (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR),
-  DB_SQL_QRY_BUF_SIZ          = KB(16),
-  DB_SQL_QRY_NAME_BUF_SIZ     = 128,
+  DB_INFO_NAME_STR_BUF_SIZ      = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME),
+  DB_INFO_SQL_STR_BUF_SIZ       = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL),
+  DB_INFO_STR_BUF_SIZ           = (DB_INFO_NAME_STR_BUF_SIZ + DB_INFO_SQL_STR_BUF_SIZ),
+  DB_TBL_COL_NAME_STR_BUF_SIZ   = (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_NAME),
+  DB_TBL_COL_TYPE_STR_BUF_SIZ   = (DB_MAX_TBL_COLS * DB_MAX_TBL_COL_TYPE),
+  DB_TBL_COL_STR_BUF_SIZ        = (DB_TBL_COL_NAME_STR_BUF_SIZ + DB_TBL_COL_TYPE_STR_BUF_SIZ),
+  DB_TBL_ELM_STR_BUF_SIZ        = (DB_MAX_TBL_ELM*DB_MAX_TBL_ELM_DATA),
+  DB_TBL_FLTR_STR_BUF_SIZ       = (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR),
+  DB_SQL_QRY_BUF_SIZ            = KB(16),
+  DB_SQL_QRY_NAME_BUF_SIZ       = 128,
 };
-#define DB_FLTR_CNT_MSK   ((1u << castu(DB_MAX_FLTR_CNT))-1)
-#define DB_TBL_CNT_MSK    ((1u << castu(DB_TBL_CNT))-1)
-
 /* ----------------------------------------------------------------------------
  *                                State
  *-----------------------------------------------------------------------------
@@ -63,8 +60,9 @@ enum db_tbl_fltr_elm_typ {
   DB_TBL_FLTR_ELM_TYP_TM
 };
 struct db_tbl_fltr_elm {
+  unsigned active: 1;
   unsigned enabled: 1;
-  unsigned type: 31;
+  unsigned type: 30;
   long long col;
   char fnd_buf[DB_MAX_FLTR_STR];
   struct str fnd;
@@ -78,10 +76,9 @@ struct db_tbl_fltr_ui {
 };
 struct db_tbl_fltr_state {
   enum db_tbl_fltr_ui_view state;
-  unsigned unused;
   struct db_tbl_fltr_elm elms[DB_MAX_FLTR_CNT];
-  unsigned char lst[DB_MAX_FLTR_CNT];
-  unsigned char cnt;
+  int cnt;
+
   long long ini_col;
   struct rng data_rng;
 
@@ -173,14 +170,15 @@ struct db_tbl_row_lst_state {
   struct db_tbl_ui_state ui;
 };
 struct db_tbl_state {
-  enum db_tbl_type kind;
-  enum db_tbl_view_state state;
-  enum db_tbl_view_dsp_state disp;
-
-  long long rowid;
-  char title_buf[DB_MAX_TBL_NAME];
-  struct str title;
+  unsigned active:1;
+  unsigned kind:9;
+  unsigned state:9;
+  unsigned disp:9;
   unsigned qry_name:1;
+
+  char title_buf[DB_MAX_TBL_NAME];
+  long long rowid;
+  struct str title;
 
   struct db_tbl_col_lst_state col;
   struct db_tbl_row_lst_state row;
@@ -197,19 +195,32 @@ struct db_info_state {
   struct rng elm_rng;
   struct db_tree_tbl_state tbl;
 };
+enum db_state_frame {
+  DB_FRAME_LST,
+  DB_FRAME_TBL,
+  DB_FRAME_CNT
+};
+enum db_state_tbl_col {
+  DB_STATE_TBL_COL_NAME,
+  DB_STATE_TBL_COL_TBLS,
+  DB_STATE_TBL_COL_FLTR,
+  DB_STATE_TBL_COL_DEL,
+  DB_STATE_TBL_COL_CNT
+};
+struct db_state_ui_state {
+  int state[GUI_TBL_CAP(DB_STATE_TBL_COL_CNT)];
+  int off[2];
+};
 struct db_state {
   sqlite3 *con;
   unsigned long long id;
-
-  struct db_tbl_state tbls[DB_TBL_CNT];
   struct db_info_state info;
   int tbl_lst_off[2];
-
-  unsigned unused;
-  unsigned char tabs[DB_TBL_CNT];
-  unsigned char tab_cnt;
-  unsigned char sel_tab;
-  unsigned char show_tab_lst;
+  struct db_tbl_state tbls[DB_TBL_CNT];
+  int tbl_cnt;
+  int sel_tbl;
+  enum db_state_frame frame;
+  struct db_state_ui_state ui;
 };
 
 /* ----------------------------------------------------------------------------
@@ -288,6 +299,6 @@ struct db_api {
   int (*setup)(struct db_state *state, struct gui_ctx *ctx, struct str path);
   void (*del)(struct db_state *db);
   void (*ui)(struct db_state *db, struct db_view *view, struct gui_ctx *ctx,
-             struct gui_panel *pan, struct gui_panel *parent);
+             struct gui_panel *pan, struct gui_panel *parent, struct str file);
 };
 

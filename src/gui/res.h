@@ -2,7 +2,7 @@
 
 #define RES_GLYPH_SLOTS 256
 #define RES_IMG_SLOT_CNT 64
-#define RES_CACHE_RUN_CNT KB(2)
+#define RES_CACHE_RUN_CNT KB(4)
 #define RES_CACHE_HASH_CNT (RES_CACHE_RUN_CNT*2)
 
 enum res_ico_id {
@@ -138,7 +138,7 @@ struct res {
 /* api */
 #define res_run_loop(run, it, api, res, txt)                      \
   (const struct res_fnt_run *run = (api)->run.begin(it,res,txt);  \
-       run != 0; run = (api)->run.nxt(it, res))
+   run != 0; run = (api)->run.nxt(it, res))
 struct res_fnt_api {
   void (*ext)(int *ext, struct res *res, struct str txt);
   void (*fit)(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt);

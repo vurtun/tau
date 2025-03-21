@@ -29,39 +29,24 @@
 #include "app/dbs.h"
 #include "app.h"
 
-enum {
-  APP_VIEW_CNT      = 8,
-  APP_VIEW_PATH_BUF = (MAX_FILE_PATH * APP_VIEW_CNT),
-};
-#define APP_VIEW_CNT_MSK ((1U << castu(APP_VIEW_CNT))-1)
-
 enum app_view_state {
   APP_VIEW_STATE_FILE,
   APP_VIEW_STATE_DB,
 };
 struct app_view {
-  enum app_view_state state;
-  enum app_view_state last_state;
-  struct db_state db;
+  unsigned short state;
+  unsigned short last_state;
   struct str file_path;
-  int path_buf_off;
+  struct db_state db;
 };
 struct app {
   struct res res;
   struct gui_ctx gui;
   struct file_view fs;
   struct db_view db;
-
   /* views */
-  int tab_lst_off[2];
-  unsigned unused;
-  unsigned char show_tab_lst;
-  unsigned char sel_tab;
-  unsigned char tab_cnt;
-  unsigned char tabs[APP_VIEW_CNT];
-  struct app_view views[APP_VIEW_CNT];
-
-  char path_buf[APP_VIEW_PATH_BUF];
+  struct app_view view;
+  char path_buf[MAX_FILE_PATH];
   char db_mem[CFG_DB_MAX_MEMORY];
   char gui_mem[CFG_GUI_MAX_MEMORY];
 };
@@ -82,435 +67,62 @@ static struct app g_app;
 #include "app/pck.c"
 #include "app/dbs.c"
 
-/*@
-  type invariant app_view_state_valid: \forall struct app_view *v; valid(v) ==> v->state >= APP_VIEW_STATE_FILE && v->state <= APP_VIEW_STATE_DB;
-  type invariant app_view_last_state_valid: \forall struct app_view *v; valid(v) ==> v->last_state >= APP_VIEW_STATE_FILE && v->last_state <= APP_VIEW_STATE_DB;
-  type invariant app_view_path_buf_off_valid: \forall struct app_view *v; valid(v) ==> v->path_buf_off >= 0; // Add upper bound if applicable
-
-  type invariant app_tab_cnt_valid: \forall struct app *a; valid(a) ==> a->tab_cnt >= 0 && a->tab_cnt <= APP_VIEW_CNT;
-  type invariant app_unused_valid: \forall struct app *a; valid(a) ==> a->unused >= 0 && a->unused <= APP_VIEW_CNT_MSK;
-  type invariant app_unused_tabs_relation: \forall struct app *a; valid(a) ==>
-    (\forall integer i; 0 <= i < APP_VIEW_CNT ==>
-      (a->unused & (1u << i)) != 0 <==> (\forall integer j; 0 <= j < a->tab_cnt ==> a->tabs[j] != i));
-  type invariant app_sel_tab_valid: \forall struct app *a; valid(a) ==> a->sel_tab >= 0 && a->sel_tab < a->tab_cnt;
-  type invariant app_show_tab_lst_valid: \forall struct app *a; valid(a) ==> a->show_tab_lst == 0 || a->show_tab_lst == 1;
-  type invariant app_tabs_valid: \forall struct app *a; valid(a) ==> (\forall integer i; 0 <= i < a->tab_cnt ==> a->tabs[i] >= 0 && a->tabs[i] < APP_VIEW_CNT);
-  type invariant app_views_valid: \forall struct app *a; valid(a) ==> (\forall integer i; 0 <= i < a->tab_cnt ==> valid(&a->views[a->tabs[i]]));
-  type invariant app_unused_constraints: \forall struct app *a; valid(a) ==>
-    (a->tab_cnt == 0 ==> a->unused == APP_VIEW_CNT_MSK) && // If no tabs, all views are unused
-    (a->tab_cnt > 0 ==> a->unused < APP_VIEW_CNT_MSK); // If there are tabs, at least one view is in use
-*/
 /* -----------------------------------------------------------------------------
  *                                  App
  * ---------------------------------------------------------------------------*/
-/*@
-  requires app != NULL;
-  requires app->tab_cnt < APP_VIEW_CNT;
-  requires app->unused > 0;
-  requires app->unused <= APP_VIEW_CNT_MSK;
-  assigns app->unused, app->views[0..APP_VIEW_CNT-1], app->tab_cnt; // Modifies app->unused and the views array and tab_cnt
-
-  ensures \result >= 0 && \result < APP_VIEW_CNT; // Returns a valid index
-  ensures app->unused < \old(app->unused); // unused bits are cleared
-  ensures (app->unused & (1U << \result)) == 0U; // The bit corresponding to the returned index is cleared
-  ensures app->tab_cnt == \old(app->tab_cnt) + 1; // tab count is increased by one
-  ensures \forall integer i; 0 <= i < APP_VIEW_CNT && i != \result ==> app->views[i] == \old(app->views[i]); // Other views are not modified
-  ensures \forall integer j; 0 <= j < szof(app->views[0]); \at(app->views[\result],Pre)[j] == 0; // the new view is initialized to zero
-*/
-static int
-app_view_new(struct app *app) {
-  requires(app);
-  requires(app->tab_cnt < APP_VIEW_CNT);
-  requires(app->unused > 0);
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  int idx = cpu_bit_ffs32(app->unused);
-  assert(idx >= 0);
-  assert(idx < 32);
-  assert(idx < APP_VIEW_CNT);
-  assert(idx < cntof(app->views));
-  assert((app->unused & (1u << castu(idx))) != 0U);
-
-  unsigned old_unused = app->unused;
-  app->unused &= ~(1U << castu(idx));
-  mset(app->views + idx, 0, szof(app->views[0]));
-  assert((app->unused & (1 << idx)) == 0);
-
-  ensures(app->unused < old_unused);
-  ensures((app->unused & (1 << idx)) == 0U);
-  return idx;
+static inline int
+app_is_val(struct app *app) {
+  assert(app);
+  assert(app->view.state == APP_VIEW_STATE_FILE ||
+    app->view.state == APP_VIEW_STATE_DB || app->view.state == 0);
+  assert(app->view.last_state == APP_VIEW_STATE_FILE ||
+    app->view.last_state == APP_VIEW_STATE_DB ||
+    app->view.last_state == 0);
+  assert(str_is_val(app->view.file_path));
+  return 1;
 }
-/*@
-  requires app != NULL;
-  requires idx >= 0 && idx < APP_VIEW_CNT;
-  requires app->unused <= APP_VIEW_CNT_MSK;
-  requires !(app->unused & (1U << castu(idx)));
-  assigns app->unused, app->views[idx];
-  ensures app->unused == (\old(app->unused) | (1U << castu(idx)));
-  ensures app->views[idx].file_path.ptr == NULL; // file_path is set to str_nil
-*/
 static void
-app_view_del(struct app *app, int idx) {
-  requires(app);
-  requires(idx >= 0);
-  requires(idx < APP_VIEW_CNT);
-  requires(idx < cntof(app->views));
-
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-  requires(!(app->unused & (1U << castu(idx))));
-
-  unsigned old_unused = app->unused;
-  struct app_view *view = &app->views[idx];
-  app->unused |= (1U << castu(idx));
-  view->file_path = str_nil;
-
-  ensures(app->unused == (old_unused|(1u << castu(idx))));
-  ensures(app->unused > old_unused);
-}
-/*@
-  requires app != NULL;
-  requires idx >= 0 && idx < APP_VIEW_CNT;
-  requires app->unused <= APP_VIEW_CNT_MSK;
-  requires !(app->unused & (1U << castu(idx)));
-
-  assigns app->views[idx];
-
-  ensures app->views[idx].state == APP_VIEW_STATE_FILE;
-  ensures app->views[idx].last_state == APP_VIEW_STATE_FILE;
-  ensures app->views[idx].path_buf_off == idx * MAX_FILE_PATH;
-*/
-static void
-app_view_setup(struct app *app, int idx) {
-  requires(app);
-  requires(idx >= 0);
-  requires(idx < APP_VIEW_CNT);
-  requires(idx < cntof(app->views));
-  requires(!(app->unused & (1U << castu(idx))));
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  struct app_view *view = &app->views[idx];
+app_view_init(struct app_view *view) {
+  requires(view);
   view->state = APP_VIEW_STATE_FILE;
   view->last_state = view->state;
-  view->path_buf_off = idx * MAX_FILE_PATH;
+  view->db.con = 0;
 }
-/*@
-  requires app != NULL;
-  requires idx >= 0 && idx < APP_VIEW_CNT;
-  requires !(app->unused & (1U << castu(idx))));
-  assigns app->views[idx];
-  ensures \result == 0 || \result == -1; // Returns 0 or -1
-*/
 static int
-app_view_init(struct app *app, int idx, struct str path) {
-  requires(app);
-  requires(idx >= 0);
-  requires(idx < APP_VIEW_CNT);
-  requires(idx < cntof(app->views));
-  requires(!(app->unused & (1U << castu(idx))));
-
-  struct app_view *view = &app->views[idx];
-  app_view_setup(app, idx);
-  view->file_path = str_set(app->path_buf + view->path_buf_off, MAX_FILE_PATH, path);
+app_view_setup(struct app *app, struct app_view *view, struct str path) {
+  requires(app_is_val(app));
+  view->file_path = str_set(app->path_buf, MAX_FILE_PATH, path);
   if (str_is_inv(view->file_path)) {
+    view->state = APP_VIEW_STATE_FILE;
+    view->file_path = str_nil;
+    assert(app_is_val(app));
     return -1;
   }
   view->state = APP_VIEW_STATE_DB;
+  if (!dbs.setup(&app->view.db, &app->gui, path)) {
+    view->state = APP_VIEW_STATE_FILE;
+    view->file_path = str_nil;
+    assert(app_is_val(app));
+    return -1;
+  }
+  ensures(app_is_val(app));
   return 0;
 }
-/*@
-  requires app != NULL;
-  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
-  requires idx >= 0 && idx < APP_VIEW_CNT;
-  requires !(app->unused & (1U << castu(idx)));
-  requires app->unused <= APP_VIEW_CNT_MSK;
-
-  assigns app->tabs[app->tab_cnt], app->tab_cnt;
-
-  ensures \result >= 0 && \result < APP_VIEW_CNT;
-  ensures app->tab_cnt == \old(app->tab_cnt) + 1;
-*/
 static int
-app_tab_add(struct app *app, int idx) {
-  requires(app);
-  requires(app->tab_cnt >= 0);
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-  requires(app->tab_cnt <= cntof(app->tabs));
-
-  requires(idx >= 0);
-  requires(idx <= 0xff);
-  requires(idx < APP_VIEW_CNT);
-  requires(idx < cntof(app->views));
-
-  requires(!(app->unused & (1U << castu(idx))));
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  int old_tab_cnt = app->tab_cnt;
-  int ret = app->tab_cnt++;
-  app->tabs[ret] = castb(idx);
-
-  ensures(app->tab_cnt > old_tab_cnt);
-  ensures(app->tab_cnt <= APP_VIEW_CNT);
-  ensures(app->tab_cnt <= cntof(app->tabs));
-
-  ensures(ret >= 0);
-  ensures(ret < APP_VIEW_CNT);
-  ensures(ret < cntof(app->tabs));
+app_tab_open_file(struct app *app, struct str file) {
+  requires(app_is_val(app));
+  if (app->view.db.con) {
+    dbs.del(&app->view.db);
+  }
+  app_view_init(&app->view);
+  int ret = app_view_setup(app, &app->view, file);
+  requires(app_is_val(app));
   return ret;
 }
-/*@
-  requires app != NULL;
-  requires app->tab_cnt > 0 && app->tab_cnt <= APP_VIEW_CNT;
-  requires tab_idx >= 0 && tab_idx < app->tab_cnt;
-  requires !(app->unused & (1 << app->tabs[tab_idx])); // Corresponding view must be in use
-  requires app->unused <= APP_VIEW_CNT_MSK;
-
-  assigns app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab;
-
-  ensures app->tab_cnt == \old(app->tab_cnt) - 1;
-  ensures \forall integer i; 0 <= i < \old(app->tab_cnt);  // All remaining tabs are valid
-          (\exists integer j; 0 <= j < \old(app->tab_cnt) && i != j ==> app->tabs[i] == \old(app->tabs[j])); // All original tabs (except the removed one) are still present.
-  ensures \forall integer i; 0 <= i < app->tab_cnt ==>  // The order of the tabs is preserved (relative to their original positions)
-          (\exists integer j; 0 <= j < \old(app->tab_cnt) && i != j ==>
-                (
-                    (j < tab_idx && i < tab_idx && app->tabs[i] == \old(app->tabs[j])) ||
-                    (j > tab_idx && i > tab_idx -1 && app->tabs[i] == \old(app->tabs[j]))
-                )
-           );
-  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt; // sel_tab is within the new range
-*/
-static void
-app_tab_rm(struct app *app, int tab_idx) {
-  requires(app);
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-  requires(app->tab_cnt <= app->tab_cnt);
-
-  requires(tab_idx >= 0);
-  requires(tab_idx < app->tab_cnt);
-  requires(tab_idx < APP_VIEW_CNT);
-  requires(tab_idx < cntof(app->tabs));
-
-  requires(app->sel_tab < app->tab_cnt);
-  requires(app->sel_tab < APP_VIEW_CNT);
-  requires(app->sel_tab < cntof(app->tabs));
-
-  requires(!(app->unused & (1 << app->tabs[tab_idx])));
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  arr_rm(app->tabs, tab_idx, app->tab_cnt);
-  int old_tab_cnt = app->tab_cnt--;
-  app->sel_tab = castb(clamp(0, app->sel_tab, app->tab_cnt-1));
-
-  ensures(app->sel_tab >= 0);
-  ensures(app->sel_tab < app->tab_cnt);
-  ensures(app->sel_tab < APP_VIEW_CNT);
-  ensures(app->sel_tab < cntof(app->tabs));
-
-  ensures(app->tab_cnt >= 0);
-  ensures(app->tab_cnt < old_tab_cnt);
-  ensures(app->tab_cnt <= APP_VIEW_CNT);
-  ensures(app->tab_cnt <= cntof(app->tabs));
-}
-/*@
-  requires app != NULL;
-  requires app->tab_cnt > 0 && app->tab_cnt <= APP_VIEW_CNT;
-  requires tab_idx >= 0 && tab_idx < app->tab_cnt;
-  requires !(app->unused & (1U << castu(app->tabs[tab_idx])));
-  requires app->unused <= APP_VIEW_CNT_MSK;
-
-  assigns app->unused, app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab;
-
-  ensures app->tab_cnt == \old(app->tab_cnt) - 1;
-  ensures app->unused == (\old(app->unused) | (1U << castu(app->tabs[tab_idx])));
-  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
-*/
-static void
-app_tab_close(struct app *app, int tab_idx) {
-  requires(app);
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-  requires(app->tab_cnt <= cntof(app->tabs));
-
-  requires(tab_idx >= 0);
-  requires(tab_idx < app->tab_cnt);
-  requires(tab_idx < APP_VIEW_CNT);
-  requires(tab_idx < cntof(app->tabs));
-
-  requires(!(app->unused & (1U << castu(app->tabs[tab_idx]))));
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  unsigned old_unused = app->unused;
-  app_view_del(app, app->tabs[tab_idx]);
-  app_tab_rm(app, tab_idx);
-
-  ensures(app->tab_cnt >= 0);
-  ensures(app->sel_tab >= 0);
-  ensures(app->sel_tab < app->tab_cnt);
-  ensures(app->sel_tab < APP_VIEW_CNT);
-  ensures(app->sel_tab < cntof(app->tabs));
-  ensures(app->unused <= APP_VIEW_CNT_MSK);
-  ensures(app->unused > old_unused);
-}
-/*@
-  requires app != NULL;
-  requires files != NULL;
-  requires file_cnt >= 0 && file_cnt <= APP_VIEW_CNT;
-  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
-
-  assigns app->unused, app->tabs[0..APP_VIEW_CNT-1], app->tab_cnt, app->sel_tab, app->views[0..APP_VIEW_CNT-1];
-
-  ensures app->tab_cnt >= \old(app->tab_cnt);
-  ensures app->tab_cnt <= APP_VIEW_CNT;
-  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
-*/
-static void
-app_tab_open_files(struct app *app, const struct str *files, int file_cnt) {
-  requires(app);
-  requires(files);
-
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-  requires(app->tab_cnt <= cntof(app->tabs));
-
-  requires(file_cnt >= 0);
-  requires(file_cnt <= APP_VIEW_CNT);
-  requires(file_cnt <= APP_VIEW_CNT - app->tab_cnt);
-
-  requires(app->tab_cnt >= 0);
-  requires(app->tab_cnt <= cntof(app->tabs));
-  requires(file_cnt <= cntof(app->tabs) - app->tab_cnt);
-
-  unsigned oldest_unused = app->unused;
-  int num = cntof(app->tabs) - app->tab_cnt;
-  assert(num >= 0);
-
-  int add_cnt = min(file_cnt, num);
-  assert(add_cnt <= file_cnt);
-  assert(add_cnt <= num);
-  assert(add_cnt >= 0);
-  assert(add_cnt < APP_VIEW_CNT);
-
-  for arr_loopn(i, app->tabs, file_cnt) {
-    /* open each database in new tab */
-    loop_invariant(i >= 0);
-    loop_invariant(i < add_cnt);
-    loop_invariant(i < file_cnt);
-    loop_invariant(i < APP_VIEW_CNT);
-    loop_invariant(i < cntof(app->tabs));
-
-    assert(app->unused >= 0);
-    assert(app->unused <= APP_VIEW_CNT_MSK);
-
-    unsigned old_unused = app->unused;
-    int view = app_view_new(app);
-    assert(app->unused < old_unused);
-
-    if (app_view_init(app, view, files[i]) < 0) {
-      app_view_del(app, view);
-      assert(app->unused == old_unused);
-      continue;
-    }
-    unsigned old_tab_cnt = app->tab_cnt;
-    int tab_idx = app_tab_add(app, view);
-    app->sel_tab = castb(tab_idx);
-
-    if (!dbs.setup(&app->views[view].db, &app->gui, files[i])) {
-      app_tab_close(app, app->sel_tab);
-      assert(app->tab_cnt == old_tab_cnt);
-    }
-  }
-  ensures(app->tab_cnt >= 0);
-  ensures(app->tab_cnt <= APP_VIEW_CNT);
-  ensures(app->unused <= oldest_unused);
-
-  ensures(app->sel_tab >= 0);
-  ensures(app->sel_tab < app->tab_cnt);
-  ensures(app->sel_tab < APP_VIEW_CNT);
-  ensures(app->sel_tab < cntof(app->tabs));
-}
-/*@
-  requires app != NULL;
-  requires app->unused > 0;
-  requires app->unused <= APP_VIEW_CNT_MSK;
-  requires app->tab_cnt >= 0 && app->tab_cnt <= APP_VIEW_CNT;
-  assigns app->unused, app->tabs[app->tab_cnt], app->tab_cnt, app->sel_tab, app->views[0..APP_VIEW_CNT-1];
-  ensures app->sel_tab >= 0 && app->sel_tab < app->tab_cnt;
-  ensures app->unused < \old(app->unused);
-*/
-static int
-app_tab_open(struct app *app) {
-  requires(app);
-  requires(app->unused > 0);
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-
-  requires(app->tab_cnt >= 0);
-  requires(app->tab_cnt <= cntof(app->tabs));
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-
-  unsigned old_unused = app->unused;
-  int view = app_view_new(app);
-  int tab_idx = app_tab_add(app, view);
-  app->sel_tab = castb(tab_idx);
-
-  ensures(app->sel_tab >= 0);
-  ensures(app->sel_tab < app->tab_cnt);
-  ensures(app->sel_tab < APP_VIEW_CNT);
-  ensures(app->sel_tab < cntof(app->tabs));
-
-  ensures(app->unused < old_unused);
-  return app->sel_tab;
-}
-/*@
-  requires app != NULL;
-  requires dst_idx >= 0 && dst_idx < app->tab_cnt;
-  requires src_idx >= 0 && src_idx < app->tab_cnt;
-  requires !(app->unused & (1U << castu(app->tabs[dst_idx]))); // dst_idx tab must be in use
-  requires !(app->unused & (1U << castu(app->tabs[src_idx]))); // src_idx tab must be in use
-  assigns app->tabs[0..APP_VIEW_CNT-1]; // Only the tabs array is modified
-
-  ensures app->tabs[dst_idx] == \old(app->tabs[src_idx]); // Value at dst_idx is now the old value at src_idx
-  ensures app->tabs[src_idx] == \old(app->tabs[dst_idx]); // Value at src_idx is now the old value at dst_idx
-  ensures \forall integer i; 0 <= i < APP_VIEW_CNT && i != dst_idx && i != src_idx ==> app->tabs[i] == \old(app->tabs[i]); // Other elements are unchanged.
-*/
-static void
-app_tab_swap(struct app *app, int dst_idx, int src_idx) {
-  requires(app);
-  requires(dst_idx >= 0);
-  requires(src_idx >= 0);
-
-  requires(dst_idx < app->tab_cnt);
-  requires(src_idx < app->tab_cnt);
-
-  requires(dst_idx < cntof(app->tabs));
-  requires(src_idx < cntof(app->tabs));
-
-  requires(app->tabs[dst_idx] < cntof(app->views));
-  requires(app->tabs[src_idx] < cntof(app->views));
-
-  requires(!(app->unused & (1U << castu(app->tabs[dst_idx]))));
-  requires(!(app->unused & (1U << castu(app->tabs[src_idx]))));
-
-  int old_dst = app->tabs[dst_idx];
-  int old_src = app->tabs[src_idx];
-
-  app->tabs[src_idx] = castb(old_dst);
-  app->tabs[dst_idx] = castb(old_src);
-
-  ensures(app->tabs[dst_idx] == old_src);
-  ensures(app->tabs[src_idx] == old_dst);
-}
-/*@
-  requires sys!= NULL;
-  requires app!= NULL;
-  requires \valid(app); // The app structure itself must be valid
-  assigns app->res, app->gui, app->fs, app->db, app->tab_cnt, app->unused, app->tabs[0..APP_VIEW_CNT-1], app->views[0..APP_VIEW_CNT-1]; // All the relevant parts of app are assigned
-  ensures app->tab_cnt == 1;
-  ensures app->tabs == 0;
-  ensures app->unused == APP_VIEW_CNT_MSK - 1u;
-*/
 static void
 app_init(struct app *app, struct sys *sys) {
   requires(sys);
-  requires(app);
+  requires(app_is_val(app));
   res.init(&app->res, sys);
   {
     struct gui_args args = {0};
@@ -528,15 +140,12 @@ app_init(struct app *app, struct sys *sys) {
     app->gui.idx_buf_siz = CFG_GUI_IDX_MEMORY;
     gui.init(&app->gui, &args);
   }
+  app_view_init(&app->view);
+
   if (pck.init(&app->fs, sys, &app->gui) < 0) {
 
   }
   dbs.init(app->db_mem, szof(app->db_mem));
-
-  app->tab_cnt = 0;
-  app->unused = APP_VIEW_CNT_MSK;
-  app->tabs[app->tab_cnt++] = castb(app_view_new(app));
-  app_view_setup(app, app->tabs[0]);
 
 #ifdef DEBUG_MODE
   ut_bit();
@@ -545,53 +154,17 @@ app_init(struct app *app, struct sys *sys) {
   ut_str2();
   ut_tbl();
 #endif
-
-  ensures(app->tab_cnt == 1);
-  ensures(app->tabs[0] == 0);
-  ensures(app->unused == APP_VIEW_CNT_MSK - 1u);
+  ensures(app_is_val(app));
 }
-/*@
-  requires sys != NULL;
-  requires app != NULL;
-  requires \valid(app); // app structure must be valid
-  assigns app->unused, app->tab_cnt, app->tabs[0..APP_VIEW_CNT-1], app->views[0..APP_VIEW_CNT-1], app->fs, app->res; // All relevant parts of app are assigned
-  ensures app->tab_cnt == 0;
-  ensures app->unused == APP_VIEW_CNT_MSK;
-*/
 static void
 app_shutdown(struct app *app, struct sys *sys) {
   requires(sys);
-  requires(app);
-
-  requires(app->tab_cnt >= 0);
-  requires(app->tab_cnt < cntof(app->tabs));
-  requires(app->unused <= APP_VIEW_CNT_MSK);
-  requires(app->unused >= 0);
-
-  for arr_loopn(i, app->tabs, app->tab_cnt) {
-    loop_invariant(i >= 0);
-    loop_invariant(i < app->tab_cnt);
-    loop_invariant(i < cntof(app->tabs));
-    loop_invariant(i < APP_VIEW_CNT);
-
-    int idx = app->tabs[i];
-    assert(idx < APP_VIEW_CNT);
-    assert(idx < cntof(app->views));
-    assert(!(app->unused & (1U << castu(idx))));
-
-    struct app_view *view = &app->views[idx];
-    if (view->db.con) {
-      dbs.del(&view->db);
-    }
-    app_view_del(app, idx);
+  requires(app_is_val(app));
+  if (app->view.db.con) {
+    dbs.del(&app->view.db);
   }
-  assert(app->unused == APP_VIEW_CNT_MSK);
-  app->unused = APP_VIEW_CNT_MSK;
-  app->tab_cnt = 0;
-
-  pck.shutdown(&app->fs,sys);
+  pck.shutdown(&app->fs, sys);
   res.shutdown(&app->res);
-  ensures(app->tab_cnt == 0);
 }
 
 /* -----------------------------------------------------------------------------
@@ -602,74 +175,31 @@ app_shutdown(struct app *app, struct sys *sys) {
  */
 static void
 ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
-                struct gui_panel *pan, struct gui_panel *parent) {
+                 struct gui_panel *pan, struct gui_panel *parent) {
 
-  requires(app);
-  requires(view);
+  requires(app_is_val(app));
   requires(ctx);
   requires(pan);
   requires(parent);
   requires(ctx->sys);
 
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt < cntof(app->tabs));
-  requires(app->unused >= 0);
-  requires(app->unused < APP_VIEW_CNT_MSK);
-
-  int old_tab_cnt = app->tab_cnt;
-  unsigned old_unused = app->unused;
-
-  view->file_path = pck.ui(app->path_buf + view->path_buf_off, MAX_FILE_PATH,
-    &app->fs, ctx, pan, parent);
+  view->file_path = pck.ui(app->path_buf, MAX_FILE_PATH, &app->fs, ctx, pan, parent);
   if (str_is_val(view->file_path)) {
     struct sys *sys = ctx->sys;
-    dbs.setup(&view->db, &app->gui, view->file_path);
-    view->state = APP_VIEW_STATE_DB;
-
-    int new_view = app_view_new(app);
-    app_view_setup(app, new_view);
-    app_tab_add(app, new_view);
+    if (app_view_setup(app, &app->view, view->file_path) >= 0) {
+      view->state = APP_VIEW_STATE_DB;
+    }
     sys->repaint = 1;
+  } else {
+    view->file_path = str_nil;
   }
-  ensures(app->unused <= old_unused);
-  ensures(app->tab_cnt >= old_tab_cnt);
+  ensures(app_is_val(app));
 }
 static void
-ui_app_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
-            struct gui_panel *pan, struct gui_panel *parent) {
-
-  requires(app);
-  requires(view);
+ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
+  requires(app_is_val(app));
   requires(ctx);
   requires(pan);
-  requires(parent);
-
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt < cntof(app->tabs));
-  requires(app->unused >= 0);
-  requires(app->unused < APP_VIEW_CNT_MSK);
-
-  gui.pan.begin(ctx, pan, parent);
-  {
-    struct gui_panel bdy = {.box = pan->box};
-    switch (view->state) {
-    case APP_VIEW_STATE_FILE: {
-      ui_app_file_view(app, view, ctx, pan, parent);
-    } break;
-    case APP_VIEW_STATE_DB: {
-      dbs.ui(&view->db, &app->db, ctx, &bdy, pan);
-    } break;}
-  }
-  gui.pan.end(ctx, pan, parent);
-}
-static void
-ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
-  requires(app);
-  requires(ctx);
-  requires(pan);
-
-  requires(app->tab_cnt > 0);
-  requires(app->unused >= 0);
 
   if (gui.dnd.dst.begin(ctx, pan)) {
     struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, GUI_DND_SYS_FILES);
@@ -677,220 +207,50 @@ ui_app_dnd_files(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       const struct str *file_urls = paq->data;
       switch (paq->state) {
       case GUI_DND_DELIVERY: {
-        int file_cnt = paq->size;
-        int rest = cpu_bit_cnt(app->unused & APP_VIEW_CNT_MSK);
-        int cnt = min(file_cnt, rest);
-
-        app_tab_open_files(app, file_urls, cnt);
+        for loop(i, paq->size) {
+          int ret = app_tab_open_file(app, file_urls[i]);
+          if (ret == 0) {
+            break;
+          }
+        }
         paq->response = GUI_DND_ACCEPT;
       } break;
       case GUI_DND_LEFT: break;
       case GUI_DND_ENTER:
       case GUI_DND_PREVIEW: {
-        if (app->unused & APP_VIEW_CNT_MSK) {
-          paq->response = GUI_DND_ACCEPT;
-        }
+        paq->response = GUI_DND_ACCEPT;
       } break;}
     }
     gui.dnd.dst.end(ctx);
   }
-}
-static int
-ui_app_tab_view_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
-                    struct gui_panel *parent) {
-  requires(app);
-  requires(ctx);
-  requires(pan);
-  requires(parent);
-
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt <= APP_VIEW_CNT);
-  requires(app->tab_cnt <= cntof(app->tabs));
-  requires(app->unused >= 0);
-
-  int ret = -1;
-  gui.pan.begin(ctx, pan, parent);
-  {
-    struct gui_lst_cfg cfg = {0};
-    gui.lst.cfg(&cfg, app->tab_cnt, app->tab_lst_off[1]);
-    cfg.ctl.focus = GUI_LST_FOCUS_ON_HOV;
-    cfg.sel.on = GUI_LST_SEL_ON_HOV;
-
-    struct gui_lst_reg reg = {.box = pan->box};
-    gui.lst.reg.begin(ctx, &reg, pan, &cfg, app->tab_lst_off);
-    for gui_tbl_lst_loopv(i,_,gui,&reg,app->tabs){
-
-      assert(i < cntof(app->tabs));
-      int idx = app->tabs[i];
-      assert(idx < cntof(app->views));
-
-      struct gui_panel elm = {0};
-      struct app_view *view = &app->views[idx];
-      unsigned long long tab_id = hash_ptr(view);
-      gui.lst.reg.elm.txt(ctx, &reg, &elm, gui_id64(tab_id), 0, strv("Open"), 0);
-
-      struct gui_input pin = {0};
-      gui.pan.input(&pin, ctx, &elm, GUI_BTN_LEFT);
-      ret = pin.mouse.btn.left.clk ? i : ret;
-    }
-    gui.lst.reg.end(ctx, &reg, pan, app->tab_lst_off);
-  }
-  gui.pan.end(ctx, pan, parent);
-  return ret;
-}
-static int
-ui_app_view_tab_slot_close(struct gui_ctx *ctx, struct gui_panel *pan,
-                           struct gui_panel *parent, struct str title,
-                           enum res_ico_id ico) {
-  requires(ctx);
-  requires(pan);
-  requires(ico);
-  requires(parent);
-
-  int ret = 0;
-  gui.pan.begin(ctx, pan, parent);
-  {
-    struct gui_box lay = pan->box;
-    struct gui_icon close = {.box = gui.cut.rhs(&lay, ctx->cfg.item, 0)};
-    gui.ico.clk(ctx, &close, pan, RES_ICO_CLOSE);
-    ret = close.clk;
-
-    struct gui_panel lbl = {.box = lay};
-    gui.ico.box(ctx, &lbl, pan, ico, title);
-  }
-  gui.pan.end(ctx, pan, parent);
-  ensures(ret == 0 || ret == 1);
-  return ret;
-}
-static int
-ui_app_view_tab_slot(struct app *app, struct app_view *view,
-                     struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                     struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot,
-                     struct str title, enum res_ico_id ico) {
-  requires(app);
-  requires(ctx);
-  requires(tab);
-  requires(hdr);
-  requires(ico);
-  requires(slot);
-  requires(view);
-
-  int ret = 0;
-  gui.tab.hdr.slot.begin(ctx, tab, hdr, slot, gui_id_ptr(view));
-  if (app->tab_cnt > 1 && tab->idx == tab->sel.idx) {
-    ret = ui_app_view_tab_slot_close(ctx, slot, &hdr->pan, title, ico);
-  } else {
-    gui.ico.box(ctx, slot, &hdr->pan, ico, title);
-  }
-  gui.tab.hdr.slot.end(ctx, tab, hdr, slot, 0);
-  ensures(ret == 0 || ret == 1);
-  return ret;
-}
-static int
-ui_app_view_tab(struct app *app, struct app_view *view,
-                struct gui_ctx *ctx, struct gui_tab_ctl *tab,
-                struct gui_tab_ctl_hdr *hdr, struct gui_panel *slot) {
-  requires(app);
-  requires(ctx);
-  requires(tab);
-  requires(hdr);
-  requires(slot);
-  requires(view);
-
-  enum res_ico_id ico = RES_ICO_FOLDER_OPEN;
-  struct str title = strv("Open");
-  if (view->state != APP_VIEW_STATE_FILE) {
-    title = path_file(view->file_path);
-    ico = RES_ICO_DATABASE;
-  }
-  return ui_app_view_tab_slot(app, view, ctx, tab, hdr, slot, title, ico);
+  ensures(app_is_val(app));
 }
 static void
 ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
             struct gui_panel *parent) {
 
-  requires(app);
   requires(ctx);
   requires(pan);
   requires(parent);
-
-  requires(app->tab_cnt > 0);
-  requires(app->tab_cnt <= cntof(app->tabs));
-  requires(app->sel_tab < cntof(app->tabs));
-  requires(app->sel_tab < app->tab_cnt);
-  requires(app->unused >= 0);
-  requires(app->unused < APP_VIEW_CNT_MSK);
+  requires(app_is_val(app));
 
   gui.pan.begin(ctx, pan, parent);
   {
-    /* tab control */
-    struct gui_tab_ctl tab = {.box = pan->box, .show_btn = 1};
-    gui.tab.begin(ctx, &tab, pan, app->tab_cnt, app->sel_tab);
-    {
-      /* tab header */
-      unsigned del_tab = 0;
-      struct gui_tab_ctl_hdr hdr = {.box = tab.hdr};
-      gui.tab.hdr.begin(ctx, &tab, &hdr);
-      assert(tab.cnt <= cntof(app->tabs));
-      for arr_loopn(i, app->tabs, tab.cnt) {
-
-        assert(i < cntof(app->tabs));
-        int idx = app->tabs[i];
-        assert(idx < cntof(app->views));
-
-        /* tab header slots */
-        struct gui_panel slot = {0};
-        struct app_view *view = &app->views[idx];
-        int ret = ui_app_view_tab(app, view, ctx, &tab, &hdr, &slot);
-        del_tab |= castu(ret);
-      }
-      gui.tab.hdr.end(ctx, &tab, &hdr);
-      if (del_tab) {
-        app_tab_close(app, app->sel_tab);
-      } else if (tab.sort.mod) {
-        app_tab_swap(app, tab.sort.dst, tab.sort.src);
-      }
-      if (app->unused) {
-        /* add/open new file view tab */
-        struct gui_btn add = {.box = hdr.pan.box};
-        add.box.x = gui.bnd.min_ext(tab.off, ctx->cfg.item);
-        if (gui.btn.ico(ctx, &add, &hdr.pan, RES_ICO_FOLDER_ADD)) {
-          app_tab_open(app);
-        }
-      }
-      /* tab body */
-      struct gui_panel bdy = {.box = tab.bdy};
-      app->show_tab_lst = tab.btn.clk ? !app->show_tab_lst : app->show_tab_lst;
-      if (app->show_tab_lst) {
-        /* tab selection */
-        int ret = ui_app_tab_view_lst(app, ctx, &bdy, pan);
-        if (ret >= 0) {
-          app_tab_swap(app, 0, ret);
-          app->show_tab_lst = 0;
-          app->sel_tab = 0;
-        }
-      } else {
-        assert(app->sel_tab < cntof(app->tabs));
-        assert(app->sel_tab < app->tab_cnt);
-
-        int sel_view = app->tabs[app->sel_tab];
-        assert(!(app->unused & (1U << sel_view)));
-        ui_app_view(app, app->views + sel_view, ctx, &bdy, pan);
-      }
-    }
-    gui.tab.end(ctx, &tab, pan);
-    if (tab.sel.mod) {
-      app->sel_tab = castb(tab.sel.idx);
-      assert(app->sel_tab < cntof(app->tabs));
-      assert(app->sel_tab < APP_VIEW_CNT);
-    }
+    struct gui_panel bdy = {.box = pan->box};
+    gui.pan.begin(ctx, &bdy, pan);
+    switch (app->view.state) {
+    case APP_VIEW_STATE_FILE: {
+      ui_app_file_view(app, &app->view, ctx, &bdy, pan);
+    } break;
+    case APP_VIEW_STATE_DB: {
+      struct str file = path_file(app->view.file_path);
+      dbs.ui(&app->view.db, &app->db, ctx, &bdy, pan, file);
+    } break;}
+    gui.pan.end(ctx, &bdy, pan);
   }
   gui.pan.end(ctx, pan, parent);
-  ui_app_dnd_files(app, ctx, pan);
-
-  ensures(app->show_tab_lst == 0 || app->show_tab_lst == 1);
-  ensures(app->sel_tab < cntof(app->tabs));
-  ensures(app->sel_tab < APP_VIEW_CNT);
+  ui_app_dnd_file(app, ctx, pan);
+  ensures(app_is_val(app));
 }
 
 /* -----------------------------------------------------------------------------
@@ -909,7 +269,7 @@ app_on_mod(unsigned mod, unsigned keymod) {
 }
 extern void
 app_run(struct sys *sys) {
-  assert(sys);
+  ensures(sys);
   switch (sys->op) {
   case SYS_SETUP: {
     /* setup OS window */
@@ -963,6 +323,7 @@ app_run(struct sys *sys) {
 
   case SYS_QUIT: {
     /* shutdown */
+    printf("memory: %d\n", szof(struct app));
     app_shutdown(sys->app, sys);
     sys->app = 0;
   } break;

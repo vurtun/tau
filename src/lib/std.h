@@ -96,14 +96,13 @@ struct str {
   const char *ptr;
   struct rng rng;
 };
-struct str_fnd_tbl {
+struct fnd_tbl {
   int tbl[UCHAR_MAX+1];
 };
 struct color {
   unsigned char r, g, b, a;
 };
 #define confine for
-#define dyn(T) T*
 #define TBL_CAP(n) ((n)+((n)>>2))
 #define tbl(T,N) {                    \
   unsigned long long keys[TBL_CAP(N)];\

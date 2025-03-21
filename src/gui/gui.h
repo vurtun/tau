@@ -332,21 +332,21 @@ struct gui_edit_box {
 
 /* Widget: Scroll */
 enum gui_direction {
-  GUI_NORTH = 0x01,
-  GUI_WEST = 0x02,
-  GUI_SOUTH = 0x04,
-  GUI_EAST = 0x08
+  GUI_NORTH   = 0x01,
+  GUI_WEST    = 0x02,
+  GUI_SOUTH   = 0x04,
+  GUI_EAST    = 0x08
 };
 enum gui_dir {
-  GUI_DIR_HORIZONTAL = GUI_NORTH | GUI_SOUTH,
-  GUI_DIR_VERTICAL = GUI_WEST | GUI_EAST,
+  GUI_DIR_HORIZONTAL  = GUI_NORTH | GUI_SOUTH,
+  GUI_DIR_VERTICAL    = GUI_WEST | GUI_EAST,
 };
 struct gui_scrl {
   struct gui_box box;     /* in */
   int min[2];             /* in */
-  int total[2];        /* in */
-  int size[2];         /* in */
-  int off[2];          /* in-out */
+  int total[2];           /* in */
+  int size[2];            /* in */
+  int off[2];             /* in-out */
   struct gui_panel pan;   /* out */
   unsigned scrolled : 1;  /* out */
 };

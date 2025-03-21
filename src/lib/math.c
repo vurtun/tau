@@ -1070,34 +1070,24 @@ qintegratev(float *restrict qo, const float *restrict qrot,
   cpy4(qo, r);
 }
 static void
-qnlerp(float *restrict qres, const float *restrict qfrom,
-       const float *restrict qto, float t) {
-  assert(qres);
-  assert(qfrom);
-  assert(qto);
+qnlerp(float *restrict qres, const float *restrict qsrc,
+      const float *restrict qdst, float t) {
+  // https://zeux.io/2015/07/23/approximating-slerp/
+  // https://zeux.io/2016/05/05/optimizing-slerp/
+  float ca = dot4(qsrc, qdst);
+  float d = castf(math_abs(ca));
+  float A = 1.0904f + d * (-3.2452f + d * (3.55645f - d * 1.43519f));
+  float B = 0.848013f + d * (-1.06021f + d * 0.215638f);
+  float k = A * (t - 0.5f) * (t - 0.5f) + B;
+  float ot = t + t * (t - 0.5f) * (t - 1) * k;
 
-  float b[4]; cpy4(b, qto);
-  float dot = dot4(qfrom, qto);
-  float cosT = clamp(-1.0f, dot, 1.0f);
-  if (cosT < 0.0f) {
-    /* flip quaternions if on opposite hemispheres */
-    cosT = -cosT;
-    mul4(b,b,-1.0f);
-  }
-  float beta = 1.0f - t;
-  if (cosT < (1.0f - FLT_EPSILON)) {
-    /* if the quats are far apart, do spherical interpolation. */
-    float theta = math_acos(cosT);
-    float cosec_theta = 1.0f / math_sin(theta);
-    beta = cosec_theta * math_sin(beta * theta);
-    t = cosec_theta * math_sin(t * theta);
-  }
-  float q[4];
-  q[0] = beta * qfrom[0] + t * b[0];
-  q[1] = beta * qfrom[1] + t * b[1];
-  q[2] = beta * qfrom[2] + t * b[2];
-  q[3] = beta * qfrom[3] + t * b[3];
-  norm4(qres, q);
+  float lt = 1 - ot;
+  float rt = ca > 0 ? ot : -ot;
+  float lerp0[4]; mul4(lerp0, qsrc, lt);
+  float lerp1[4]; mul4(lerp1, qdst, rt);
+  float lerp[4]; add4(lerp, lerp0, lerp1);
+  float ret[4]; norm4(ret, lerp);
+  cpy4(qres, ret);
 }
 static void
 qslerp(float *restrict qres, const float *restrict qfrom,

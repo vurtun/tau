@@ -1,15 +1,3 @@
-/*@
-  type invariant str_valid: \forall struct rng *r;
-    valid(r) ==> r->hi >= r->lo && r->cnt == r->hi - r->lo && r->cnt <= r->total;
-
-  type invariant str_valid: \forall struct str *s;
-    valid(s) ==>
-    valid(&s->rng) &&
-    s->rng.lo >= 0 &&
-    s->rng.hi >= s->rng.lo &&
-    s->rng.cnt == s->rng.hi - s->rng.lo &&
-    s->rng.cnt <= s->rng.total;
-*/
 #if __has_include(<stdckdint.h>)
   #include <stdckdint.h>
 #else
@@ -18,74 +6,43 @@
   #define ckd_mul(R, A, B) __builtin_mul_overflow ((A), (B), (R))
 #endif
 
-/*@
-  requires ovf != NULL;
-  assigns *ovf; // Modifies the overflow flag
-  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
-  ensures \result == a + b || (*ovf == 1 && \result == 0); // Result is correct sum or 0 on overflow
-*/
 static purist inline int
 chk_add(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_add(&ret, a, b);
   return ret;
 }
-/*@
-  requires ovf != NULL;
-  assigns *ovf; // Modifies the overflow flag
-  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
-  ensures \result == a - b || (*ovf == 1 && \result == 0); // Result is correct difference or 0 on overflow
-*/
 static purist inline int
 chk_sub(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_sub(&ret, a, b);
   return ret;
 }
-/*@
-  requires ovf != NULL;
-  assigns *ovf; // Modifies the overflow flag
-  ensures *ovf == 0 || *ovf == 1; // Overflow flag is either 0 or 1
-  ensures \result == a * b || (*ovf == 1 && \result == 0); // Result is correct product or 0 on overflow
-*/
 static purist inline int
 chk_mul(int a, int b, unsigned *ovf) {
   int ret = 0;
   *ovf |= ckd_mul(&ret, a, b);
   return ret;
 }
-/*@
-  requires n >= 0;
-  assigns \nothing; // purist function
-  axiom ilog2_def: \forall integer n; n >= 0 ==>
-                   (n == 0 ? ilog2(n) == 0 :
-                    (1 << ilog2(n)) <= n < (1 << (ilog2(n) + 1)));
-  ensures \result == ilog2(n);
-  ensures (n == 0) ==> \result == 0;
-  ensures (n > 0) ==> (1 << \result) <= n < (1 << (\result + 1));
-  ensures \result == (n == 0 ? 0 : (int)sizeof(unsigned long) * CHAR_BIT - 1 - __builtin_clzl((unsigned long)n)); // If using gcc/clang
-*/
 static int
 ilog2(int n) {
+  requires(n >= 0);
   if (!n) return 0;
+  int ret = 0;
 #ifdef _MSC_VER
   unsigned long msbp = 0;
   _BitScanReverse(&msbp, (unsigned long)n);
-  return (int)msbp;
+  ret = (int)msbp;
 #else
-  return (int)sizeof(unsigned long) * CHAR_BIT - 1 - __builtin_clzl((unsigned long)n);
+  ret = (int)sizeof(unsigned long) * CHAR_BIT - 1 - __builtin_clzl((unsigned long)n);
 #endif
+  ensures(ret >= 0);
+  ensures(ret <= 31);
+  return ret;
 }
-/*@
-  requires input >= 0;
-  assigns \nothing; // purist function
-  ensures \result >= input;
-  ensures \result <= 2 * input;
-  ensures \result == (input == 0 ? 1 : 1 << ilog2(input - (input == 0 ? 0 : 1)));
-*/
 static purist inline int
 npow2(int input) {
-  requires(input >= 0);
+  requires(input > 0);
   unsigned int val = castu(input);
   val--;
   val |= val >> 1;
@@ -99,6 +56,9 @@ npow2(int input) {
   ensures(ret >= input);
   ensures(ret <= 2 * input);
   ensures(ret == 1 << casti(ilog2(input)));
+  ensures(ispow2(ret));
+  ensures((ret / 2) < input || ret == 1);
+  ensures(ret <= 2 * input);
   return ret;
 }
 /* ---------------------------------------------------------------------------
@@ -116,50 +76,22 @@ npow2(int input) {
  *                                Memory
  * ---------------------------------------------------------------------------
  */
-/*@
-  @requires cnt >= 0;
-  @requires dst != NULL || cnt == 0;
-  @requires src != NULL || cnt == 0;
-  @requires dst != src || cnt == 0;
-
-  @requires \valid(((char*)dst)+(0..cnt - 1));
-  @requires \valid_read(((char*)src)+(0..cnt - 1));
-  @requires \separated(((char *)dst)+(0..cnt-1),((char *)src)+(0..cnt-1));
-
-  @assigns ((char*)dst)[0..cnt - 1] \from ((char*)src)[0..cnt-1];
-  @ensures \forall integer i; 0 <= i < cnt; ((unsigned char*)dst)[i] == ((const unsigned char*)src)[i];
-  @ensures memcmp((char*)dst,(char*)src,cnt) == 0;
-  @*/
-static inline void
+static inline void*
 mcpy(void* restrict dst, void const *restrict src, int cnt) {
-  requires(cnt >= 0);
-  requires(dst != 0 || !cnt);
-  requires(src != 0 || !cnt);
-  requires(dst != src || !cnt);
-
   unsigned char *restrict dst8 = dst;
   const unsigned char *restrict src8 = src;
   for loop(i, cnt) {
     dst8[i] = src8[i];
   }
+  return dst;
 }
-/*@
-  requires addr != NULL;
-  requires \valid(((char*)addr)+(0..cnt - 1));
-  requires val >=0 && val <= 0xff
-  requires cnt >= 0;
-  assigns *addr[0..cnt-1];
-  ensures \forall integer i; 0 <= i < cnt; ((unsigned char*)addr)[i] == (unsigned char)val;
-*/
-static inline void
+static inline void*
 mset(void *addr, int val, int cnt) {
-  requires(addr);
-  requires(cnt >= 0);
-
   unsigned char *dst = addr;
   for loop(i, cnt) {
     dst[i] = castb(val);
   }
+  return addr;
 }
 #define swap(x,y) do {\
   unsigned char uniqid(t)[szof(x) == szof(y) ? szof(x) : -1]; \
@@ -201,64 +133,47 @@ mset(void *addr, int val, int cnt) {
 #define rng_cut_lhs(r,n) *(r) = rng_rhs(s,n)
 #define rng_cut_rhs(r,n) *(r) = rng_lhs(s,n)
 
-/*@
-  requires cnt >= 1;
-  assigns \nothing; // purist function
-  ensures \result >= 0 && \result < cnt;
-*/
+static inline int
+rng__is_val(const struct rng *rng) {
+  assert(rng);
+  assert(rng->lo <= rng->hi);
+  assert(rng->cnt <= abs(rng->hi - rng->lo));
+  assert(rng->cnt >= 0);
+  assert(rng->total >= 0);
+  return 1;
+}
 static purist force_inline int
 rng__bnd(int idx, int cnt) {
   int lft = max(cnt, 1) - 1;
   int val = (idx < 0) ? (cnt - idx) : idx;
   return clamp(val, 0, lft);
 }
-/*@
-  requires low <= high;
-  assigns \nothing; // purist function
-  ensures \result.lo == low;
-  ensures \result.hi == high;
-  ensures \result.cnt == abs(high - low);
-  ensures \result.total == cnt;
-*/
 static purist force_inline struct rng
 rng__mk(int low, int high, int cnt) {
   requires(low <= high);
   struct rng ret = {.lo = low, .hi = high};
   ret.cnt = abs(ret.hi - ret.lo);
   ret.total = cnt;
+
+  ensures(rng__is_val(&ret));
   return ret;
 }
-/*@
-  requires rng != NULL;
-  assigns \nothing; // purist function
-  ensures \result.lo == rng->lo + beg;
-  ensures \result.hi == rng->lo + end;
-  ensures \result.cnt == abs(end - beg);
-  ensures \result.total == rng->total;
-*/
 static purist force_inline struct rng
 rng_sub(const struct rng *rng, int beg, int end) {
-  requires(rng);
+  requires(rng__is_val(rng));
   struct rng ret = rng(beg, end, rng->total);
   rng_shft(&ret, rng->lo);
+  ensures(rng__is_val(&ret));
   return ret;
 }
-/*@
-  requires rng != NULL;
-  requires val != NULL;
-  assigns \nothing; // purist function
-  ensures \result.lo == rng->lo + val->lo;
-  ensures \result.hi == rng->lo + val->hi;
-  ensures \result.cnt == val->cnt;
-  ensures \result.total == rng->total;
-*/
 static purist force_inline struct rng
 rng_put(const struct rng *rng, const struct rng *val) {
-  requires(rng);
+  requires(rng__is_val(rng));
   requires(val);
 
   struct rng ret = *val;
   rng_shft(&ret, rng->lo);
+  ensures(rng__is_val(&ret));
   return ret;
 }
 
@@ -268,37 +183,14 @@ rng_put(const struct rng *rng, const struct rng *val) {
  */
 #define FNV1A32_HASH_INITIAL 2166136261U
 #define FNV1A64_HASH_INITIAL 14695981039346656037llu
-/*@
-  requires ptr != NULL || cnt == 0;
-  requires cnt >= 0;
-  requires hash >= 0;
 
-  assigns \nothing; // purist function
-
-  ensures \result >= 0;
-
-  // Frame condition (optional, but highly recommended for loops)
-  loop invariant i: 0 <= i <= cnt;
-
-  // Helper function to represent one step of the FNV-1a calculation
-  function unsigned fnv1a32_step(unsigned h, unsigned char byte) {
-    return (h ^ byte) * 16777619u;
-  }
-
-  // Postcondition using the helper function to describe the FNV-1a algorithm
-  ensures \result ==
-          (cnt == 0 ? \old(hash) :
-           \forall integer j; 0 <= j < cnt ==>
-               \result == fnv1a32_step(\at(hash,Pre), ptr[j]));
-*/
 static purist inline no_sanitize_int unsigned
 fnv1a32(const void *ptr, int cnt, unsigned hash) {
-  ensures(ptr);
-  ensures(cnt >= 0);
-  ensures(hash >= 0);
-
+  requires(ptr);
+  requires(cnt >= 0);
+  requires(hash >= 0);
   const unsigned char *ptr8 = ptr;
-  if (!ptr) {
+  if (!ptr || !cnt) {
     return FNV1A32_HASH_INITIAL;
   }
   for loop(i,cnt) {
@@ -306,32 +198,11 @@ fnv1a32(const void *ptr, int cnt, unsigned hash) {
   }
   return hash;
 }
-/*@
-  requires ptr != NULL || len == 0;
-  requires len >= 0;
-  requires hash >= 0;
-
-  assigns \nothing; // purist function
-
-  ensures \result >= 0;
-
-  loop invariant i: 0 <= i <= len;
-
-  // Helper function to represent one step of the FNV-1a 64-bit calculation
-  function unsigned long long fnv1a64_step(unsigned long long h, unsigned char byte) {
-    return (h ^ byte) * 1099511628211ULL; // Note the ULL suffix
-  }
-
-  // Postcondition using the helper function
-  ensures \result == (len == 0 || ptr == NULL ? \old(hash) :
-                     \forall integer j; 0 <= j < len ==>
-                         \result == fnv1a64_step(\at(hash,Pre), ptr[j]));
-*/
 static purist inline no_sanitize_int unsigned long long
 fnv1a64(const void *ptr, int len, unsigned long long hash) {
-  ensures(ptr);
-  ensures(len >= 0);
-  ensures(hash >= 0);
+  requires(ptr);
+  requires(len >= 0);
+  requires(hash >= 0);
 
   const unsigned char *ptr8 = ptr;
   if (!ptr || !len) {
@@ -368,67 +239,33 @@ hash_lld(long long lld) {
  *                                Random
  * ---------------------------------------------------------------------------
  */
-/*@
-  requires val >= 0; // Assuming val is non-negative
-  assigns \nothing; // purist function
-  ensures \result >= 0; // Result should also be non-negative
-*/
 static purist inline unsigned long long
 rnd_gen(unsigned long long val, int idx) {
   return val + castull(idx) * 0x9E3779B97F4A7C15llu;
 }
-/*@
-  requires val >= 0; // Assuming val is non-negative
-  assigns \nothing; // purist function
-  ensures \result >= 0; // Result should also be non-negative
-*/
 static purist inline unsigned long long
 rnd_mix(unsigned long long val) {
   val = (val ^ (val >> 30)) * 0xBF58476D1CE4E5B9llu;
   val = (val ^ (val >> 27)) * 0x94D049BB133111EBllu;
   return val ^ (val >> 31llu);
 }
-/*@
-  requires val != NULL;
-  assigns *val;
-  ensures \result >= 0; // Result should be non-negative
-  ensures *val >= 0;   // The value pointed to by val should be non-negative
-*/
 static inline unsigned long long
 rnd_split_mix(unsigned long long *val, int idx) {
   requires(val);
   *val = rnd_gen(*val, idx);
   return rnd_mix(*val);
 }
-/*@
-  requires val != NULL;
-  assigns *val;
-  ensures \result >= 0;  // Result is non-negative
-  ensures *val >= 0;  // The value pointed to by val is non-negative
-*/
 static inline unsigned long long
 rnd(unsigned long long *val) {
   requires(val);
   return rnd_split_mix(val, 1);
 }
-/*@
-  requires val != NULL;
-  assigns *val;
-  ensures \result >= 0 && \result <= UINT_MAX; // Result is within unsigned int range
-  ensures *val >= 0;  // The value pointed to by val is non-negative
-*/
 static inline unsigned
 rndu(unsigned long long *val) {
   requires(val);
   unsigned long long ret = rnd(val);
   return castu(ret & 0xffffffffu);
 }
-/*@
-  requires val != NULL;
-  assigns *val;
-  ensures \result >= INT_MIN && \result <= INT_MAX; // Result is within int range
-  ensures *val >= 0;  // The value pointed to by val is non-negative
-*/
 static inline int
 rndi(unsigned long long *val) {
   requires(val);
@@ -437,25 +274,12 @@ rndi(unsigned long long *val) {
   assert(norm >= INT_MIN && norm <= INT_MAX);
   return casti(norm);
 }
-/*@
-  requires val != NULL;
-  assigns *val;
-  ensures \result >= 0.0 && \result <= 1.0; // Result is between 0 and 1 (inclusive)
-  ensures *val >= 0;  // The value pointed to by val is non-negative
-*/
 static inline double
 rndn(unsigned long long *val) {
   requires(val);
   unsigned rnd = rndu(val);
   return castd(rnd) / castd(UINT_MAX);
 }
-/*@
-  requires x != NULL;
-  requires mini <= maxi; // Or requires mini >= 0 && maxi >= 0 if you want to enforce non-negative inputs
-  assigns *x;
-  ensures \result >= mini;
-  ensures \result <= maxi;
-*/
 static unsigned
 rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
   requires(x);
@@ -475,12 +299,6 @@ rnduu(unsigned long long *x, unsigned mini, unsigned maxi) {
     return mini + v % n;
   }
 }
-/*@
-  requires x != NULL;
-  assigns *x;
-  ensures \result >= 0.0f;
-  ensures \result <= 1.0f;
-*/
 static inline float
 rndf01(unsigned long long *x) {
   requires(x);
@@ -489,13 +307,6 @@ rndf01(unsigned long long *x) {
   double div = castd((unsigned)-1);
   return castf(du/div);
 }
-/*@
-  requires x != NULL;
-  requires mini <= maxi; // Or requires that mini and maxi are within some valid range if needed
-  assigns *x;
-  ensures \result >= mini;
-  ensures \result <= maxi;
-*/
 static float
 rnduf(unsigned long long *x, float mini, float maxi) {
   requires(x);
@@ -539,11 +350,6 @@ rnduf(unsigned long long *x, float mini, float maxi) {
  *                                Sequence
  * ---------------------------------------------------------------------------
  */
-/*@
-  requires seq!= NULL;
-  requires \valid(seq[0..rng.cnt-1]); // seq is valid up to rng.cnt-1
-  assigns seq[0..rng.cnt-1]; // Modifies the elements of seq
-*/
 static inline void
 seq_rng(int *seq, struct rng rng) {
   requires(seq);
@@ -551,11 +357,6 @@ seq_rng(int *seq, struct rng rng) {
     seq[k] = i;
   }
 }
-/*@
-  requires seq != NULL;
-  requires \valid(seq[0..rng.cnt-1]); // seq is valid up to rng.cnt-1
-  assigns seq[0..rng.cnt-1]; // Modifies the elements of seq
-*/
 static inline void
 seq_rngu(unsigned *seq, struct rng rng) {
   requires(seq);
@@ -563,13 +364,6 @@ seq_rngu(unsigned *seq, struct rng rng) {
     seq[k] = castu(i);
   }
 }
-/*@
-  requires seq != NULL;
-  requires n > 0;
-  requires r != NULL;
-  requires \valid(seq[0..n-1]); // seq is valid up to n-1
-  assigns seq[0..n-1]; // Modifies the elements of seq
-*/
 static inline void
 seq_rnd(int *seq, int n, unsigned long long *r) {
   requires(r);
@@ -579,12 +373,6 @@ seq_rnd(int *seq, int n, unsigned long long *r) {
     iswap(seq[i], seq[at]);
   }
 }
-/*@
-  requires p != NULL;
-  requires n > 0;
-  requires \valid(p[0..n-1]); // p is valid up to n-1
-  assigns p[0..n-1]; // Modifies the elements of p
-*/
 static inline void
 seq_fix(int *p, int n) {
   requires(p);
@@ -597,12 +385,6 @@ seq_fix(int *p, int n) {
  *                                  Bits
  * ---------------------------------------------------------------------------
  */
-/*@
-  requires x >= 0 && x <= UINT_MAX; // x is a 32-bit unsigned int
-  assigns \nothing; // purist function
-  ensures \result == (\forall integer i; 0 <= i < 32 ==>((x >> i) & 1) == ((\result >> (31 - i)) & 1));
-  ensures \result >= 0 && \result <= UINT_MAX; // Result is also a 32-bit unsigned int
-*/
 static purist inline unsigned
 bit_rev32(unsigned x){
   x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
@@ -611,11 +393,6 @@ bit_rev32(unsigned x){
   x = (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
   return x;
 }
-/*@
-  requires x >= 0 && x <= ULLONG_MAX; // x is a 64-bit unsigned int
-  assigns \nothing; // purist function
-  ensures \result >= 0 && \result <= ULLONG_MAX;  // Result is also a 64-bit unsigned int
-*/
 static purist inline unsigned long long
 bit_rev64(unsigned long long x){
   unsigned x1 = castu(x & 0xffffffffu);
@@ -641,38 +418,13 @@ bit_eqv(unsigned x, unsigned y) {
 #define bit_loop(i,x,s,n) \
   (int i = bit_ffs(s,n,0), x = 0; i < n; i = bit_ffs(s,n,i+1), x = x + 1)
 static int bit_xor(unsigned long *addr, int nr);
-/*@
-  requires \valid_read(addr+(0..bits_to_long(nr)));
-  requires \initialized(addr+(0..bits_to_long(nr)));
-  requires nr >= 0;
-  assigns \nothing;
-  ensures \result == (\old(addr[bit_word(nr)]) & (1ul << msk)) != 0);
 
-  behavior normal:
-    assumes \valid_read(addr+(0..bits_to_long(nr)));
-    assumes \initialized(addr+(0..bits_to_long(nr)));
-  complete behaviors normal;
-@*/
 static purist inline int
 bit_tst(const unsigned long *addr, int nr) {
   requires(addr);
   unsigned long msk = (unsigned long)nr & (BITS_PER_LONG - 1);
   return (1ul & (addr[bit_word(nr)] >> msk)) != 0;
 }
-/*@
-  requires \valid(addr);
-  requires \initialized(addr);
-  requires nr >= 0;
-
-  assigns *addr;
-  ensures \result == (\old(bit_tst(addr, nr)));
-  ensures \result == 1 ==> !bit_tst(addr, nr);
-
-  behavior normal:
-    assumes \valid(addr+(0..bits_to_long(nr)));
-    assumes \initialized(addr+(0..bits_to_long(nr)));
-  complete behaviors normal;
-@*/
 static inline int
 bit_tst_clr(unsigned long *addr, int nr) {
   requires(addr);
@@ -683,21 +435,6 @@ bit_tst_clr(unsigned long *addr, int nr) {
   }
   return 0;
 }
-/*@
-  requires \valid(addr);
-  requires \initialized(addr);
-  requires nr >= 0;
-
-  assigns *p;
-
-  ensures \result == !!(\old(*p) & m);
-  ensures *p == (\old(*p) | m);
-
-  behavior normal:
-    assumes \valid(addr + bit_word(nr));
-    assumes \initialized(addr + bit_word(nr));
-  complete behaviors normal;
-@*/
 static inline int
 bit_set(unsigned long *addr, int nr) {
   requires(addr);
@@ -713,40 +450,14 @@ bit_set(unsigned long *addr, int nr) {
   ensures(*p == (old_p | m));
   return ret;
 }
-/*@
-  requires addr != NULL;
-  requires nr >= 0;
-  assigns *addr++;
-  ensures \result == \old(*addr);
-  ensures cond ? (*addr == \old(*addr) | bit_mask(nr)) : true;
-*/
 static inline void
 bit_set_on(unsigned long *addr, int nr, int cond) {
   requires(addr);
   requires(nr >= 0);
-
   if (cond) {
     bit_set(addr, nr);
   }
 }
-/*@
-  requires \valid(addr);
-  requires \initialized(addr);
-  requires nr >= 0;
-
-  assigns *p;
-
-  ensures \result == !!(\old(*p) & m);
-  ensures *p == (\old(*p) & ~m);
-
-  behavior normal:
-    assumes \valid(addr + bit_word(nr));
-    assumes \initialized(addr + bit_word(nr));
-
-  behavior invalid_address:
-    assumes !\valid(addr + bit_word(nr));
-    ensures \false;
-@*/
 static inline int
 bit_clr(unsigned long *addr, int nr) {
   requires(addr);
@@ -762,13 +473,6 @@ bit_clr(unsigned long *addr, int nr) {
   ensures(*p == (old_p & ~m));
   return ret;
 }
-/*@
-  requires addr != NULL;
-  requires nr >= 0;
-  assigns *addr++;
-  ensures \result == \old(*addr);
-  ensures cond ? (*addr == \old(*addr) & ~bit_mask(nr)) : true;
-*/
 static inline void
 bit_clr_on(unsigned long *addr, int nr, int cond) {
   requires(addr);
@@ -776,11 +480,6 @@ bit_clr_on(unsigned long *addr, int nr, int cond) {
     bit_clr(addr, nr);
   }
 }
-/*@
-  requires addr != NULL;
-  assigns *addr++;
-  ensures \result == (\old(*addr) ^ bit_mask(nr)) & bit_mask(nr);
-  */
 static inline int
 bit_xor(unsigned long *addr, int nr) {
   requires(addr);
@@ -789,30 +488,16 @@ bit_xor(unsigned long *addr, int nr) {
   *p ^= m;
   return (*p & m) ? 1 : 0;
 }
-/*@
-  requires addr != NULL;
-  requires nbits >= 0;
-  assigns *addr++;
-  ensures \forall integer i; 0 <= i < nbits ==>
-      (\forall integer j; 0 <= j < bits_to_long(nbits);
-          addr[j] == (byte << (i % BITS_PER_LONG)) & bit_mask(i));
-*/
 static inline void
 bit_fill(unsigned long *addr, int byte, int nbits) {
   requires(addr);
   int n = bits_to_long(nbits);
   mset(addr, byte, n * szof(long));
 }
-/*@
-  requires addr != NULL;
-  requires 0 <= idx && idx < nbits;
-  ensures 0 <= \result && \result <= nbits;
-  ensures \result == nbits ==>
-      \forall integer i; 0 <= i < nbits; !(addr[bit_word(i)] & bit_mask(i));
-*/
 static int
 bit_ffs(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
+  int ret = nbits;
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -823,22 +508,19 @@ bit_ffs(const unsigned long *addr, int nbits, int idx) {
       continue;
     }
     int pos = cpu_bit_ffs64(c);
-    return min((int)(i * BITS_PER_LONG) + pos, nbits);
+    ret = min((int)(i * BITS_PER_LONG) + pos, nbits);
+    break;
   }
-  return nbits;
+  ensures(idx <= ret);
+  ensures(ret <= nbits);
+  return ret;
 }
-/*@
-  requires addr != NULL;
-  requires 0 <= idx && idx < nbits;
-  ensures 0 <= \result && \result <= nbits;
-  ensures \result == nbits ==>
-      \forall integer i; 0 <= i < nbits; !(~addr[bit_word(i)] & bit_mask(i));
-*/
 static int
 bit_ffz(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
   requires(nbits >= 0);
 
+  int ret = nbits;
   unsigned long off = bit_word_idx(idx);
   unsigned long long n = (unsigned long long)bits_to_long(nbits);
   for (unsigned long i = bit_word(idx); i < n; ++i) {
@@ -849,20 +531,13 @@ bit_ffz(const unsigned long *addr, int nbits, int idx) {
       continue;
     }
     int pos = cpu_bit_ffs64(c);
-    return min((int)(i * BITS_PER_LONG) + pos, nbits);
+    ret = min((int)(i * BITS_PER_LONG) + pos, nbits);
+    break;
   }
-  return nbits;
+  ensures(idx <= ret);
+  ensures(ret <= nbits);
+  return ret;
 }
-/*@
-  requires \valid_read(addr+(0..bits_to_long(nbits)-1));
-  requires \initialized(addr+(0..bits_to_long(nbits)-1));
-  requires nbits >= 0;
-  requires idx < nbits;
-  ensures 0 <= \result <= nbits;
-  behavior normal:
-    assigns \nothing;
-  complete behaviors normal;
-@*/
 static purist int
 bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
@@ -890,11 +565,6 @@ bit_cnt_set(const unsigned long *addr, int nbits, int idx) {
   ensures(cnt <= nbits);
   return cnt;
 }
-/*@
-  requires addr != NULL;
-  requires nbits >= 0;
-  ensures 0 <= \result && \result <= nbits;
-  */
 static purist int
 bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   requires(addr);
@@ -922,13 +592,6 @@ bit_cnt_zero(const unsigned long *addr, int nbits, int idx) {
   ensures(cnt <= nbits);
   return cnt;
 }
-/*@
-  requires addr != NULL;
-  requires nbits >= 0;
-  requires off < nbits;
-  assigns nothing;
-  ensures 0 <= \result && \result < nbits;
-  */
 static purist int
 bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
@@ -944,13 +607,6 @@ bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   }
   return off;
 }
-/*@
-  requires addr != NULL;
-  requires nbits >= 0;
-  requires off < nbits;
-  assigns nothing
-  ensures 0 <= \result && \result < nbits;
-*/
 static purist int
 bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
@@ -1737,94 +1393,55 @@ is_punct(long c) {
    str_len(it); it = str_split_cut(&rest, delim))
 // clang-format on
 
-/*@
-  requires ptr != NULL && begin != NULL && end != NULL; // All or none can be NULL
-  // requires begin >= ptr; // begin must be within or equal to ptr
-  // requires end >= begin; // end must be within or equal to begin
-  // requires total >= 0; // total must be non-negative
-
-  assigns \nothing; // purist function
-
-  // Define a predicate to check if a str is valid
-  predicate str_is_valid(struct str s) {
-    return s.ptr != NULL ==> (s.rng.lo >= 0 && s.rng.hi >= s.rng.lo && s.rng.hi < s.rng.total && s.rng.cnt >= 0 && s.rng.cnt <= s.rng.hi - s.rng.lo && s.rng.total >= 0);
-  }
-
-  ensures \result.ptr == ptr;
-  ensures \result.rng.lo == (begin == NULL || ptr == NULL ? 0 : casti(begin - ptr));
-  ensures \result.rng.hi == (end == NULL || ptr == NULL ? 0 : casti(end - ptr));
-  ensures \result.rng.cnt == (begin == NULL || end == NULL ? 0 : casti(end - begin));
-  ensures \result.rng.total == total;
-  ensures str_is_valid(\result);
-*/
+static inline int
+str__is_val(const struct str *str) {
+  assert(str);
+  assert(rng__is_val(&str->rng));
+  assert(str->rng.lo >= 0);
+  assert(str->rng.hi >= str->rng.lo);
+  assert(str->rng.cnt == str->rng.hi - str->rng.lo);
+  assert(str->rng.cnt <= str->rng.total);
+  return 1;
+}
 static purist inline struct str
 strptr(const char *ptr, const char *begin, const char *end, int total) {
   if (ptr == 0 || begin == 0 || end == 0) {
     return str_nil;
   }
   struct str str = {.ptr = ptr};
-  int low = casti(begin - ptr);
-  int hih = casti(end - ptr);
-  int cnt = casti(end - begin);
+  int low = max(0, casti(begin - ptr));
+  int hih = max(0, casti(end - ptr));
+  int cnt = max(0, casti(hih - low));
+
   str.rng = (struct rng){low, hih, cnt, total};
+  ensures(str__is_val(&str));
   return str;
 }
-/*@
-  requires begin != NULL || end == NULL; // Either both or end can be NULL
-  requires end >= begin; // end must be within or equal to begin
-
-  assigns \nothing; // purist function
-
-  ensures \result.ptr == begin;
-  ensures \result.rng.lo == 0;
-  ensures \result.rng.hi == (end == NULL ? 0 : casti(end - begin));
-  ensures \result.rng.cnt == (end == NULL ? 0 : casti(end - begin));
-  ensures \result.rng.total == (end == NULL ? 0 : casti(end - begin));
-  ensures str_is_valid(\result);
-*/
 static purist inline struct str
 strp(const char *begin, const char *end) {
   if (begin == 0 || end == 0) {
     return str_nil;
   }
   int cnt = casti(end - begin);
-  return strptr(begin, begin, end, cnt);
+  struct str ret = strptr(begin, begin, end, cnt);
+  ensures(str__is_val(&ret));
+  return ret;
 }
-/*@
-  requires str_is_val(str);
-  assigns \nothing; // purist function
-  ensures \result >= 0;
-*/
 static purist unsigned long long
 str__hash(struct str str, unsigned long long id) {
-  assert(str_len(str) >= 0);
   if (str_is_inv(str)) {
     return id;
   }
   return fnv1a64(str_beg(str), str_len(str), id);
 }
-/*@
-  requires str_is_val(str);
-  assigns \nothing; // purist function
-  ensures \result >= 0;
-*/
 static purist unsigned long long
 str_hash(struct str str) {
-  assert(str_len(str) >= 0);
   return str__hash(str, FNV1A64_HASH_INITIAL);
 }
-/*@
-  requires str_is_val(lhs);
-  requires str_is_val(rhs);
-  assigns \nothing; // purist function
-  ensures \result == -1 || \result == 0 || \result == 1;
-*/
 static purist int
 str_cmp(struct str lhs, struct str rhs) {
-  assert(lhs.ptr);
-  assert(str_len(lhs) >= 0);
-  assert(rhs.ptr);
-  assert(str_len(rhs) >= 0);
+  requires(str__is_val(&lhs));
+  requires(str__is_val(&rhs));
 
   int cnt = min(str_len(lhs), str_len(rhs));
   for loop(i,cnt) {
@@ -1841,67 +1458,49 @@ str_cmp(struct str lhs, struct str rhs) {
   }
   return 0;
 }
-/*@
-  requires str_is_val(hay);
-  requires str_is_val(needle);
-  assigns \nothing; // purist function
-  ensures \result >= 0; // Return value is a valid index or str_len(hay)
-*/
 static purist int
 str_fnd(struct str hay, struct str needle) {
-  assert(str_len(hay) >= 0);
-  assert(str_len(needle) >= 0);
+  requires(str__is_val(&hay));
+  requires(str__is_val(&needle));
+  int ret = str_len(hay);
   if (str_len(hay) == 0 ||
       str_len(needle) == 0) {
-    return str_len(hay);
+    return ret;
   }
   if (str_len(needle) == 1) {
-    const char *ret = cpu_str_chr(str_beg(hay), str_len(hay), str_at(needle,0));
-    if (ret) {
-      return casti(ret - str_beg(hay));
+    const char *atp = cpu_str_chr(str_beg(hay), str_len(hay), str_at(needle,0));
+    if (atp) {
+      ret = casti(atp - str_beg(hay));
     }
-    return str_len(hay);
   } else {
-    return cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
+    ret = cpu_str_fnd(str_beg(hay), castsz(str_len(hay)), str_beg(needle), castsz(str_len(needle)));
   }
+  ensures(ret >= 0);
+  ensures(ret <= str_len(hay));
+  return ret;
 }
-/*@
-  requires str_is_val(hay);
-  requires str_is_val(needle);
-  assigns \nothing; // purist function
-  ensures \result == 0 || \result == 1; // Returns 0 (false) or 1 (true)
-*/
 static purist inline int
 str_has(struct str hay, struct str needle) {
-  assert(hay.ptr);
-  assert(str_len(hay) >= 0);
-  assert(needle.ptr);
-  assert(str_len(needle) >= 0);
+  requires(str__is_val(&hay));
+  requires(str__is_val(&needle));
   return str_fnd(hay, needle) >= str_len(hay);
 }
-/*@
-  requires str != NULL;
-  requires str_is_val(*str);
-  requires str_is_val(delim);
-  assigns *str; // Modifies the str pointer
-  ensures \result.ptr != NULL ==> str_is_val(\result); // Result is a valid str or str_nil
-*/
 static struct str
 str_split_cut(struct str *str, struct str delim) {
-  assert(str);
-  assert(delim.ptr);
-  assert(str_len(delim) >= 0);
+  requires(str__is_val(str));
+  requires(str__is_val(&delim));
 
+  struct str ret;
   int pos = str_fnd(*str, delim);
   if (pos < str_len(*str)) {
-    struct str ret = str_lhs(*str, pos);
+    ret = str_lhs(*str, pos);
     str_cut_lhs(str, pos + 1);
-    return ret;
   } else {
-    struct str ret = *str;
+    ret = *str;
     *str = str_nil;
-    return ret;
   }
+  requires(str__is_val(&ret));
+  return ret;
 }
 static void
 ut_str(void) {
@@ -2050,16 +1649,9 @@ static const unsigned utf_max[UTF_SIZ+1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10F
 #define utf_loop_rev(rune, it, rest, src)\
   (struct str rest = src, it = utf_dec_rev(rune, &rest); str_len(it); it = utf_dec_rev(rune, &rest))
 
-/*@
-  requires str != NULL;
-  requires str_is_val(*str) || str_is_inv(*str); // str can be valid or invalid
-  assigns *str, *rune; // Modifies str and rune (if not NULL)
-  ensures \result.ptr != NULL ==> str_is_val(\result); // Result is a valid str or str_nil
-  ensures str->ptr == \old(str->ptr) + \old(\result.rng.cnt);
-*/
 static struct str
 utf_dec(unsigned *rune, struct str *str) {
-  assert(str);
+  requires(str__is_val(str));
   if (str_is_empty(*str)) {
     if (rune) {
       *rune = UTF_INVALID;
@@ -2096,6 +1688,7 @@ utf_dec(unsigned *rune, struct str *str) {
     *rune = ret;
   }
   *str = strptr(str->ptr, str_beg(*str) + cnt + 1, str_end(*str), str->rng.total);
+  requires(str__is_val(str));
   return view;
 }
 static unsigned
@@ -2104,16 +1697,9 @@ utf_get(struct str str) {
   utf_dec(&rune, &str);
   return rune;
 }
-/*@
-  requires str != NULL;
-  requires str_is_val(*str) || str_is_inv(*str);
-  assigns *str, *rune;
-  ensures \result.ptr != NULL ==> str_is_val(\result);
-  ensures (str_is_empty(\old(*str)) || !str_is_empty(*str) ) ;
-  ensures \result.ptr == \old(str->ptr) + \old(str->rng.lo); // Start of the decoded character
-*/
 static struct str
 utf_dec_rev(unsigned *rune, struct str *str) {
+  requires(str__is_val(str));
   const char *ptr = str_end(*str);
   while (ptr > str_beg(*str)) {
     char pnt = *(--ptr);
@@ -2128,16 +1714,10 @@ utf_dec_rev(unsigned *rune, struct str *str) {
   *rune = UTF_INVALID;
   return str_nil;
 }
-/*@
-  requires buf != NULL;
-  requires cap >= 0;
-  requires rune >= 0 && rune <= 0x10FFFF; // Valid Unicode code point range
-  assigns buf[0..cap-1]; // Modifies the buffer
-  ensures \result == 0 ==> !utf_val(rune, 0) || cap < cnt || !cnt || cnt > UTF_SIZ; // Returns 0 if rune is invalid or buffer too small or count is invalid
-  ensures \result > 0 ==> \result <= cap && \result <= UTF_SIZ; // Returns count if encoding successful
-*/
 static int
 utf_enc(char *buf, int cap, unsigned rune) {
+  requires(0 <= cap);
+  requires(cap >= UTF_BUF);
   int cnt = 0;
   if (!utf_val(rune, 0)) {
     return 0;
@@ -2153,13 +1733,10 @@ utf_enc(char *buf, int cap, unsigned rune) {
   buf[0] = utf_enc_byte(rune, cnt);
   return cnt;
 }
-/*@
-  requires str_is_val(str);
-  assigns *rune; // Modifies rune (if not NULL)
-  ensures \result.ptr != NULL ==> str_is_val(\result);
-*/
 static struct str
 utf_at(unsigned *rune, struct str str, int idx) {
+  requires(str__is_val(&str));
+
   int i = 0;
   unsigned glyph = 0;
   for utf_loop(&glyph, itr, _, str) {
@@ -2179,24 +1756,15 @@ utf_at(unsigned *rune, struct str str, int idx) {
   }
   return strptr(str.ptr, str_end(str), str_end(str), str.rng.total);
 }
-/*@
-  requires str_is_val(str);
-  assigns \nothing;
-  ensures \result >= 0;
-*/
 static purist int
 utf_at_idx(struct str str, int idx) {
+  requires(str__is_val(&str));
   struct str view = utf_at(0, str, idx);
   if (str_len(view)) {
     return casti(str_beg(view) - str_beg(str));
   }
   return str_len(str);
 }
-/*@
-  requires str_is_val(str);
-  assigns \nothing;
-  ensures \result >= 0;
-*/
 static purist int
 utf_len(struct str str) {
   int i = 0;
@@ -2228,6 +1796,26 @@ ut_utf(void) {
     }
   }
   {
+    unsigned rune;
+    static const char utf8_str[] = "\xF0\x9F\x98\x80"; // U+1F600 (GRINNING FACE)
+    struct str input = str0(utf8_str); // Use str0 for null-terminated strings
+    struct str result = utf_dec(&rune, &input);
+
+    assert(rune == 0x1F600); // Check if the rune was decoded correctly
+    assert(result.rng.cnt == 4); // Check if we consumed 4 bytes
+    assert(str_len(input) == 0); // Check if all bytes were processed
+  }
+  {
+    unsigned rune;
+    const char utf8_str[] = "\xE2\x82\xAC"; // Euro sign U+20AC
+    struct str input = str0(utf8_str);
+    struct str result = utf_dec(&rune, &input);
+
+    assert(rune == 0x20AC); // Euro sign should be decoded correctly
+    assert(result.rng.cnt == 3); // Should consume 3 bytes
+    assert(str_len(input) == 0); // All bytes processed
+  }
+  {
     // Test cases for incomplete UTF-8 sequences (truncated in the middle)
     static const struct str test_cases[] = {
       strv("\xC3"),    // Missing continuation byte
@@ -2240,6 +1828,16 @@ ut_utf(void) {
       assert(result.ptr == str.ptr); // Ensure str remains unchanged
       assert(rune == UTF_INVALID);   // Ensure UTF_INVALID is returned
     }
+  }
+  {
+    unsigned rune;
+    const char empty_str[] = "";
+    struct str input = str0(empty_str); // Empty but not str_nil
+    struct str result = utf_dec(&rune, &input);
+
+    assert(rune == UTF_INVALID); // Should return invalid for empty string
+    assert(str_len(result) == 0); // No bytes consumed
+    assert(str_len(input) == 0); // Input should still be empty
   }
   {
     // Test case for an empty string
@@ -2258,8 +1856,8 @@ ut_utf(void) {
     };
     for (size_t i = 0; i < cntof(test_code_points); ++i) {
       unsigned rune = test_code_points[i];
-      char buf[UTF_SIZ];
-      int bytes_written = utf_enc(buf, UTF_SIZ, rune);
+      char buf[UTF_SIZ+1];
+      int bytes_written = utf_enc(buf, cntof(buf), rune);
       assert(bytes_written > 0);
 
       // Check if the encoded bytes represent the correct rune
@@ -2279,23 +1877,15 @@ ut_utf(void) {
     };
     for (size_t i = 0; i < cntof(invalid_code_points); ++i) {
       unsigned rune = invalid_code_points[i];
-      char buf[UTF_SIZ];
-      int bytes_written = utf_enc(buf, UTF_SIZ, rune);
+      char buf[UTF_SIZ+1];
+      int bytes_written = utf_enc(buf, cntof(buf), rune);
       assert(bytes_written == 0); // Ensure no bytes are written for invalid code points
     }
   }
   {
-    // Test case for insufficient buffer size
-    unsigned rune = 0x10FFFF; // Maximum valid code point
-    char buf[2]; // Buffer size is too small
-    int bytes_written = utf_enc(buf, sizeof(buf), rune);
-    assert(bytes_written == 0); // Ensure no bytes are written
-  }
-  {
-      // Test case for accessing a valid character index within a UTF-8 string
+    // Test case for accessing a valid character index within a UTF-8 string
     const char* str_literal = "Hello, 世界";
     struct str str = str0(str_literal);
-
     // Access the second character (world)
     int idx = 1;
     unsigned rune;
@@ -2308,7 +1898,6 @@ ut_utf(void) {
   {
     // Test case for accessing an index beyond the string length
     struct str str = strv("Hello");
-
     // Access index 5 (out of bounds)
     int idx = 5;
     unsigned rune;
@@ -2323,7 +1912,6 @@ ut_utf(void) {
   {
     // Test case for accessing an index in an empty string
     struct str str = str_nil;
-
     // Access index 0
     int idx = 0;
     unsigned rune;
@@ -2333,7 +1921,6 @@ ut_utf(void) {
   }
   {
     struct str str = strv("Hello, 世界");
-
     // Get the byte offset of the second character (world)
     int idx = 1;
     int byte_offset = utf_at_idx(str, idx);
@@ -2377,20 +1964,11 @@ ut_utf(void) {
  *                                String
  * ---------------------------------------------------------------------------
  */
-/*@
-  requires buf != NULL;
-  requires cnt >= 0;
-  requires str_is_val(str) || str_is_inv(str); // str can be valid or invalid
-
-  assigns buf[0..cnt-1];  // Modifies the buffer
-
-  ensures (str_is_empty(str) || str_len(str) > cnt) ==> \result == str_inv;
-  ensures str_len(str) <= cnt ==> \result.ptr == buf && \result.rng.cnt == str_len(str) && \result.rng.total == cnt;
-*/
 static inline struct str
 str_set(char *buf, int cnt, struct str str) {
-  assert(buf);
-  assert(str_len(str) >= 0);
+  requires(buf);
+  requires(cnt >= 0);
+  requires(str__is_val(&str));
   if (str_is_empty(str)) {
     return strn(buf,0);
   } else if (str_len(str) > cnt) {
@@ -2399,41 +1977,23 @@ str_set(char *buf, int cnt, struct str str) {
   mcpy(buf, str_beg(str), str_len(str));
   return strn(buf, str_len(str));
 }
-/*@
-  requires buf != NULL;
-  requires cnt >= 0;
-  requires str_is_val(str);
-
-  assigns buf[0..cnt-1]; // Modifies the buffer
-
-  ensures \result.ptr == buf;
-  ensures \result.rng.cnt == min(cnt, str_len(str));
-  ensures \result.rng.total == cnt;
-*/
 static inline struct str
 str_sqz(char *buf, int cnt, struct str str) {
-  assert(buf);
-  assert(str_len(str) >= 0);
+  requires(buf);
+  requires(cnt >= 0);
+  requires(str__is_val(&str));
 
   int len = min(cnt, str_len(str));
   mcpy(buf, str_beg(str), len);
   return strn(buf,len);
 }
-/*@
-  requires buf != NULL;
-  requires cap >= 0;
-  requires str_is_val(in);
-  requires str_is_val(str);
-
-  assigns buf[0..cap-1]; // Modifies the buffer
-
-  ensures \result.ptr == buf;
-  ensures \result.rng.cnt <= cap; // Result length is not greater than capacity
-  ensures \result.rng.total == cap;
-*/
 static struct str
 str_add(char *buf, int cap, struct str in, struct str str) {
-  assert(buf);
+  requires(buf);
+  requires(cap >= 0);
+  requires(str__is_val(&str));
+  requires(str__is_val(&in));
+
   if (str_len(in) + str_len(str) < cap) {
     mcpy(buf + str_len(in), str_beg(str), str_len(str));
     return strn(buf, str_len(str) + str_len(in));
@@ -2451,37 +2011,22 @@ str_add(char *buf, int cap, struct str in, struct str str) {
   mcpy(buf + str_len(in), str_beg(str), nnn);
   return strn(buf, str_len(in) + nnn);
 }
-/*@
-  requires buf != NULL;
-  requires str_is_val(in);
-  assigns buf[0..str_len(in)-cnt-1]; // Modifies the buffer
-
-  ensures \result.ptr == buf;
-  ensures \result.rng.cnt == max(0, str_len(in) - cnt);
-  ensures \result.rng.total == \old(in.rng.total); // Total remains the same (important!)
-*/
 static struct str
 str_rm(char *buf, struct str in, int cnt) {
-  assert(buf);
+  requires(buf);
+  requires(cnt >= 0);
+  requires(str__is_val(&in));
+
   int left = max(0, str_len(in) - cnt);
   return strn(buf, left);
 }
-/*@
-  requires buf != NULL;
-  requires cap >= 0;
-  requires str_is_val(in);
-  requires str_is_val(str);
-
-  assigns buf[0..cap-1]; // Modifies the buffer
-
-  ensures \result.ptr == buf;
-  ensures \result.rng.cnt == min(cap, str_len(in) + str_len(str));
-  ensures \result.rng.cnt <= cap;
-  ensures \result.rng.total == cap;
-*/
 static struct str
 str_put(char *buf, int cap, struct str in, int pos, struct str str) {
-  assert(buf);
+  requires(buf);
+  requires(cap >= 0);
+  requires(pos >= 0);
+  requires(str__is_val(&in));
+  requires(str__is_val(&str));
   if (pos >= str_len(in)) {
     return str_add(buf, cap, in, str);
   }
@@ -2490,42 +2035,26 @@ str_put(char *buf, int cap, struct str in, int pos, struct str str) {
     memmove(buf + pos + str_len(str), buf + pos, castsz(str_len(in) - pos));
     mcpy(buf + pos, str_beg(str), str_len(str));
     return strn(buf, str_len(in) + str_len(str));
-  }
-  int cnt = cap - pos;
-  int cpy = str_len(str);
-  if (pos + str_len(str) < cap) {
-    int mv = cap - (pos + str_len(str));
-    memmove(buf + pos + str_len(str), buf + pos, castsz(mv));
-  } else if (pos + str_len(str) > cap) {
-    cpy = 0;
+  } else {
+    int cpy = 0;
+    int cnt = cap - pos;
     unsigned rune = 0;
     for utf_loop(&rune, itr, _, str) {
-      int len = casti(str_end(itr) - str_beg(str));
-      if (len > cnt) {
+      int len = str_len(itr);
+      if (cpy + len > cnt) {
         break;
       }
-      cpy = len;
+      cpy += len;
     }
+    mcpy(buf + pos, str_beg(str), cpy);
+    return strn(buf, cap);
   }
-  mcpy(buf + pos, str_beg(str), cpy);
-  return strn(buf, cap + cpy - cnt);
 }
-
-/*@
-  requires buf != NULL;
-  requires str_is_val(in);
-  requires pos >= 0; // Or requires 0 <= pos <= str_len(in) if you want to be more strict
-  requires len >= 0; // Or requires 0 <= len <= str_len(in) - pos if you want to be more strict
-
-  assigns buf[0..str_len(in)-len-1]; // Modifies the buffer
-
-  ensures \result.ptr == buf;
-  ensures \result.rng.cnt == str_len(in) - min(len, str_len(in) - pos); // Correct length after deletion
-  ensures \result.rng.total == \old(in.rng.total); // Total remains the same
-*/
 static struct str
 str_del(char *buf, struct str in, int pos, int len) {
-  assert(buf);
+  requires(buf);
+  requires(pos >= 0);
+  requires(str__is_val(&in));
   if (pos < 0 || pos >= str_len(in) || len < 0) {
     return in;
   }
@@ -2533,15 +2062,11 @@ str_del(char *buf, struct str in, int pos, int len) {
   memmove(buf + pos, buf + pos + len, castsz(str_len(in) - pos));
   return strn(buf, str_len(in) - len);
 }
-/*@
-  requires buf != NULL;
-  requires n >= 0;
-  requires fmt != NULL;
-  assigns buf[0..n-1]; // Modifies the buffer
-*/
 static struct str
 str_fmtsn(char *buf, int n, const char *fmt, ...) {
-  assert(buf);
+  requires(buf);
+  requires(n >= 0);
+
   int ret;
   va_list va;
   va_start(va, fmt);
@@ -2549,24 +2074,19 @@ str_fmtsn(char *buf, int n, const char *fmt, ...) {
   va_end(va);
   return strn(buf, ret);
 }
-/*@
-  requires b != NULL;
-  requires cap >= 0;
-  requires str_is_val(in);
-  requires fmt != NULL;
-
-  assigns b[0..cap-1]; // Modifies the buffer
-*/
 static struct str
-str_add_fmt(char *b, int cap, struct str in, const char *fmt, ...) {
-  assert(b);
+str_add_fmt(char *buf, int cap, struct str in, const char *fmt, ...) {
+  requires(buf);
+  requires(cap >= 0);
+  requires(fmt != 0);
+
   va_list va;
   va_start(va, fmt);
   int left = max(0, cap - str_len(in));
-  char *dst = b + str_len(in);
+  char *dst = buf + str_len(in);
   int ret = fmtvsn(dst, left, fmt, va);
   va_end(va);
-  return strn(b, str_len(in) + ret);
+  return strn(buf, str_len(in) + ret);
 }
 static void
 ut_str2(void) {
@@ -2634,7 +2154,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 0);
     assert(result.rng.total == 0);
   }
-    { // Test 1: Success
+  {
+    // Test 1: Success
     char buf[20];
     strcpy(buf, "Hello, ");
     struct str in = strn(buf, 7);
@@ -2648,7 +2169,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 12);
     assert(result.rng.total == 12);
   }
-  { // Test 2: Insufficient buffer space
+  {
+    // Test 2: Insufficient buffer space
     char buf[8];
     strcpy(buf, "Hello, ");
     struct str in = strn(buf, 7);
@@ -2662,7 +2184,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 8);
     assert(result.rng.total == 8);
   }
-  { // Test 3: Empty input string
+  {
+    // Test 3: Empty input string
     char buf[20] = {0};
     strcpy(buf, "Hello, ");
     struct str in = strn(buf, 7);
@@ -2676,7 +2199,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 7);
     assert(result.rng.total == 7);
   }
-  { // Test 4: Empty buffer and input string
+  {
+    // Test 4: Empty buffer and input string
     char buf[10];
     struct str in = strn(buf,0);
     struct str str = str_nil;
@@ -2688,7 +2212,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 0);
     assert(result.rng.total == 0);
   }
-  { // Test 1: Remove characters from the end
+  {
+    // Test 1: Remove characters from the end
     char buf[10];
     strcpy(buf, "hello");
     struct str str = strn(buf, 5);
@@ -2701,8 +2226,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 3);
     assert(result.rng.total == 3);
   }
-
-  { // Test 2: Remove more characters than available
+  {
+    // Test 2: Remove more characters than available
     char buf[10];
     strcpy(buf, "hello");
     struct str str = strn(buf, 5);
@@ -2714,8 +2239,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 0);
     assert(result.rng.total == 0);
   }
-
-  { // Test 3: Remove no characters
+  {
+    // Test 3: Remove no characters
     char buf[10];
     strcpy(buf, "hello");
     struct str str = strn(buf, 5);
@@ -2728,8 +2253,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 5);
     assert(result.rng.total == 5);
   }
-
-  { // Test 4: Empty string
+  {
+    // Test 4: Empty string
     char buf[10];
     struct str str = strn(buf, 0);
     struct str result = str_rm(buf, str, 0);
@@ -2740,7 +2265,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 0);
     assert(result.rng.total == 0);
   }
-    { // Test 1: Insert at the beginning
+  {
+    // Test 1: Insert at the beginning
     char buf[20] = {0};
     strcpy(buf, "world");
     struct str in = strn(buf, 5);
@@ -2754,8 +2280,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 12);
     assert(result.rng.total == 12);
   }
-
-  { // Test 2: Insert in the middle
+  {
+    // Test 2: Insert in the middle
     char buf[20];
     strcpy(buf,"He, world!");
     struct str in = str0(buf);
@@ -2769,8 +2295,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 13);
     assert(result.rng.total == 13);
   }
-
-  { // Test 3: Insert at the end (delegates to str_add)
+  {
+    // Test 3: Insert at the end (delegates to str_add)
     char buf[20];
     strcpy(buf,"Hello, ");
     struct str in = str0(buf);
@@ -2784,8 +2310,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 12);
     assert(result.rng.total == 12);
   }
-
-  { // Test 4: Insufficient buffer space
+  {
+    // Test 4: Insufficient buffer space
     char buf[5] = {0};
     strcpy(buf, "Hell");
     struct str in = str0(buf);
@@ -2799,8 +2325,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 5);
     assert(result.rng.total == 5);
   }
-
-  { // Test 5: Invalid insertion position
+  {
+    // Test 5: Invalid insertion position
     char buf[5] = {0};
     strcpy(buf, "Hell");
     struct str in = str0(buf);
@@ -2814,8 +2340,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 5);
     assert(result.rng.total == 5);
   }
-
-  { // Test 6: Empty input string
+  {
+    // Test 6: Empty input string
     char buf[20];
     strcpy(buf, "Hello, ");
     struct str in = str0(buf);
@@ -2829,7 +2355,8 @@ ut_str2(void) {
     assert(result.rng.cnt == 7);
     assert(result.rng.total == 7);
   }
-    { // Test 1: Delete from the beginning
+  {
+    // Test 1: Delete from the beginning
     char buf[20];
     strcpy(buf, "hello world");
     struct str str = str0(buf);
@@ -2843,7 +2370,8 @@ ut_str2(void) {
     assert(result.rng.total == 9);
   }
 
-  { // Test 2: Delete from the middle
+  {
+    // Test 2: Delete from the middle
     char buf[20];
     strcpy(buf, "hello world");
     struct str str = str0(buf);
@@ -2857,7 +2385,8 @@ ut_str2(void) {
     assert(result.rng.total == 8);
   }
 
-  { // Test 3: Delete from the end
+  {
+    // Test 3: Delete from the end
     char buf[20];
     strcpy(buf, "hello world");
     struct str str = str0(buf);
@@ -2871,7 +2400,8 @@ ut_str2(void) {
     assert(result.rng.total == 8);
   }
 
-  { // Test 4: Invalid position (out of bounds)
+  {
+    // Test 4: Invalid position (out of bounds)
     char buf[20];
     strcpy(buf, "hello world");
     struct str str = str0(buf);
@@ -2885,7 +2415,8 @@ ut_str2(void) {
     assert(result.rng.total == 11);
   }
 
-  { // Test 5: Invalid length (negative)
+  {
+    // Test 5: Invalid length (negative)
     char buf[20];
     strcpy(buf, "hello world");
     struct str str = str0(buf);
@@ -2899,7 +2430,8 @@ ut_str2(void) {
     assert(result.rng.total == 11);
   }
 
-  { // Test 6: Empty string
+  {
+    // Test 6: Empty string
     char buf[20];
     struct str str = str_nil;
     struct str result = str_del(buf, str, 0, 0);
@@ -2947,12 +2479,6 @@ ut_str2(void) {
 #define min_flt_time(t)   castf(castd(t)*(1.0/10000000000.0))
 #define hour_flt_time(t)  castf(castd(t)*(1.0/3600000000000.0))
 
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX); // Valid range or infinity
-  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX); // Valid range or infinity
-  assigns \nothing; // purist function
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 0 && a == time_inf && b == time_inf) || (\result == 0 && a == time_ninf && b == time_ninf) || (\result == 0 && a == time_inf && b == time_ninf) || (\result == 0 && a == time_ninf && b == time_inf); // Result within valid range or infinity or 0 if both are inf/ninf
-*/
 static purist long long
 time_sub(long long a, long long b) {
   if (a == time_inf) {
@@ -2966,12 +2492,6 @@ time_sub(long long a, long long b) {
   }
   return a - b;
 }
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX); // Valid range or infinity
-  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX); // Valid range or infinity
-  assigns \nothing; // purist function
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 0 && a == time_inf && b == time_ninf) || (\result == 0 && a == time_ninf && b == time_inf); // Result within valid range or infinity or 0 if both are inf and -inf
-*/
 static purist long long
 time_add(long long a, long long b) {
   if (a == time_inf) {
@@ -2985,14 +2505,6 @@ time_add(long long a, long long b) {
   }
   return a + b;
 }
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
-  assigns \nothing; // purist function
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
-  ensures (a == time_inf) ==> \result == time_ninf;
-  ensures (a == time_ninf) ==> \result == time_inf;
-  ensures (a >= LLONG_MIN && a <= LLONG_MAX) ==> \result == -a;
-*/
 static long long
 time_neg(long long a) {
   if (a == time_inf) {
@@ -3003,24 +2515,10 @@ time_neg(long long a) {
     return -a;
   }
 }
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
-  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX);
-  assigns \nothing; // purist function
-  // This is a simplified postcondition.  A fully precise postcondition for multiplication
-  // involving infinity and normal values would need to consider the sign of b.
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
-*/
 static long long
 time_mul(long long a, long long b) {
   return a * b;
 }
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
-  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX) || b != 0; // b can be inf/ninf or non-zero
-  assigns \nothing; // purist function
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX) || (\result == 1 && a == time_inf && b == time_inf) || (\result == -1 && a == time_inf && b == time_ninf) || (\result == 1 && a == time_ninf && b == time_ninf) || (\result == -1 && a == time_ninf && b == time_inf);
-*/
 static long long
 time_div(long long a, long long b) {
   if (a == time_inf) {
@@ -3046,14 +2544,6 @@ time_div(long long a, long long b) {
   }
   return a / b;
 }
-/*@
-  requires a == time_inf || a == time_ninf || (a >= LLONG_MIN && a <= LLONG_MAX);
-  requires b == time_inf || b == time_ninf || (b >= LLONG_MIN && b <= LLONG_MAX) || b != 0; // b can be inf/ninf or non-zero
-  assigns \nothing; // purist function
-  ensures \result == time_inf || \result == time_ninf || (\result >= LLONG_MIN && \result <= LLONG_MAX);
-  ensures (a == time_inf || a == time_ninf) ==> \result == a;
-  ensures (b == time_inf || b == time_ninf) ==> \result == 0; // Or undefined, depending on your semantics.
-*/
 static long long
 time_mod(long long a, long long b) {
   assert(b != 0ll);
@@ -3070,14 +2560,9 @@ time_mod(long long a, long long b) {
  *                                  Path
  * ---------------------------------------------------------------------------
  */
-/*@
-  requires path != NULL;
-  assigns path[0..\strlen(path)-1]; // Modifies the path string in place
-  ensures \forall integer i; 0 <= i < \strlen(path) ==> path[i] == '/' || (path[i] != '\\' && \old(path)[i] == path[i]); // Replaces '\' with '/' and leaves other characters the same, or the character was already a '/'.
-  ensures \strlen(path) > 0 ==> path[\strlen(path)-1] != '/'; // Removes trailing '/' if present
-*/
 static void
 path_norm(char *path) {
+  requires(path);
   char *ptr = path;
   for (; *ptr; ptr++) {
     if (*ptr == '\\') {
@@ -3088,27 +2573,20 @@ path_norm(char *path) {
     ptr[-1] = 0;
   }
 }
-/*@
-  requires str_is_val(path);
-  assigns \nothing; // purist function
-  ensures \result.ptr != NULL ==> str_is_val(\result);
-*/
 static struct str
 path_file(struct str path) {
+  requires(str__is_val(&path));
   for (const char *p = str_end(path); p > str_beg(path); --p) {
     if (p[-1] == '/') {
       return strptr(path.ptr, p, str_end(path), path.rng.total);
     }
   }
+  ensures(str__is_val(&path));
   return path;
 }
-/*@
-  requires str_is_val(path);
-  assigns \nothing; // purist function
-  ensures \result.ptr == NULL || str_is_val(\result);
-*/
 static struct str
 path_ext(struct str path) {
+  requires(str__is_val(&path));
   for (const char *p = str_end(path); p > str_beg(path); --p) {
     if (p[-1] == '.') {
       return strptr(path.ptr, p, str_end(path), path.rng.total);
@@ -3130,19 +2608,6 @@ path_ext(struct str path) {
 #define str_buf_len(hdl) casti((hdl) & 0xffff)
 // clang-format on
 
-/*@
-  requires cnt != NULL;
-  requires *cnt >= 0 && *cnt <= 0xffff;
-  requires cap >= 0 && cap <= 0x10000; // cap cannot exceed 16-bit value
-  requires *cnt <= cap;
-  requires mem != NULL;
-  requires str_is_val(s) || str_is_inv(s);
-
-  assigns *cnt, mem[0..cap-1]; // Modifies the count and the memory
-
-  ensures \result >= 0; // Return value is a handle
-  ensures (*cnt >= 0 && *cnt <= cap); // cnt stays within bounds
-*/
 static unsigned
 str_buf__push(int *cnt, char *mem, int cap, struct str s) {
   requires(cnt);
@@ -3162,20 +2627,6 @@ str_buf__push(int *cnt, char *mem, int cap, struct str s) {
   *cnt += n;
   return ret;
 }
-/*@
-  requires cnt != NULL;
-  requires cap >= 0 && cap <= 0x10000;
-  requires *cnt >= 0 && *cnt <= 0x10000;
-  requires *cnt <= cap;
-  requires mem != NULL;
-  requires str_is_val(s) || str_is_inv(s);
-  requires max_len >= 0;
-
-  assigns *cnt, mem[0..cap-1]; // Modifies the count and the memory
-
-  ensures \result >= 0; // Return value is a handle
-  ensures (*cnt >= 0 && *cnt <= cap); // cnt stays within bounds
-*/
 static unsigned
 str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
   requires(cnt);
@@ -3196,19 +2647,6 @@ str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
   unsigned ret = (off << 16u)|(str_len(p) & 0xffff);
   return ret;
 }
-/*@
-  requires mem != NULL;
-  requires cnt >= 0 && cnt <= 0x10000; // cnt cannot exceed 16-bit value
-  requires str_buf_len(hdl) >= 0 && str_buf_len(hdl) <= 0xffff; // Length from handle cannot exceed 16-bit value
-  requires str_buf_off(hdl) >= 0 && str_buf_off(hdl) <= 0xffff; // Offset from handle cannot exceed 16-bit value
-  requires str_buf_len(hdl) + str_buf_off(hdl) <= cnt; // Length + offset must be within cnt
-
-  assigns \nothing; // purist function
-
-  ensures \result.ptr == mem + str_buf_off(hdl);
-  ensures \result.rng.cnt == str_buf_len(hdl);
-  ensures \result.rng.total == cnt;
-*/
 static purist struct str
 str_buf__get(char *mem, int cnt, unsigned hdl) {
   requires(mem);
@@ -3221,13 +2659,6 @@ str_buf__get(char *mem, int cnt, unsigned hdl) {
   int len = str_buf_len(hdl);
   return strn(mem + off, len);
 }
-/*@
-  requires mem != NULL;
-  requires cnt != NULL;
-  requires *cnt >= 0 && *cnt <= 0x10000;
-  assigns *cnt; // Modifies the count
-  ensures *cnt == 0;
-*/
 static void
 str_buf__clr(char *mem, int *cnt) {
   requires(mem);
@@ -3262,29 +2693,11 @@ str_buf__clr(char *mem, int *cnt) {
 } while(0)
 // clang-format on
 
-/*@
-  requires key >= 0 && key <= 0x7fffffffffffffffllu; // Key must be non-negative and within the valid range
-  assigns \nothing; // purist function
-  ensures \result >= 0; // Hash is always non-negative
-*/
 static purist force_inline unsigned long long
 tbl__hash(unsigned long long key) {
   unsigned long long hsh = key & 0x7fffffffffffffffllu;
   return hsh | (hsh == 0);
 }
-/*@
-  requires a != NULL;
-  requires b != NULL;
-  requires siz > 0 && siz <= 64; // size of a single element, up to 64 bytes
-  requires a != b; // a and b point to different memory locations
-  requires \valid_read(a); // a points to a readable element of the specified size
-  requires \valid_read(b); // b points to a readable element of the specified size
-  assigns *a, *b; // Modifies the elements pointed to by a and b
-
-  // More precise ensures clauses:
-  ensures \old(*((char*)a)) == *((char*)b); // After swap, a contains the original value of b
-  ensures \old(*((char*)b)) == *((char*)a); // After swap, b contains the original value of a
-*/
 static force_inline void
 tbl__swap(void *restrict a, void *restrict b, int siz) {
   requires(siz <= 64);
@@ -3293,26 +2706,12 @@ tbl__swap(void *restrict a, void *restrict b, int siz) {
   mcpy(a, b, siz);
   mcpy(b, tmp, siz);
 }
-/*@
-  requires keys!= NULL;
-  requires vals!= NULL || val == NULL; // vals can be NULL if val is also NULL
-  requires cnt!= NULL;
-  requires *cnt >= 0;
-  requires idx >= 0; // Index must be non-negative
-  requires hsh >= 0; // Hash must be non-negative
-  requires val_siz > 0; // Value size must be positive
-  requires \valid(keys[0..]); // Keys array must be valid (up to some unspecified bound)
-  assigns keys[idx], *cnt; // Modifies the keys array and the count
-
-  ensures \result == idx; // Returns the index
-  ensures *cnt == \old(*cnt) + 1; // Increments the count
-  ensures keys[idx] == hsh; // Stores the hash
-*/
 static force_inline long long
-tbl__store(unsigned long long *keys, void *vals, int *cnt,
+tbl__store(unsigned long long *keys, void *vals, int *cnt, int cap,
            unsigned long long idx, unsigned long long hsh,
            void* val, int val_siz) {
 
+  unused(cap);
   assert(cnt);
   assert(keys);
 
@@ -3324,17 +2723,6 @@ tbl__store(unsigned long long *keys, void *vals, int *cnt,
   *cnt += 1;
   return castll(idx);
 }
-/*@
-  requires keys != NULL;
-  requires vals != NULL || val == NULL; // vals can be NULL if val is also NULL
-  requires cnt != NULL;
-  requires *cnt >= 0;
-  requires cap > 0; // Capacity must be positive
-  requires val_siz > 0; // Value size must be positive
-  requires \valid(keys[0..cap-1]); // Keys array must be valid up to cap-1
-  assigns keys[0..cap-1], *cnt; // Modifies the keys array and the count
-  ensures \result >= 0; // Returns a non-negative index or cap if full
-*/
 static long long
 tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
          unsigned long long key, void *val, int val_siz) {
@@ -3352,10 +2740,10 @@ tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
   do {
     unsigned long long slot = keys[idx];
     if (!slot) {
-      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
+      return tbl__store(keys, vals, cnt, cap, idx, hsh, val, val_siz);
     }
     if (tbl__is_del(slot)) {
-      return tbl__store(keys, vals, cnt, idx, hsh, val, val_siz);
+      return tbl__store(keys, vals, cnt, cap, idx, hsh, val, val_siz);
     }
     unsigned long long d = tbl__dist(slot, siz, idx);
     if (d++ > dist++) {
@@ -3370,13 +2758,6 @@ tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
   } while ((idx = ((idx + 1) % siz)) != beg);
   return castll(siz);
 }
-/*@
-  requires set != NULL;
-  requires cap > 0;
-  requires \valid(set[0..cap-1]); // set array must be valid
-  assigns \nothing; // purist function
-  ensures \result >= 0 && \result <= cap; // Returns a non-negative index or cap if not found
-*/
 static purist int
 tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {
   assert(set);
@@ -3393,18 +2774,6 @@ tbl__fnd(unsigned long long *set, int cap, unsigned long long key) {
   } while ((i = ((i + 1) % n)) != b);
   return cap;
 }
-/*@
-  requires set != NULL;
-  requires cap > 0;
-  requires cnt != NULL;
-  requires *cnt >= 0;
-  requires \valid(set[0..cap-1]);
-
-  assigns set[0..cap-1], *cnt;
-
-  ensures \result >= 0 && \result <= cap; // Returns a valid index or cap
-  ensures *cnt <= \old(*cnt); // Count can only decrease
-*/
 static int
 tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
   assert(set);
@@ -3418,14 +2787,6 @@ tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
   }
   return i;
 }
-/*@
-  requires keys != NULL;
-  requires cap > 0;
-  requires i >= 0;
-  requires \valid(keys[0..cap-1]);
-  assigns \nothing; // purist function
-  ensures \result >= 0 && \result <= cap; // Returns a valid index or cap
-*/
 static purist int
 tbl__nxt_idx(unsigned long long *keys, int cap, int i) {
   assert(keys);
@@ -3442,9 +2803,8 @@ ut_tbl(void) {
     int id;
     char name[32];
   } Person;
-
-  // 1. Normal expected inputs (int values)
   {
+    // 1. Normal expected inputs (int values)
     struct tbl(int, 16) table_int = {0};
     tbl_clr(&table_int);
 
@@ -3470,8 +2830,8 @@ ut_tbl(void) {
     tbl_clr(&table_int);
     assert(table_int.cnt == 0);
   }
-  // 2. Normal expected inputs (Person struct values)
   {
+    // 2. Normal expected inputs (Person struct values)
     struct tbl(Person, 8) table_person = {0};
     tbl_clr(&table_person);
 
@@ -3491,8 +2851,8 @@ ut_tbl(void) {
       assert(!strcmp(found_person->name, p2.name));
     }
   }
-  // 3. Edge cases (full table, collisions, deletions)
   {
+    // 3. Edge cases (full table, collisions, deletions)
     struct tbl(int, 4) table_edge = {0};
     tbl_clr(&table_edge);
 
@@ -3522,8 +2882,8 @@ ut_tbl(void) {
     assert(result < cntof(table_edge.keys)); // Check for "table full" return value
     assert(table_edge.cnt == 5); // Count should not have changed
   }
-  // 5. More Comprehensive Collision Testing (important)
   {
+    // 5. More Comprehensive Collision Testing (important)
     struct tbl(int, 16) collision_table = {0};
     tbl_clr(&collision_table);
     for (int i = 0; i < 16; i++) {
