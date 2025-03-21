@@ -40,8 +40,8 @@ static const struct db_tbl_col_def db_tbl_def[DB_STATE_TBL_COL_CNT] = {
   [DB_STATE_TBL_COL_TBLS]  = {.title = strv("Tables"),  .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
   [DB_STATE_TBL_COL_FLTR]  = {.title = strv("Filters"), .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 800}}},
 };
-
 // clang-format on
+
 struct db_name_lck {
   struct str name;
   sqlite3_stmt *stmt;
@@ -596,7 +596,6 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
   ensures(stbl->row.rng.lo == 0);
   ensures(stbl->row.rng.hi == 0);
   ensures(stbl->row.rng.cnt == 0);
-
   ensures(db__state_is_val(sdb));
 }
 static struct str
@@ -743,6 +742,8 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
           struct str data = strn(dat, len);
           assert(elm_idx < cntof(vtbl->row.lst));
           vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, data, DB_MAX_TBL_ELM_DATA);
+        } else {
+          vtbl->row.lst[elm_idx] = str_buf_sqz(&vtbl->row.buf, strv("blob"), DB_MAX_TBL_ELM_DATA);
         }
         elm_idx++;
       }
@@ -1623,23 +1624,22 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
 
   gui.pan.begin(ctx, pan, parent);
   {
+    if (vtbl->col.id != stbl->rowid) {
+      /* reload column data */
+      if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
+        stbl->col.total = stbl->col.rng.total;
+        stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
+        stbl->col.rng.total = stbl->col.sel.cnt;
+        db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
+      } else {
+        db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
+      }
+    }
     int back = 0;
     int front = 0;
-
     struct gui_tbl tbl = {.box = pan->box};
     gui.tbl.begin(ctx, &tbl, pan, stbl->row.ui.off, 0);
     {
-      if (vtbl->col.id != stbl->rowid) {
-        /* reload column data */
-        if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
-          stbl->col.total = stbl->col.rng.total;
-          stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
-          stbl->col.rng.total = stbl->col.sel.cnt;
-          db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
-        } else {
-          db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
-        }
-      }
       /* header */
       int tbl_lay[GUI_TBL_COL(DB_MAX_TBL_ROW_COLS)];
       gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_lay), arrv(stbl->row.ui.state));
@@ -1657,8 +1657,9 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
           prv.box.x = gui.bnd.min_ext(slot.pan.box.x.min, ctx->cfg.scrl);
 
           /* move column window to the left */
-          int dis = stbl->col.rng.lo == 0 || stbl->col.rng.cnt == stbl->col.rng.total;
-          confine gui_disable_on_scope(&gui, ctx, dis) {
+          int fits = stbl->row.cols.cnt >= stbl->col.rng.total;
+          int begin = stbl->row.cols.lo == 0;
+          confine gui_disable_on_scope(&gui, ctx, fits || begin) {
             back = gui__scrl_btn(ctx, &prv, &slot.pan, GUI_WEST);
           }
           slot.pan.box.x = gui.bnd.min_max(prv.box.x.max, slot.pan.box.x.max);
@@ -1668,8 +1669,8 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
           nxt.box.x = gui.bnd.max_ext(slot.pan.box.x.max, ctx->cfg.scrl);
 
           /* move column window to the right */
-          int fits = stbl->col.rng.cnt == stbl->col.rng.total;
-          int end = (i >= (stbl->col.rng.total - stbl->row.cols.cnt));
+          int fits = stbl->row.cols.cnt >= stbl->col.rng.total;
+          int end = (stbl->row.cols.lo + stbl->row.cols.cnt >= stbl->col.rng.total);
           confine gui_disable_on_scope(&gui, ctx, fits || end) {
             front = gui__scrl_btn(ctx, &nxt, &slot.pan, GUI_EAST);
           }
@@ -2162,7 +2163,7 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
         struct db_tbl_state *stbl = &sdb->tbls[idx];
 
         enum res_ico_id ico;
-        struct str title = strv("Open");
+        struct str title = strv("Open...");
         if (stbl->active) {
           ico = RES_ICO_TABLE;
           title = stbl->title;
@@ -2237,7 +2238,6 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
       ui_db_view_info(sdb, vdb, view, &sdb->info, &vdb->info, ctx, &overview, pan);
     } break;
     case TBL_VIEW_DISPLAY: {
-      /* table view */
       struct gui_panel lst = {.box = pan->box};
       ui_db_tbl_view_dsp(sdb, vdb, stbl, vtbl, ctx, &lst, pan);
     } break;
