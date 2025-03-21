@@ -726,6 +726,7 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
         struct gui_input pin = {0};
         gui.pan.input(&pin, ctx, &item, GUI_BTN_LEFT);
         if (pin.mouse.btn.left.doubled) {
+          gui.in.eat(ctx);
           chdir = 1;
           dir = i;
         }
