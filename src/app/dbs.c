@@ -37,7 +37,8 @@ static const struct db_tbl_col_def db_tbl_disp_col_def[DB_TBL_DISP_COL_MAX] = {
 static const struct db_tbl_col_def db_tbl_def[DB_STATE_TBL_COL_CNT] = {
   [DB_STATE_TBL_COL_NAME]  = {.title = strv("Name"),    .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {50, 800}}},
   [DB_STATE_TBL_COL_DEL]   = {.title = strv(""),        .ui = {.type = GUI_LAY_SLOT_FIX, .size = 60, .con = {60, 60}}},
-  [DB_STATE_TBL_COL_TBLS]  = {.title = strv("Tables"),  .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
+  [DB_STATE_TBL_COL_COLS]  = {.title = strv("Columns"), .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
+  [DB_STATE_TBL_COL_ROWS]  = {.title = strv("Rows"),    .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
   [DB_STATE_TBL_COL_FLTR]  = {.title = strv("Filters"), .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 800}}},
 };
 // clang-format on
@@ -2186,10 +2187,12 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
               del_idx = idx;
               do_del = 1;
             }
-            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->col.total);
+            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->col.rng.total);
+            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->row.rng.total);
             gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->fltr.cnt);
           } else {
             struct gui_box item = {0};
+            gui_tbl_lst_elm_col(&item, ctx, &tbl, tbl_lay);
             gui_tbl_lst_elm_col(&item, ctx, &tbl, tbl_lay);
             gui_tbl_lst_elm_col(&item, ctx, &tbl, tbl_lay);
             gui_tbl_lst_elm_col(&item, ctx, &tbl, tbl_lay);
