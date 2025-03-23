@@ -892,6 +892,28 @@ db_tbl_fltr_enabled(struct db_tbl_fltr_state *fltr) {
   }
   return 1;
 }
+static void
+db_tbl_open(struct db_state *sdb, int tbl) {
+  requires(db__state_is_val(sdb));
+  assert(tbl >= 0 && tbl < DB_TBL_CNT);
+
+  sdb->tbls[tbl].active = 1;
+  sdb->frame = DB_FRAME_TBL;
+  sdb->sel_tbl = tbl;
+  ensures(db__state_is_val(sdb));
+}
+static void
+db_tbl_close(struct db_state *sdb, int tbl) {
+  requires(db__state_is_val(sdb));
+  assert(tbl >= 0 && tbl < DB_TBL_CNT);
+
+  sdb->tbls[tbl].active = 0;
+  sdb->tbls[tbl].state = TBL_VIEW_SELECT;
+  sdb->frame = DB_FRAME_LST;
+  sdb->sel_tbl = 0;
+  ensures(db__state_is_val(sdb));
+}
+
 /* ---------------------------------------------------------------------------
  *                                Info
  * ---------------------------------------------------------------------------
@@ -1050,8 +1072,8 @@ db_init(void *mem, int siz) {
 }
 static int
 db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
-  assert(sdb);
-  assert(ctx);
+  requires(sdb);
+  requires(ctx);
 
   sdb->id = str_hash(path);
   int err = sqlite3_open(str_beg(path), &sdb->con);
@@ -1086,7 +1108,7 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
 
   ensures(sdb->info.sel_tab >= 0);
   ensures(sdb->info.sel_tab < cntof(sdb->info.tab_cnt));
-  requires(db__state_is_val(sdb));
+  ensures(db__state_is_val(sdb));
   return 1;
 }
 static void
@@ -1633,8 +1655,8 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
       /* reload column data */
       if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
         stbl->col.total = stbl->col.rng.total;
-        stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
         stbl->col.rng.total = stbl->col.sel.cnt;
+        stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
         db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
       } else {
         db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
@@ -1802,9 +1824,7 @@ ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_view *vdb,
         db_tbl_qry_cols(sdb, vdb, stbl, vtbl, tbl.lst.begin, tbl.lst.end, 0);
       }
       for gui_tbl_lst_loopv(i,_,gui,&tbl,vtbl->col.lst) {
-        assert(i < cntof(vtbl->col.lst));
         assert(i < stbl->col.rng.total);
-
         struct db_tbl_col *col = &vtbl->col.lst[i];
         struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
         struct str col_type = str_buf_get(&vtbl->col.buf, col->type);
@@ -1930,9 +1950,12 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
           }
         }
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
+          stbl->col.cnt = stbl->col.sel.cnt;
           stbl->col.total = stbl->col.rng.total;
           stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
           stbl->col.rng.total = stbl->col.sel.cnt;
+          stbl->row.cols.cnt = min(stbl->col.sel.cnt, DB_MAX_TBL_ROW_COLS);
+          stbl->row.cols.total = stbl->col.sel.cnt;
           db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
         }
       }
@@ -1940,6 +1963,9 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
           stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
           stbl->col.rng.total = stbl->col.total;
+          stbl->col.cnt = min(stbl->col.rng.total, DB_MAX_TBL_COLS);
+          stbl->row.cols.cnt = min(stbl->col.total, DB_MAX_TBL_ROW_COLS);
+          stbl->row.cols.total = stbl->col.total;
         }
       }
       stbl->disp = cast(enum db_tbl_view_dsp_state, tab.sel.idx);
@@ -2212,12 +2238,8 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
     gui.tbl.end(ctx, &tbl, pan, sdb->ui.off);
   }
   gui.pan.end(ctx, pan, parent);
-
   if (do_del) {
-    sdb->tbls[del_idx].active = 0;
-    sdb->tbls[del_idx].state = TBL_VIEW_SELECT;
-    sdb->frame = DB_FRAME_LST;
-    sdb->sel_tbl = 0;
+    db_tbl_close(sdb, del_idx);
   }
   ensures(db__state_is_val(sdb));
   return ret;
@@ -2263,8 +2285,9 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
   requires(parent);
 
   if (sdb->id != vdb->id) {
-    vdb->id = sdb->id;
     vdb->info.id = 0;
+    vdb->id = sdb->id;
+
     vdb->tbl.row.id = 0;
     vdb->tbl.col.id = 0;
     vdb->tbl.fltr.id = 0;
@@ -2294,10 +2317,7 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
     case DB_FRAME_LST: {
       int ret = ui_db_tab_view_lst(sdb, ctx, &bdy, pan);
       if (ret >= 0) {
-        assert(ret >= 0 && ret < DB_TBL_CNT);
-        sdb->tbls[ret].active = 1;
-        sdb->frame = DB_FRAME_TBL;
-        sdb->sel_tbl = ret;
+        db_tbl_open(sdb, ret);
       }
     } break;
     case DB_FRAME_TBL: {

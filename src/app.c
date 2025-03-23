@@ -143,7 +143,8 @@ app_init(struct app *app, struct sys *sys) {
   app_view_init(&app->view);
 
   if (pck.init(&app->fs, sys, &app->gui) < 0) {
-
+    sys->con.err("[app] failed to initialize file picker!\n");
+    exit(1);
   }
   dbs.init(app->db_mem, szof(app->db_mem));
 
