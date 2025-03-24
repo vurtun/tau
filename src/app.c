@@ -72,6 +72,7 @@ static struct app g_app;
  * ---------------------------------------------------------------------------*/
 static inline int
 app_is_val(struct app *app) {
+  unused(app);
   assert(app);
   assert(app->view.state == APP_VIEW_STATE_FILE ||
     app->view.state == APP_VIEW_STATE_DB || app->view.state == 0);
@@ -324,7 +325,6 @@ app_run(struct sys *sys) {
 
   case SYS_QUIT: {
     /* shutdown */
-    printf("memory: %d\n", szof(struct app));
     app_shutdown(sys->app, sys);
     sys->app = 0;
   } break;

@@ -243,20 +243,30 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   sys->gfx.buf2d.intern = mtl;
   mtl->sem = dispatch_semaphore_create(GFX_MTL_BUF_DEPTH);
   mtl->cmd_que = [mtl->dev newCommandQueue];
-  mtl->lib = [mtl->dev newLibraryWithFile: @"gfx.metallib" error:&err];
-  //mtl->lib = [mtl->dev newDefaultLibrary];
+
+  NSString *exe_path = [[NSBundle mainBundle] executablePath];
+  NSString *dir_path = [exe_path stringByDeletingLastPathComponent];
+
+  /* construct the full path to gfx.metallib */
+  NSString *lib_path = [dir_path stringByAppendingPathComponent:@"gfx.metallib"];
+  NSURL *lib_url = [NSURL fileURLWithPath:lib_path];
+#if 1
+  mtl->lib = [mtl->dev newLibraryWithURL:lib_url error:&err];
+#else
+  mtl->lib = [mtl->dev newDefaultLibrary];
+#endif
   if (!mtl->lib) {
     NSLog(@"Failed to load library");
     exit(0);
   }
   id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"ren_vtx"];
   if (!vshdr_f) {
-    NSLog(@"Unable to get vertFunc!\n");
+    NSLog(@"Unable to get ren_vtx metal vertex shader function!\n");
     return -1;
   }
   mtl->fshdr_f = [mtl->lib newFunctionWithName:@"ren_frag"];
   if (!mtl->fshdr_f) {
-    NSLog(@"Unable to get fragFunc!\n");
+    NSLog(@"Unable to get ren_frag metal framgent shader function!\n");
     return -1;
   }
   MTLRenderPipelineDescriptor *pld = [[MTLRenderPipelineDescriptor alloc] init];
@@ -370,7 +380,7 @@ gfx_mtl_end(struct sys *sys, void *view_ptr) {
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:vtx_off atIndex:1];
     [enc setVertexBytes:&uni length:sizeof(uni) atIndex:2];
     for loop(i, mtl->tex_cnt) {
-      [enc useResource:mtl->tex_buf[i] usage:MTLResourceUsageSample];
+      [enc useResource:mtl->tex_buf[i] usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
     }
     [enc setFragmentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)sys->gfx.buf2d.icnt];

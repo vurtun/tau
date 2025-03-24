@@ -844,6 +844,8 @@ gui_panel_close(struct gui_ctx *ctx, struct gui_panel *pan,
                 struct gui_panel *parent) {
   assert(ctx);
   assert(pan);
+  unused(ctx);
+
   if (parent) {
     parent->max[0] = max(parent->max[0], pan->box.x.max);
     parent->max[1] = max(parent->max[1], pan->box.y.max);
@@ -5322,6 +5324,9 @@ gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
   assert(state);
   assert(parent);
   assert(state[0] > 0);
+
+  unused(item_cnt);
+  unused(state_cnt);
 
   int siz = 0;
   struct gui_split_toc toc = {0};

@@ -566,10 +566,8 @@ ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
   return ted->str;
 }
 static void
-ui_file_lst_view_fnd(struct file_view *fpk, struct file_list_view *lst,
-                     struct gui_ctx *ctx, struct gui_panel *pan,
-                     struct gui_panel *parent) {
-  requires(fpk);
+ui_file_lst_view_fnd(struct file_list_view *lst, struct gui_ctx *ctx,
+                     struct gui_panel *pan, struct gui_panel *parent) {
   requires(lst);
   requires(ctx);
   requires(pan);
@@ -775,7 +773,7 @@ ui_file_sel_view(char *filepath, int cnt, struct file_view *fpk,
   {
     struct gui_panel fnd = {.box = pan->box};
     fnd.box.y = gui.bnd.min_ext(pan->box.y.min, ctx->cfg.item);
-    ui_file_lst_view_fnd(fpk, lst, ctx, &fnd, pan);
+    ui_file_lst_view_fnd(lst, ctx, &fnd, pan);
 
     int gap = ctx->cfg.pan_gap[0];
     struct gui_panel tbl = {.box = pan->box};
