@@ -338,8 +338,8 @@ enum gui_direction {
   GUI_EAST    = 0x08
 };
 enum gui_dir {
-  GUI_DIR_HORIZONTAL  = GUI_NORTH | GUI_SOUTH,
-  GUI_DIR_VERTICAL    = GUI_WEST | GUI_EAST,
+  GUI_DIR_HORIZONTAL  = GUI_NORTH|GUI_SOUTH,
+  GUI_DIR_VERTICAL    = GUI_WEST|GUI_EAST,
 };
 struct gui_scrl {
   struct gui_box box;     /* in */
@@ -435,6 +435,7 @@ struct gui_lst_lay {
   int pad[2], gap[2];
   int item[2];
   int offset;
+
   /* out */
   int space[2];
   int slot[2];
@@ -442,6 +443,7 @@ struct gui_lst_lay {
   int page, page_cnt;
   int off, off_idx;
   int view_cnt;
+
   /* internal */
   int idx;
   struct gui_box lay;

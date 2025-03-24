@@ -445,20 +445,12 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
   str_buf_clr(&vtbl->col.buf);
   vtbl->col.id = stbl->rowid;
   if (sel) {
-    stbl->col.rng.lo = 0;
-    stbl->col.rng.hi = stbl->col.sel.cnt;
-    stbl->col.rng.cnt = 0;
-
-    stbl->row.cols.lo = 0;
-    stbl->row.cols.hi = stbl->col.sel.cnt;
-  } else {
-    stbl->col.rng.lo = low;
-    stbl->col.rng.hi = high;
-    stbl->col.rng.cnt = 0;
-
-    stbl->row.cols.lo = low;
-    stbl->row.cols.hi = low + stbl->row.cols.cnt;
+    stbl->row.cols.total = stbl->col.sel.cnt;
   }
+  stbl->col.rng.lo = low;
+  stbl->col.rng.cnt = 0;
+  stbl->row.cols.lo = low;
+
   /* query table name */
   struct db_name_lck lck = {0};
   db_tbl_name_acq(&lck, sdb, stbl);
@@ -516,6 +508,8 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_view *vdb,
     col->fk = (sqlite3_step(fstmt) == SQLITE_ROW);
     sqlite3_finalize(fstmt);
   }
+  stbl->col.rng.hi = stbl->col.rng.lo + stbl->col.rng.cnt;
+
   assert(err == SQLITE_DONE);
   err = sqlite3_finalize(stmt);
   assert(err == SQLITE_OK);
@@ -572,6 +566,7 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_view *vdb,
   int rhs = lhs + stbl->col.cnt;
 
   if (vtbl->col.id != stbl->rowid ||
+      !stbl->col.rng.cnt ||
       !rng_has_inclv(&stbl->col.rng, lhs) ||
       !rng_has_inclv(&stbl->col.rng, rhs)) {
     db_tbl_qry_cols(sdb, vdb, stbl, vtbl, lhs, rhs, 0);
@@ -1653,14 +1648,7 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
   {
     if (vtbl->col.id != stbl->rowid) {
       /* reload column data */
-      if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
-        stbl->col.total = stbl->col.rng.total;
-        stbl->col.rng.total = stbl->col.sel.cnt;
-        stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
-        db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
-      } else {
-        db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
-      }
+      db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, stbl->row.cols.lo);
     }
     int back = 0;
     int front = 0;
@@ -1950,19 +1938,24 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
           }
         }
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
-          stbl->col.cnt = stbl->col.sel.cnt;
-          stbl->col.total = stbl->col.rng.total;
-          stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
           stbl->col.rng.total = stbl->col.sel.cnt;
-          stbl->row.cols.cnt = min(stbl->col.sel.cnt, DB_MAX_TBL_ROW_COLS);
+          stbl->col.rng.cnt = stbl->col.rng.hi = stbl->col.rng.lo = 0;
+
+          stbl->row.cols.lo = 0;
+          stbl->row.cols.cnt = min(stbl->col.cnt, DB_MAX_TBL_ROW_COLS);
           stbl->row.cols.total = stbl->col.sel.cnt;
-          db_tbl_qry_cols(sdb, vdb, stbl, vtbl, 0, 0, 1);
+          stbl->row.cols.hi = stbl->row.cols.cnt;
+
+          stbl->col.cnt = min(stbl->col.sel.cnt, DB_MAX_TBL_COLS);
+          stbl->col.total = stbl->col.rng.total;
+          db_tbl_qry_row_cols(sdb, vdb, stbl, vtbl, 0);
         }
       }
       if (tab.sel.idx == DB_TBL_VIEW_DSP_LAYOUT) {
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
           stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
           stbl->col.rng.total = stbl->col.total;
+
           stbl->col.cnt = min(stbl->col.rng.total, DB_MAX_TBL_COLS);
           stbl->row.cols.cnt = min(stbl->col.total, DB_MAX_TBL_ROW_COLS);
           stbl->row.cols.total = stbl->col.total;
@@ -2126,8 +2119,9 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
         /* tab header slots */
         int dis = !(sinfo->tab_act & (1U << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
-          struct gui_panel slot = {0};
           struct gui_id iid = gui_id64(str_hash(def->title));
+
+          struct gui_panel slot = {0};
           gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, iid);
           gui.ico.box(ctx, &slot, &hdr.pan, def->ico, def->title);
           gui.tab.hdr.slot.end(ctx, &tab, &hdr, &slot, 0);
@@ -2306,6 +2300,7 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
       struct gui_panel lbl = {.box = hdr};
       gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, file);
       if (sdb->frame == DB_FRAME_TBL && sdb->tbls[sdb->sel_tbl].state == TBL_VIEW_DISPLAY) {
+
         struct db_tbl_state *tbl = &sdb->tbls[sdb->sel_tbl];
         gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, strv("/"));
         gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, tbl->title);

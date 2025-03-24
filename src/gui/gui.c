@@ -747,6 +747,7 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
     if (mouse->pos_delta[0] || mouse->pos_delta[1]) {
       if (gui_id_eq(pan->id, ctx->btn[i].active) &&
           gui_id_eq(ctx->btn[i].active, ctx->btn[i].origin)) {
+
         btn->drag_pos[0] = ctx->btn[i].drag_pos[0];
         btn->drag_pos[1] = ctx->btn[i].drag_pos[1];
         btn->dragged = 1;
@@ -977,20 +978,25 @@ gui_dflt_cfg(struct gui_cfg *cfg) {
   cfg->depth = GUI_CFG_DEPTH;
   cfg->btn_pad = GUI_CFG_BTN_PAD;
   cfg->grid = GUI_CFG_GRID;
+
   cfg->pan_pad[0] = GUI_CFG_PAN_PADX;
   cfg->pan_pad[1] = GUI_CFG_PAN_PADY;
   cfg->pan_gap[0] = GUI_CFG_PAN_GAPX;
   cfg->pan_gap[1] = GUI_CFG_PAN_GAPY;
+
   cfg->grp_off = GUI_CFG_GRP_OFF;
   cfg->grp_pad = GUI_CFG_GRP_PAD;
+
   cfg->lay_pad[0] = GUI_CFG_LAY_PADX;
   cfg->lay_pad[1] = GUI_CFG_LAY_PADY;
   cfg->lst_pad[0] = GUI_CFG_LST_PADX;
   cfg->lst_pad[1] = GUI_CFG_LST_PADY;
+
   cfg->gap[0] = GUI_CFG_GAPX;
   cfg->gap[1] = GUI_CFG_GAPY;
   cfg->pad[0] = GUI_CFG_PADX;
   cfg->pad[1] = GUI_CFG_PADY;
+
   cfg->ico = GUI_CFG_ICO;
   cfg->scrl = GUI_CFG_SCRL;
 }
@@ -1215,6 +1221,7 @@ gui_begin(struct gui_ctx *ctx) {
       ctx->prev_focused = ctx->focused;
       ctx->first_id = pan->id;
       sys->cursor = SYS_CUR_ARROW;
+
       gui_input_begin(ctx, &sys->mouse);
       ctx->focusable = ctx->root.id;
       /* drag & drop */
@@ -1236,6 +1243,7 @@ gui_begin(struct gui_ctx *ctx) {
       struct gui_clip clp = {0};
       gui_drw_line_style(ctx, 1);
       ctx->clip.box = gui_clip(0, 0, sys->win.w, sys->win.h);
+
       gui_clip_begin(&clp, ctx, 0, 0, sys->win.w, sys->win.h);
       gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
       gui_drw_box(ctx, 0, 0, sys->win.w, sys->win.h);
@@ -5395,7 +5403,8 @@ gui_split_sep(struct gui_ctx *ctx, struct gui_split *spt,
   const int sep_pos = toc.seps[spt->sidx];
   const int cnt_half = (spt->cnt >> 1) + (spt->cnt & 0x01);
   if (gui_sep(ctx, &sep, &spt->pan, spt->orient, &toc.seps[spt->sidx])) {
-    if (toc.cons) { /* apply (min,max) constraints for both panes */
+    if (toc.cons) {
+      /* apply (min,max) constraints for both panes */
       int prv = spt->sidx > 2 ? toc.seps[spt->sidx - 1] : 0;
       int fst = toc.seps[spt->sidx] - prv;
       int fci = (spt->sidx - 2) * 2;

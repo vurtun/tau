@@ -116,7 +116,7 @@ app_tab_open_file(struct app *app, struct str file) {
   }
   app_view_init(&app->view);
   int ret = app_view_setup(app, &app->view, file);
-  requires(app_is_val(app));
+  ensures(app_is_val(app));
   return ret;
 }
 static void
@@ -207,6 +207,11 @@ ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
     if (paq) { /* file drag & drop */
       const struct str *file_urls = paq->data;
       switch (paq->state) {
+      case GUI_DND_LEFT: break;
+      case GUI_DND_ENTER:
+      case GUI_DND_PREVIEW: {
+        paq->response = GUI_DND_ACCEPT;
+      } break;
       case GUI_DND_DELIVERY: {
         for loop(i, paq->size) {
           int ret = app_tab_open_file(app, file_urls[i]);
@@ -214,11 +219,6 @@ ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
             break;
           }
         }
-        paq->response = GUI_DND_ACCEPT;
-      } break;
-      case GUI_DND_LEFT: break;
-      case GUI_DND_ENTER:
-      case GUI_DND_PREVIEW: {
         paq->response = GUI_DND_ACCEPT;
       } break;}
     }
