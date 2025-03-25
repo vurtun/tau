@@ -2185,7 +2185,7 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
         struct db_tbl_state *stbl = &sdb->tbls[idx];
 
         enum res_ico_id ico;
-        struct str title = strv("Open...");
+        struct str title = strv("[Open...]");
         if (stbl->active) {
           ico = RES_ICO_TABLE;
           title = stbl->title;

@@ -3279,8 +3279,12 @@ gui_txt_ed_on_key(int *ret, struct gui_txt_ed *edt, struct gui_ctx *ctx) {
   if (bit_tst_clr(ctx->keys, GUI_KEY_EDIT_REMOVE)) {
     if (!gui_txt_ed_has_sel(edt)) {
       if (edt->cur > 0) {
-        gui_txt_ed_del(edt, edt->cur - 1, 1);
-        edt->cur = max(0, edt->cur - 1);
+        if (edt->cur < utf_len(edt->str)) {
+          edt->cur = max(0, edt->cur - 1);
+          gui_txt_ed_del(edt, edt->cur, 1);
+        } else {
+          gui_txt_ed_del(edt, edt->cur - 1, 1);
+        }
       } else if (utf_len(edt->str)) {
         gui_txt_ed_del(edt, 0, 1);
       }
