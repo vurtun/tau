@@ -190,7 +190,6 @@ struct db_info_state {
   enum db_tbl_type sel_tab;
   int tab_cnt[DB_TBL_TYPE_CNT];
   unsigned tab_act;
-
   int elm_cnt;
   struct rng elm_rng;
   struct db_tree_tbl_state tbl;
@@ -218,7 +217,6 @@ struct db_state {
   struct db_info_state info;
   int tbl_lst_off[2];
   struct db_tbl_state tbls[DB_TBL_CNT];
-  int tbl_cnt;
   int sel_tbl;
   enum db_state_frame frame;
   struct db_state_ui_state ui;

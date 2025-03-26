@@ -108,20 +108,23 @@ db_tbl_col_name_rel(struct db_name_lck *lck) {
  * ---------------------------------------------------------------------------
  */
 static inline int
-db__tbl_fltr_elm_val(struct db_tbl_fltr_elm *elm) {
+db__tbl_fltr_elm_val(const struct db_tbl_fltr_elm *elm) {
   unused(elm);
   assert(elm);
+
   assert(elm->type >= DB_TBL_FLTR_ELM_TYP_STR);
   assert(elm->type <= DB_TBL_FLTR_ELM_TYP_TM);
   assert(elm->col >= 0);
+
   assert(str__is_val(&elm->fnd));
   assert(str__is_val(&elm->col_name));
   return 1;
 }
 static inline int
-db__tbl_fltr_val(struct db_tbl_fltr_state *fltr) {
+db__tbl_fltr_val(const struct db_tbl_fltr_state *fltr) {
   unused(fltr);
   assert(fltr);
+
   assert(fltr->cnt >= 0);
   assert(fltr->cnt < cntof(fltr->elms));
   assert(fltr->cnt < DB_MAX_FLTR_CNT);
@@ -322,6 +325,7 @@ static inline int
 db__tbl_state_is_val(const struct db_tbl_state *tbl) {
   unused(tbl);
   assert(tbl);
+
   assert(tbl->kind >= DB_TBL_TYPE_TBL && tbl->kind <= DB_TBL_TYPE_TRIGGER);
   assert(tbl->state >= TBL_VIEW_SELECT && tbl->state <= TBL_VIEW_DISPLAY);
   assert(tbl->disp >= DB_TBL_VIEW_DSP_DATA && tbl->disp < DB_TBL_VIEW_DSP_CNT);
@@ -336,6 +340,10 @@ db__tbl_state_is_val(const struct db_tbl_state *tbl) {
   assert(tbl->col.rng.cnt <= SQLITE_MAX_COLUMN);
   assert(tbl->col.rng.cnt <= tbl->col.rng.total);
 
+  assert(tbl->col.sel.cnt <= DB_MAX_TBL_COLS);
+  assert(tbl->col.state == DB_TBL_COL_STATE_LOCKED ||
+    tbl->col.state == DB_TBL_COL_STATE_UNLOCKED);
+
   assert(tbl->row.cols.lo >= 0);
   assert(tbl->row.cols.hi >= 0);
   assert(tbl->row.cols.lo <= tbl->row.cols.hi);
@@ -348,17 +356,40 @@ db__tbl_state_is_val(const struct db_tbl_state *tbl) {
   assert(rng__is_val(&tbl->row.rng));
   assert(rng__is_val(&tbl->row.cols));
   assert(rng__is_val(&tbl->row.data_rng));
-
   assert(rng__is_val(&tbl->col.rng));
-  assert(tbl->col.state == DB_TBL_COL_STATE_LOCKED || tbl->col.state == DB_TBL_COL_STATE_UNLOCKED);
+
+  assert(tbl->col.state == DB_TBL_COL_STATE_LOCKED ||
+    tbl->col.state == DB_TBL_COL_STATE_UNLOCKED);
   assert(tbl->col.cnt >= 0);
   assert(tbl->col.total >= 0);
   assert(tbl->col.cnt <= tbl->col.rng.total);
+  assert(tbl->col.cnt <= DB_MAX_TBL_COLS);
+  assert(tbl->col.total <= SQLITE_MAX_COLUMN);
+
+  assert(tbl->row.cols.lo >= 0);
+  assert(tbl->row.cols.hi >= 0);
+  assert(tbl->row.cols.lo <= tbl->row.cols.hi);
+  assert(tbl->row.cols.lo >= tbl->col.rng.lo);
+  assert(tbl->row.cols.lo <= tbl->col.rng.hi);
+  assert(tbl->row.cols.hi >= tbl->col.rng.lo);
+  assert(tbl->row.cols.hi <= tbl->col.rng.hi);
+  assert(tbl->row.cols.cnt <= DB_MAX_TBL_ROW_COLS);
+
+  assert(tbl->col.rng.lo >= 0);
+  assert(tbl->col.rng.hi >= 0);
+  assert(tbl->col.rng.hi >= tbl->col.rng.lo);
+  assert(tbl->col.rng.cnt >= 0);
+  assert(tbl->col.rng.cnt <= DB_MAX_TBL_COLS);
+  assert(tbl->col.rng.cnt <= SQLITE_MAX_COLUMN);
+  assert(tbl->col.rng.total <= SQLITE_MAX_COLUMN);
+
+  assert(db__tbl_fltr_val(&tbl->fltr));
   return 1;
 }
 static inline int
 db__state_is_val(const struct db_state *sdb) {
   assert(sdb);
+  assert(sdb->frame == DB_FRAME_LST || sdb->frame == DB_FRAME_TBL);
   assert(sdb->sel_tbl >= 0);
   assert(sdb->sel_tbl < DB_TBL_CNT);
   assert(sdb->sel_tbl < cntof(sdb->tbls));
@@ -366,6 +397,8 @@ db__state_is_val(const struct db_state *sdb) {
   assert(sdb->info.tab_act >= 0);
   assert(sdb->info.tab_act <= (1 << DB_TBL_TYPE_CNT)-1);
   assert(sdb->info.elm_cnt >= 0);
+  assert(sdb->info.elm_cnt < DB_MAX_INFO_ELM_CNT);
+  assert(sdb->info.sel_tab >= 0 && sdb->info.sel_tab < DB_TBL_TYPE_CNT);
   assert(rng__is_val(&sdb->info.elm_rng));
 
   for arr_loopv(idx, sdb->tbls) {
@@ -814,15 +847,21 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   err = sqlite3_step(stmt);
   assert(err == SQLITE_ROW);
   unused(err);
+  int col_cnt = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  stmt = 0;
 
-  tbl->col.rng.total = sqlite3_column_int(stmt, 0);
-  tbl->col.cnt = min(tbl->col.rng.total, DB_MAX_TBL_COLS);
-  tbl->row.cols.cnt = min(tbl->col.rng.total, DB_MAX_TBL_ROW_COLS);
+  tbl->col.total = col_cnt;
+  tbl->col.cnt = min(col_cnt, DB_MAX_TBL_COLS);
+  tbl->col.rng.total = col_cnt;
+  tbl->col.rng.cnt = tbl->col.cnt;
+  tbl->col.rng.hi = tbl->col.rng.cnt;
+  tbl->col.rng.lo = 0;
+
+  tbl->row.cols.cnt = min(tbl->col.rng.cnt, DB_MAX_TBL_ROW_COLS);
   tbl->row.cols.total = tbl->col.rng.total;
   tbl->row.cols.hi = tbl->row.cols.cnt;
   tbl->row.cols.lo = 0;
-  sqlite3_finalize(stmt);
-  stmt = 0;
 
   /* setup table column display table */
   struct gui_split_lay bld = {0};
@@ -946,22 +985,6 @@ db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
   ensures(db__state_is_val(sdb));
   return cnt;
 }
-static struct db_info_elm*
-db_info_elm_new(struct db_info_state *sinfo, struct db_info_view *vinfo) {
-  requires(vinfo != 0);
-  requires(sinfo != 0);
-  requires(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
-
-  int old_cnt = sinfo->elm_cnt;
-  int elm_idx = sinfo->elm_cnt++;
-  struct db_info_elm *elm = vinfo->elms + elm_idx;
-
-  unused(old_cnt);
-  ensures(elm != 0);
-  ensures(sinfo->elm_cnt == old_cnt + 1);
-  ensures(elm == vinfo->elms + old_cnt);
-  return elm;
-}
 static void
 db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
                 long long rowid, struct str name, struct str sql) {
@@ -971,7 +994,9 @@ db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
   requires(sinfo->elm_cnt < DB_MAX_INFO_ELM_CNT);
 
   int old_cnt = sinfo->elm_cnt;
-  struct db_info_elm *elm = db_info_elm_new(sinfo, vinfo);
+  int elm_idx = sinfo->elm_cnt++;
+  struct db_info_elm *elm = vinfo->elms + elm_idx;
+
   elm->name = str_buf_sqz(&vinfo->buf, name, DB_MAX_TBL_NAME);
   elm->sql = str_buf_sqz(&vinfo->buf, sql, DB_MAX_TBL_SQL);
   elm->rowid = rowid;
@@ -986,6 +1011,7 @@ db_info_elm_add(struct db_info_state *sinfo, struct db_info_view *vinfo,
   unused(old_cnt);
   ensures(elm->rowid == rowid);
   ensures(sinfo->elm_cnt == old_cnt + 1);
+  ensures(elm == vinfo->elms + old_cnt);
   ensures(str_buf_len(elm->name) <= DB_MAX_TBL_NAME);
   ensures(str_buf_len(elm->sql) <= DB_MAX_TBL_SQL);
 }
