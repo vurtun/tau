@@ -1,10 +1,10 @@
-#define GUI_VERSION 1
-
-#define GUI_MAX_TM_BUF 128
-#define GUI_MAX_FMT_BUF 1024
-#define GUI_MAX_NUM_BUF 128
-#define GUI_SPLIT_MAX_SIZE (16*1024)
-
+enum {
+  GUI_VERSION         = 1,
+  GUI_MAX_TM_BUF      = 128,
+  GUI_MAX_FMT_BUF     = 1024,
+  GUI_MAX_NUM_BUF     = 128,
+  GUI_SPLIT_MAX_SIZE  = (16*1024),
+};
 struct gui_id {
   unsigned lo;
   unsigned hi;
@@ -272,9 +272,10 @@ struct gui_lay {
 };
 
 /* Widget: Edit */
-#define GUI_EDT_UNDO_CNT 128
-#define GUI_EDT_UNDO_CHAR_CNT (4 * 1024)
-
+enum {
+  GUI_EDT_UNDO_CNT      = 128,
+  GUI_EDT_UNDO_CHAR_CNT = (4 * 1024),
+}
 struct gui_txt_ed_undo_entry {
   int where;
   short in_len;

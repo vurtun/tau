@@ -110,7 +110,7 @@ app_view_setup(struct app *app, struct app_view *view, struct str path) {
   return 0;
 }
 static int
-app_tab_open_file(struct app *app, struct str file) {
+app_open_file(struct app *app, struct str file) {
   requires(app_is_val(app));
   if (app->view.db.con) {
     dbs.del(&app->view.db);
@@ -215,7 +215,7 @@ ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
       } break;
       case GUI_DND_DELIVERY: {
         for loop(i, paq->size) {
-          int ret = app_tab_open_file(app, file_urls[i]);
+          int ret = app_open_file(app, file_urls[i]);
           if (ret == 0) {
             break;
           }

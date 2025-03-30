@@ -2320,6 +2320,8 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
       if (gui.btn.ico(ctx, &tab, pan, RES_ICO_TH_LIST)) {
         sdb->frame = DB_FRAME_LST;
       }
+      gui.tooltip(ctx, &tab.pan, strv("Show/Open Tables"));
+
       struct gui_panel lbl = {.box = hdr};
       gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, file);
       if (sdb->frame == DB_FRAME_TBL && sdb->tbls[sdb->sel_tbl].state == TBL_VIEW_DISPLAY) {

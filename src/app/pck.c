@@ -288,6 +288,7 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
                        struct str path, struct str name) {
   requires(sys);
   requires(elm);
+  requires(str_len(path) + str_len(name) + 1 <= MAX_FILE_PATH);
 
   requires(str_is_val(name));
   requires(str_is_val(path));
@@ -500,7 +501,6 @@ file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
   requires(ctx);
   requires(fpk);
 
-  fpk->lst_rev = 1;
   fpk->home = str_set(fpk->home_path, cntof(fpk->home_path), str0(getenv("HOME")));
   if (str_is_inv(fpk->home)) {
     return -ENAMETOOLONG;
@@ -746,12 +746,15 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
     assert(dir < cntof(lst->page.elms));
     struct file_elm *elm = &lst->page.elms[dir];
     if (elm->isdir) {
-      char buf[MAX_FILE_PATH];
-      struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
+      int path_len = str_len(lst->nav_path) + str_len(elm->name) + 1;
+      if (path_len <= MAX_FILE_PATH) {
+        char buf[MAX_FILE_PATH];
+        struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
 
-      lst->fltr = str_nil;
-      file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
-      ctx->lst_state.cur_idx = -1;
+        lst->fltr = str_nil;
+        file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
+        ctx->lst_state.cur_idx = -1;
+      }
     } else {
       ret = str_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
     }
@@ -869,7 +872,8 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
       int dis = fpk->lst.sel_idx < 0 || fpk->lst.sel_idx >= fpk->lst.page.cnt;
       if (!dis) {
         struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
-        dis = elm->isdir || !elm->isvalid;
+        int path_len = str_len(fpk->lst.nav_path) + str_len(elm->name) + 1;
+        dis = elm->isdir || !elm->isvalid || path_len > MAX_FILE_PATH;
       }
       confine gui_disable_on_scope(&gui, ctx, dis) {
         struct gui_btn open = {.box = tab.hdr};

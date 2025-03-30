@@ -70,7 +70,6 @@ struct file_view {
   int state;
   char home_path[MAX_FILE_PATH];
   struct str home;
-  unsigned lst_rev;
   struct file_list_view lst;
 };
 struct pck_api {

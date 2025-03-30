@@ -2,8 +2,10 @@
  *                                Utility
  * ---------------------------------------------------------------------------
  */
-#define GUI_INIT_HASH_LO FNV1A32_HASH_INITIAL
-#define GUI_INIT_HASH_HI (0xC0E785u)
+enum {
+  GUI_INIT_HASH_LO = FNV1A32_HASH_INITIAL,
+  GUI_INIT_HASH_HI = (0xC0E785u),
+}
 #define GUI_ID_INIT (struct gui_id){.lo = GUI_INIT_HASH_LO, .hi = GUI_INIT_HASH_HI}
 
 #define gui_inbox(px, py, box) \
@@ -1005,9 +1007,9 @@ gui_dflt_cfg(struct gui_cfg *cfg) {
 static inline int
 gui__scale_val(int val, unsigned dpi_scale) {
   unsigned scaled = (castu(val) * dpi_scale);
-  unsigned rounded = scaled + (1u << 15u);
-  rounded &= ~((1u << 16u) - 1u);
-  return casti(rounded >> 16u);
+  unsigned rounded = scaled + (1U << 15U);
+  rounded &= ~((1U << 16U) - 1u);
+  return casti(rounded >> 16U);
 }
 static void
 gui_cfg_scale(struct gui_cfg *out, const struct gui_cfg *old, unsigned dpi_scale) {
@@ -1044,7 +1046,7 @@ gui_init(struct gui_ctx *ctx, struct gui_args *args) {
     gui_cfg_scale(&ctx->cfg, &ctx->cfg, args->scale);
     ctx->dpi_scale = args->scale;
   } else {
-    ctx->dpi_scale = 1u << 16u;
+    ctx->dpi_scale = 1U << 16U;
   }
 }
 static int
@@ -2136,18 +2138,18 @@ gui__scrl_cur_lay(struct gui_panel *cur, const struct gui_scrl *scl,
   int siz[2];
   {
     unsigned ratio[2];
-    ratio[0] = ((castu(scl->size[0]) << 8u) / castu(scl->total[0]));
-    ratio[1] = ((castu(scl->size[1]) << 8u) / castu(scl->total[1]));
+    ratio[0] = ((castu(scl->size[0]) << 8U) / castu(scl->total[0]));
+    ratio[1] = ((castu(scl->size[1]) << 8U) / castu(scl->total[1]));
 
     unsigned scaled[2];
     scaled[0] = (ratio[0] * castu(box->x.ext));
     scaled[1] = (ratio[1] * castu(box->y.ext));
 
-    siz[0] = casti(scaled[0] >> 8u) + !!(scaled[0] & 0xffu);
+    siz[0] = casti(scaled[0] >> 8U) + !!(scaled[0] & 0xffU);
     if (siz[0] > 0 && siz[0] < scl->min[0]) {
       siz[0] = pad[0] = scl->min[0];
     }
-    siz[1] = casti(scaled[1] >> 8u) + !!(scaled[1] & 0xffu);
+    siz[1] = casti(scaled[1] >> 8U) + !!(scaled[1] & 0xffU);
     if (siz[1] > 0 && siz[1] < scl->min[1]) {
       siz[1] = pad[1] = scl->min[1];
     }
@@ -2159,15 +2161,15 @@ gui__scrl_cur_lay(struct gui_panel *cur, const struct gui_scrl *scl,
     space[1] = box->y.ext - min(box->y.ext, pad[1]);
 
     unsigned ratio[2];
-    ratio[0] = ((castu(scl->off[0]) << 8u) / castu(scl->total[0]));
-    ratio[1] = ((castu(scl->off[1]) << 8u) / castu(scl->total[1]));
+    ratio[0] = ((castu(scl->off[0]) << 8U) / castu(scl->total[0]));
+    ratio[1] = ((castu(scl->off[1]) << 8U) / castu(scl->total[1]));
 
     unsigned mov[2];
     mov[0] = ratio[0] * castu(space[0]);
     mov[1] = ratio[1] * castu(space[1]);
 
-    pos[0] = box->x.min + casti(mov[0] >> 8u);
-    pos[1] = box->y.min + casti(mov[1] >> 8u);
+    pos[0] = box->x.min + casti(mov[0] >> 8U);
+    pos[1] = box->y.min + casti(mov[1] >> 8U);
   }
   cur->box = gui_box(pos[0], pos[1], siz[0], siz[1]);
 }
@@ -2195,12 +2197,12 @@ gui__scrl_cur_drag(int *off, const struct gui_ctx *ctx,
   sign[1] = area[1] < 0 ? -1 : 1;
 
   unsigned ratio[2];
-  ratio[0] = ((castu(abs(area[0])) << 7u) / castu(box->x.ext));
-  ratio[1] = ((castu(abs(area[1])) << 7u) / castu(box->y.ext));
+  ratio[0] = ((castu(abs(area[0])) << 7U) / castu(box->x.ext));
+  ratio[1] = ((castu(abs(area[1])) << 7U) / castu(box->y.ext));
 
   int dta[2];
-  dta[0] = casti((ratio[0] * castu(scl->total[0])) >> 7u) * sign[0];
-  dta[1] = casti((ratio[1] * castu(scl->total[1])) >> 7u) * sign[1];
+  dta[0] = casti((ratio[0] * castu(scl->total[0])) >> 7U) * sign[0];
+  dta[1] = casti((ratio[1] * castu(scl->total[1])) >> 7U) * sign[1];
 
   int space[2];
   space[0] = scl->total[0] - scl->size[0];
@@ -2273,11 +2275,11 @@ gui__scrl_jmp(int *off, const struct gui_scrl *scl,
   dst[1] = clamp(0, tar[1], scl->box.y.ext);
 
   unsigned ratio[2];
-  ratio[0] = ((castu(dst[0]) << 8u) / castu(scl->box.x.ext));
-  ratio[1] = ((castu(dst[1]) << 8u) / castu(scl->box.y.ext));
+  ratio[0] = ((castu(dst[0]) << 8U) / castu(scl->box.x.ext));
+  ratio[1] = ((castu(dst[1]) << 8U) / castu(scl->box.y.ext));
 
-  off[0] = casti((ratio[0] * castu(scl->total[0])) >> 8u);
-  off[1] = casti((ratio[1] * castu(scl->total[1])) >> 8u);
+  off[0] = casti((ratio[0] * castu(scl->total[0])) >> 8U);
+  off[1] = casti((ratio[1] * castu(scl->total[1])) >> 8U);
 
   off[0] = clamp(0, off[0], scl->total[0] - scl->size[0]);
   off[1] = clamp(0, off[1], scl->total[1] - scl->size[1]);
@@ -2452,7 +2454,7 @@ gui_hscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
   gui_panel_begin(ctx, &bar->pan, parent);
   {
     bar->scrolled = 0;
-    bar->step = (bar->step <= 0) ? (bar->size >> 3u) : bar->step;
+    bar->step = (bar->step <= 0) ? (bar->size >> 3U) : bar->step;
 
     /* decrement button */
     bar->btn_dec.box.x = gui_min_ext(bar->box.x.min, bar->box.y.ext);
@@ -3813,13 +3815,13 @@ gui_spin_abs_drag(struct sys *sys, struct gui_spin_val *val,
 
   switch (val->typ) {
   case GUI_SPIN_INT: {
-    unsigned ratio = (castu(dst) << 7u) / castu(ext);
+    unsigned ratio = (castu(dst) << 7U) / castu(ext);
     unsigned total = castu(val->max.i - val->min.i);
 
     unsigned scaled = ratio * total;
-    unsigned rounded = scaled + (1u << 6u);
-    rounded &= ~((1u << 7u) - 1u);
-    int off = casti(rounded >> 7u);
+    unsigned rounded = scaled + (1U << 6U);
+    rounded &= ~((1U << 7U) - 1U);
+    int off = casti(rounded >> 7U);
 
     int new_val = off + val->min.i;
     val->num.i = clamp(val->min.i, new_val, val->max.i);
@@ -4349,7 +4351,7 @@ gui_lst_lay_center(struct gui_lst_lay *lay, int idx) {
       return max(0, mid_off - (lay->space[1] >> 1));
     }
   }
-  return 0.0F;
+  return 0;
 }
 static int
 gui_lst_lay_fit_start(struct gui_lst_lay *lay, int idx) {
@@ -4362,7 +4364,7 @@ gui_lst_lay_fit_start(struct gui_lst_lay *lay, int idx) {
     case GUI_VERTICAL:
       return lay->slot[1] * idx;
   }
-  return 0.0F;
+  return 0;
 }
 static int
 gui_lst_lay_fit_end(struct gui_lst_lay *lay, int idx) {
@@ -4376,7 +4378,7 @@ gui_lst_lay_fit_end(struct gui_lst_lay *lay, int idx) {
     case GUI_VERTICAL:
       return (lay->slot[1] * (idx + 1)) - lay->space[1];
   }
-  return 0.0F;
+  return 0;
 }
 static int
 gui_lst_lay_clamp(struct gui_lst_lay *lay, int idx) {

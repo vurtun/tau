@@ -57,6 +57,12 @@ math_abs(double x) {
   u.i &= ~0ULL / 2;
   return u.f;
 }
+static float
+math_absf(float x) {
+  union bit_castf u = {x};
+  u.i &= ~0u / 2;
+  return u.f;
+}
 static inline int
 cmpN(const float *a, const float *b, float e, int N) {
   int r = 1;
@@ -869,11 +875,58 @@ mul3x3(float *restrict d, const float *restrict a, const float *restrict b) {
 static void
 quatf(float *restrict q, float angle, float x, float y, float z) {
   assert(q);
+  float t[4];
   float s, c; math_sin_cos(&s, &c, angle * 0.5f);
-  q[0] = x * s;
-  q[1] = y * s;
-  q[2] = z * s;
-  q[3] = c;
+  t[0] = x * s;
+  t[1] = y * s;
+  t[2] = z * s;
+  t[3] = c;
+  cpy4(q,t);
+}
+static unsigned
+qenc(const float *qin) {
+  assert(qin);
+  int top = 0;
+  float q[4]; cpy4(q,qin);
+  float qabs[4]; map4(qabs, math_absf, q);
+  for (int i = 1; i < 4; ++i) {
+    top = qabs[i] > qabs[top] ? i : top;
+  }
+  unsigned neg = q[top] < 0.0f;
+  unsigned msk = (1u << 9u) - 1u;
+  unsigned ret = castu(top);
+  for loop(i, 4) {
+    if (i != top) {
+      unsigned negbit = (q[i] < 0.0f) ^ neg;
+      unsigned mag = castu(castf(msk) * (qabs[i] * 1.414213562f) + 0.5f);
+      ret = (ret << 10u) | (negbit << 9u) | mag;
+    }
+  }
+  return ret;
+}
+static void
+qdec(float *qout, unsigned q) {
+  assert(qout);
+  float qres[4];
+  unsigned msk = (1u << 9u) - 1u;
+  float inv_msk = 1.0f / castf(msk);
+  int top = casti(q >> 30u);
+
+  float sqr = 0.0f;
+  for (int i = 3; i >= 0; --i) {
+    if (i == top) {
+      continue;
+    }
+    unsigned mag = q & msk;
+    unsigned negbit = (q >> 9u) & 1u;
+    q = q >> 10u;
+
+    qres[i] = 0.707106781f * castf(mag) * inv_msk;
+    sqr += qres[i] * qres[i];
+    qres[i] = negbit ? -qres[i] : qres[i];
+  }
+  qres[top] = math_sqrt(max(1.0f-sqr, 0.0f));
+  cpy4(qout, qres);
 }
 static void
 qrot3(float *restrict out, const float *restrict qrot,
