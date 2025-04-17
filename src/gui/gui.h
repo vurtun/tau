@@ -275,7 +275,7 @@ struct gui_lay {
 enum {
   GUI_EDT_UNDO_CNT      = 128,
   GUI_EDT_UNDO_CHAR_CNT = (4 * 1024),
-}
+};
 struct gui_txt_ed_undo_entry {
   int where;
   short in_len;

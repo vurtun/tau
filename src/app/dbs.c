@@ -36,10 +36,10 @@ static const struct db_tbl_col_def db_tbl_disp_col_def[DB_TBL_DISP_COL_MAX] = {
 };
 static const struct db_tbl_col_def db_tbl_def[DB_STATE_TBL_COL_CNT] = {
   [DB_STATE_TBL_COL_NAME]  = {.title = strv("Name"),    .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {50, 800}}},
-  [DB_STATE_TBL_COL_DEL]   = {.title = strv(""),        .ui = {.type = GUI_LAY_SLOT_FIX, .size = 60, .con = {60, 60}}},
   [DB_STATE_TBL_COL_COLS]  = {.title = strv("Columns"), .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
   [DB_STATE_TBL_COL_ROWS]  = {.title = strv("Rows"),    .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 1000}}},
   [DB_STATE_TBL_COL_FLTR]  = {.title = strv("Filters"), .ui = {.type = GUI_LAY_SLOT_DYN, .size = 1, .con = {200, 800}}},
+  [DB_STATE_TBL_COL_DEL]   = {.title = strv(""),        .ui = {.type = GUI_LAY_SLOT_FIX, .size = 60, .con = {60, 60}}},
 };
 // clang-format on
 
@@ -267,7 +267,7 @@ db_tbl_fltr_view_qry(struct db_state *sdb, struct db_view *vdb,
     low = high = 0;
   }
   /* setup query table for filered elements */
-  if (str_len(view->fnd_str)) {
+  if (str_len(view->fnd_str) > 2) {
     struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
       "SELECT rowid, \"%.*s\" FROM \"%.*s\" WHERE \"%.*s\" LIKE '%%'||?||'%%' LIMIT ?,?;",
       strf(clck.name), strf(tlck.name), strf(clck.name));
@@ -1472,14 +1472,17 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
     }
     int dis = !str_len(view->fnd_str) || fltr->cnt >= DB_MAX_FLTR_CNT;
     confine gui_disable_on_scope(&gui, ctx, dis) {
+
       struct gui_btn add = {0};
       add.box = gui.cut.bot(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
       gui.btn.txt(ctx, &add, pan, strv("Add"), 0);
+
       if (add.clk) {
         for arr_loopv(idx, fltr->elms) {
           struct db_tbl_fltr_elm *elm = &fltr->elms[idx];
           if (!elm->active) {
             assert(str_len(view->fnd_str) > 0);
+
             db_tbl_fltr_add_str(sdb, stbl, vtbl, fltr, idx, fltr->ini_col, view->fnd_str);
             db_tbl_close_fltr(stbl);
             db_tbl_rev(sdb, vdb, stbl, vtbl);
@@ -1585,6 +1588,7 @@ ui_db_tbl_view_hdr_key_slot(struct db_tbl_view *view, struct db_tbl_col *col,
   struct gui_cfg_stk stk[1] = {0};
   unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
   confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], fk_col) {
+
     struct gui_btn hdr = {.box = slot->pan.box};
     struct str col_name = str_buf_get(&view->col.buf, col->name);
     ui_btn_ico_txt(ctx, &hdr, &slot->pan, col_name, RES_ICO_KEY);
@@ -1605,6 +1609,7 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   fltr.box.x = gui.bnd.max_ext(slot->pan.box.x.max, ctx->cfg.item);
   int dis = col->blob || (stbl->fltr.cnt >= cntof(stbl->fltr.elms));
   confine gui_disable_on_scope(&gui, ctx, dis) {
+
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
       assert(!col->blob && (stbl->fltr.cnt < cntof(stbl->fltr.elms)));
       db_tbl_open_fltr(stbl, col->rowid);
@@ -1614,6 +1619,7 @@ ui_db_tbl_view_hdr_lnk_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   struct gui_cfg_stk stk[1] = {0};
   unsigned fk_col = ctx->cfg.col[GUI_COL_TXT_DISABLED];
   confine gui_cfg_pushu_scope(&gui, stk, &ctx->cfg.col[GUI_COL_ICO], fk_col) {
+
     struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
     struct gui_btn hdr = {.box = slot->pan.box};
     hdr.box.x = gui.bnd.min_max(slot->pan.box.x.min, fltr.box.x.min);
@@ -1643,6 +1649,7 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   struct gui_btn fltr = {.box = slot->pan.box};
   fltr.box.x = gui.bnd.max_ext(slot->pan.box.x.max, ctx->cfg.item);
   int dis = col->blob || (stbl->fltr.cnt >= cntof(stbl->fltr.elms));
+
   confine gui_disable_on_scope(&gui, ctx, dis) {
     if (gui.btn.ico(ctx, &fltr, &slot->pan, RES_ICO_SEARCH)) {
       assert(!col->blob && (stbl->fltr.cnt < cntof(stbl->fltr.elms)));
@@ -1651,6 +1658,7 @@ ui_db_tbl_view_hdr_slot(struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
   }
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
   struct str col_name = str_buf_get(&vtbl->col.buf, col->name);
+
   struct gui_btn hdr = {.box = slot->pan.box};
   hdr.box.x = gui.bnd.min_max(slot->pan.box.x.min, fltr.box.x.min);
   gui.btn.txt(ctx, &hdr, &slot->pan, col_name, &align);
@@ -2063,6 +2071,7 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
       }
       for gui_tbl_lst_loopv(i,_,gui,&tbl,vinfo->elms) {
         assert(i >= tbl.lst.begin);
+
         int elm_idx = i - tbl.lst.begin;
         assert(elm_idx < cntof(vinfo->elms));
         assert(elm_idx >= 0);
@@ -2139,6 +2148,7 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
       gui.tab.hdr.begin(ctx, &tab, &hdr);
       for arr_loopv(i, tabs) {
         const struct tab_def *def = &tabs[i];
+
         /* tab header slots */
         int dis = !(sinfo->tab_act & (1U << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
@@ -2224,15 +2234,15 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
           struct gui_icon del = {0};
           gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_lay, pan, title, ico);
           if (stbl->active) {
+            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->col.rng.total);
+            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->row.rng.total);
+            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->fltr.cnt);
             gui.tbl.lst.elm.col.slot(&del.box, ctx, &tbl, tbl_lay);
-            gui.ico.clk(ctx, &del, &elm, RES_ICO_NO);
+            gui.ico.clk(ctx, &del, &elm, RES_ICO_TRASH);
             if (del.clk){
               del_idx = idx;
               do_del = 1;
             }
-            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->col.rng.total);
-            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->row.rng.total);
-            gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->fltr.cnt);
           } else {
             struct gui_box item = {0};
             gui_tbl_lst_elm_col(&item, ctx, &tbl, tbl_lay);

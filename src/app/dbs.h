@@ -201,10 +201,10 @@ enum db_state_frame {
 };
 enum db_state_tbl_col {
   DB_STATE_TBL_COL_NAME,
-  DB_STATE_TBL_COL_DEL,
   DB_STATE_TBL_COL_COLS,
   DB_STATE_TBL_COL_ROWS,
   DB_STATE_TBL_COL_FLTR,
+  DB_STATE_TBL_COL_DEL,
   DB_STATE_TBL_COL_CNT
 };
 struct db_state_ui_state {

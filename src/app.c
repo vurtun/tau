@@ -205,7 +205,8 @@ ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
 
   if (gui.dnd.dst.begin(ctx, pan)) {
     struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, GUI_DND_SYS_FILES);
-    if (paq) { /* file drag & drop */
+    if (paq) {
+      /* file drag & drop */
       const struct str *file_urls = paq->data;
       switch (paq->state) {
       case GUI_DND_LEFT: break;

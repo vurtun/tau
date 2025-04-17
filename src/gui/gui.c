@@ -2,10 +2,8 @@
  *                                Utility
  * ---------------------------------------------------------------------------
  */
-enum {
-  GUI_INIT_HASH_LO = FNV1A32_HASH_INITIAL,
-  GUI_INIT_HASH_HI = (0xC0E785u),
-}
+#define GUI_INIT_HASH_LO FNV1A32_HASH_INITIAL
+#define GUI_INIT_HASH_HI (0xC0E785u)
 #define GUI_ID_INIT (struct gui_id){.lo = GUI_INIT_HASH_LO, .hi = GUI_INIT_HASH_HI}
 
 #define gui_inbox(px, py, box) \
