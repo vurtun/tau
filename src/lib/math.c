@@ -764,17 +764,23 @@ col_hsv_rgb(float *restrict hsv_out, const float *restrict rgb_in) {
   float rgb[3]; cpy3(rgb, rgb_in);
   float m = min3i(rgb[0], rgb[1], rgb[2]);
   hsv[2] = max3i(rgb[0], rgb[1], rgb[2]);
+
   float c = hsv[2] - m;
   if (c != 0.0f) {
     hsv[1] = c / hsv[2];
     float d[3] = {(hsv[2] - rgb[0])/c, (hsv[2] - rgb[1])/c, (hsv[2] - rgb[2])/c};
     float dzxy[3]; swzl3(dzxy,d,2,0,1);
+
     static const float off[3] = {2.0f, 4.0f, 6.0f};
     float t[3]; sub3(t, d, dzxy);
     add3(d, t, off);
-    if (rgb[0] >= hsv[2]) hsv[0] = d[2];
-    else if (rgb[1] >= hsv[2]) hsv[0] = d[0];
-    else hsv[0] = d[1];
+    if (rgb[0] >= hsv[2]) {
+      hsv[0] = d[2];
+    } else if (rgb[1] >= hsv[2]) {
+      hsv[0] = d[0];
+    } else {
+      hsv[0] = d[1];
+    }
     hsv[0] = math_mod(hsv[0] / 6.0f, 1.0f);
   }
   cpy3(hsv_out, hsv);
@@ -876,7 +882,9 @@ static void
 quatf(float *restrict q, float angle, float x, float y, float z) {
   assert(q);
   float t[4];
-  float s, c; math_sin_cos(&s, &c, angle * 0.5f);
+
+  float s, c;
+  math_sin_cos(&s, &c, angle * 0.5f);
   t[0] = x * s;
   t[1] = y * s;
   t[2] = z * s;
@@ -887,6 +895,7 @@ static unsigned
 qenc(const float *qin) {
   assert(qin);
   int top = 0;
+
   float q[4]; cpy4(q,qin);
   float qabs[4]; map4(qabs, math_absf, q);
   for (int i = 1; i < 4; ++i) {

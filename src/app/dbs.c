@@ -362,7 +362,7 @@ db__tbl_state_is_val(const struct db_tbl_state *tbl) {
     tbl->col.state == DB_TBL_COL_STATE_UNLOCKED);
   assert(tbl->col.cnt >= 0);
   assert(tbl->col.total >= 0);
-  assert(tbl->col.cnt <= tbl->col.rng.total);
+  assert(tbl->col.cnt <= tbl->col.total);
   assert(tbl->col.cnt <= DB_MAX_TBL_COLS);
   assert(tbl->col.total <= SQLITE_MAX_COLUMN);
 
@@ -448,9 +448,39 @@ db_tbl_col_ico(struct str type) {
     return RES_ICO_FONT;
   }
 }
+static int
+db_tbl_qry_col_cnt(struct db_state *sdb, struct db_tbl_state *stbl, struct str fltr) {
+  requires(db__state_is_val(sdb));
+  requires(stbl);
+
+  /* query table name */
+  sqlite3_stmt *stmt = 0;
+  struct db_name_lck lck = {0};
+  db_tbl_name_acq(&lck, sdb, stbl);
+  if (str_len(fltr)) {
+    struct str sql = strv("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name LIKE '%'||?||'%';");
+    sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, db_str(fltr), SQLITE_STATIC);
+  } else {
+    struct str sql = strv("SELECT COUNT(*) FROM pragma_table_info(?);");
+    sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
+  }
+  db_tbl_name_rel(&lck);
+
+  sqlite3_step(stmt);
+  int cnt = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+
+  ensures(cnt >= 0);
+  ensures(db__state_is_val(sdb));
+  return cnt;
+}
 static void
 db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
-                struct db_tbl_view *vtbl, int low, int high, int sel) {
+                struct db_tbl_view *vtbl, int low, int high,
+                struct str fltr, int sel) {
 
   requires(db__state_is_val(sdb));
   requires(stbl);
@@ -494,11 +524,20 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
     sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
   } else {
-    struct str sql = strv("SELECT rowid, name, type, \"notnull\", pk FROM pragma_table_info(?) LIMIT ?,?;");
-    sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
-    sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 2, low);
-    sqlite3_bind_int(stmt, 3, high-low);
+    if (str_len(fltr)) {
+      struct str sql = strv("SELECT rowid, name, type, \"notnull\", pk FROM pragma_table_info(?) WHERE name LIKE '%'||?||'%' LIMIT ?,?;;");
+      sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+      sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
+      sqlite3_bind_text(stmt, 2, db_str(fltr), SQLITE_STATIC);
+      sqlite3_bind_int(stmt, 3, low);
+      sqlite3_bind_int(stmt, 4, high-low);
+    } else {
+      struct str sql = strv("SELECT rowid, name, type, \"notnull\", pk FROM pragma_table_info(?) LIMIT ?,?;");
+      sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+      sqlite3_bind_text(stmt, 1, db_str(lck.name), SQLITE_STATIC);
+      sqlite3_bind_int(stmt, 2, low);
+      sqlite3_bind_int(stmt, 3, high-low);
+    }
   }
   for db_loopn(_,err,stmt,SQLITE_MAX_COLUMN) {
     long long col_rowid = sqlite3_column_int64(stmt, 0);
@@ -599,7 +638,7 @@ db_tbl_qry_row_cols(struct db_state *sdb, struct db_tbl_state *stbl,
       !stbl->col.rng.cnt ||
       !rng_has_inclv(&stbl->col.rng, lhs) ||
       !rng_has_inclv(&stbl->col.rng, rhs)) {
-    db_tbl_qry_cols(sdb, stbl, vtbl, lhs, rhs, 0);
+    db_tbl_qry_cols(sdb, stbl, vtbl, lhs, rhs, str_nil, 0);
   }
   int row_end = max(stbl->row.cols.cnt, stbl->col.rng.total) - stbl->row.cols.cnt;
   stbl->row.cols.lo = min(low, row_end);
@@ -838,19 +877,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   tbl->rowid = rowid;
   tbl->kind = kind;
 
-  /* retrive number of columns in table */
-  sqlite3_stmt *stmt = 0;
-  struct str sql = strv("SELECT COUNT(*) FROM pragma_table_info(?);");
-  int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
-  sqlite3_bind_text(stmt, 1, db_str(name), SQLITE_STATIC);
-  assert(err == SQLITE_OK);
-  err = sqlite3_step(stmt);
-  assert(err == SQLITE_ROW);
-  unused(err);
-  int col_cnt = sqlite3_column_int(stmt, 0);
-  sqlite3_finalize(stmt);
-  stmt = 0;
-
+  int col_cnt = db_tbl_qry_col_cnt(sdb, tbl, str_nil);
   tbl->col.total = col_cnt;
   tbl->col.cnt = min(col_cnt, DB_MAX_TBL_COLS);
   tbl->col.rng.total = col_cnt;
@@ -897,9 +924,10 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   gui.tbl.lay(tbl->fltr.tbl_col.state, ctx, &col_cfg);
 
   /* retrieve total table row count */
-  sql = str_fmtsn(arrv(vdb->sql_qry_buf), "SELECT COUNT(*) FROM \"%.*s\";", strf(name));
+  sqlite3_stmt *stmt = 0;
+  struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf), "SELECT COUNT(*) FROM \"%.*s\";", strf(name));
   if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
-    err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     assert(err == SQLITE_OK);
 
     err = sqlite3_step(stmt);
@@ -1791,9 +1819,10 @@ ui_db_tbl_view_dsp_data(struct db_state *sdb, struct db_view *vdb,
   gui.pan.end(ctx, pan, parent);
 }
 static void
-ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_tbl_state *stbl,
-                       struct db_tbl_view *vtbl, struct gui_ctx *ctx,
-                       struct gui_panel *pan, struct gui_panel *parent) {
+ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_view *vdb,
+                       struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
+                       struct gui_ctx *ctx, struct gui_panel *pan,
+                       struct gui_panel *parent) {
   requires(sdb);
   requires(ctx);
   requires(pan);
@@ -1802,9 +1831,20 @@ ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_tbl_state *stbl,
   requires(vtbl);
   requires(parent);
 
+  struct gui_box lay = pan->box;
   gui.pan.begin(ctx, pan, parent);
   {
-    struct gui_tbl tbl = {.box = pan->box};
+    /* filter */
+    struct gui_edit_box edt = {0};
+    edt.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
+    vdb->info.fnd_str = gui.edt.box(ctx, &edt, pan, vdb->info.fnd_buf, cntof(vdb->info.fnd_buf), vdb->info.fnd_str);
+    if (edt.mod){
+      stbl->col.ui.off[1] = 0;
+      stbl->col.rng.total = db_tbl_qry_col_cnt(sdb, stbl, vdb->info.fnd_str);
+      stbl->col.rng.cnt = stbl->col.rng.lo = stbl->col.rng.hi = 0;
+      stbl->row.cols.cnt = stbl->row.cols.lo = stbl->row.cols.hi = 0;
+    }
+    struct gui_tbl tbl = {.box = lay};
     gui.tbl.begin(ctx, &tbl, pan, stbl->col.ui.off, 0);
     {
       /* header */
@@ -1837,10 +1877,10 @@ ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_tbl_state *stbl,
       cfg.sel.on = GUI_LST_SEL_ON_HOV;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      if (vtbl->col.id != stbl->rowid ||
+      if (vtbl->col.id != stbl->rowid || edt.mod ||
           tbl.lst.begin != stbl->col.rng.lo ||
           tbl.lst.end != stbl->col.rng.hi) {
-        db_tbl_qry_cols(sdb, stbl, vtbl, tbl.lst.begin, tbl.lst.end, 0);
+        db_tbl_qry_cols(sdb, stbl, vtbl, tbl.lst.begin, tbl.lst.end, vdb->info.fnd_str, 0);
       }
       for gui_tbl_lst_loopv(i,_,gui,&tbl,vtbl->col.lst) {
         assert(i < stbl->col.rng.total);
@@ -1956,40 +1996,62 @@ ui_db_tbl_view_dsp(struct db_state *sdb, struct db_view *vdb,
         ui_db_tbl_view_dsp_fltr(sdb, vdb, stbl, vtbl, &stbl->fltr, &vtbl->fltr, ctx, &bdy, &tab.pan);
       } break;
       case DB_TBL_VIEW_DSP_LAYOUT: {
-        ui_db_tbl_view_dsp_lay(sdb, stbl, vtbl, ctx, &bdy, &tab.pan);
+        ui_db_tbl_view_dsp_lay(sdb, vdb, stbl, vtbl, ctx, &bdy, &tab.pan);
       } break;}
     }
     gui.tab.end(ctx, &tab, pan);
     if (tab.sel.mod) {
       /* tab selection change */
       if (stbl->disp == DB_TBL_VIEW_DSP_LAYOUT) {
+        vdb->info.fnd_str = str_nil;
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
           if (stbl->col.sel.cnt == 0) {
             stbl->col.state = DB_TBL_COL_STATE_LOCKED;
           }
         }
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
+          stbl->col.cnt = min(stbl->col.sel.cnt, DB_MAX_TBL_COLS);
+          stbl->col.total = stbl->col.rng.total;
+
+          stbl->col.rng.lo = 0;
+          stbl->col.rng.cnt = stbl->col.sel.cnt;
+          stbl->col.rng.hi = stbl->col.rng.cnt;
           stbl->col.rng.total = stbl->col.sel.cnt;
-          stbl->col.rng.cnt = stbl->col.rng.hi = stbl->col.rng.lo = 0;
 
           stbl->row.cols.lo = 0;
-          stbl->row.cols.cnt = min(stbl->col.cnt, DB_MAX_TBL_ROW_COLS);
+          stbl->row.cols.cnt = min(stbl->col.rng.cnt, DB_MAX_TBL_ROW_COLS);
           stbl->row.cols.total = stbl->col.sel.cnt;
           stbl->row.cols.hi = stbl->row.cols.cnt;
 
-          stbl->col.cnt = min(stbl->col.sel.cnt, DB_MAX_TBL_COLS);
-          stbl->col.total = stbl->col.rng.total;
-          db_tbl_qry_row_cols(sdb, stbl, vtbl, 0);
+          db_tbl_qry_cols(sdb, stbl, vtbl, 0, stbl->col.cnt, str_nil, 1);
+        } else {
+          stbl->col.rng.lo = 0;
+          stbl->col.rng.cnt = min(stbl->col.cnt, DB_MAX_TBL_COLS);
+          stbl->col.rng.hi = stbl->col.rng.cnt;
+          stbl->col.rng.total = stbl->col.total;
+
+          stbl->row.cols.lo = 0;
+          stbl->row.cols.cnt = min(stbl->col.cnt, DB_MAX_TBL_ROW_COLS);
+          stbl->row.cols.hi = stbl->row.cols.cnt;
+          stbl->row.cols.total = stbl->col.total;
+          db_tbl_qry_cols(sdb, stbl, vtbl, 0, stbl->col.cnt, str_nil, 0);
         }
       }
       if (tab.sel.idx == DB_TBL_VIEW_DSP_LAYOUT) {
+        vdb->info.fnd_str = str_nil;
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
-          stbl->col.rng.lo = stbl->col.rng.hi = stbl->col.rng.cnt = 0;
           stbl->col.rng.total = stbl->col.total;
+          stbl->col.rng.cnt = min(stbl->col.rng.total, DB_MAX_TBL_COLS);
+          stbl->col.rng.lo = 0;
+          stbl->col.rng.hi = stbl->col.rng.cnt;
 
-          stbl->col.cnt = min(stbl->col.rng.total, DB_MAX_TBL_COLS);
+          stbl->row.cols.lo = 0;
           stbl->row.cols.cnt = min(stbl->col.total, DB_MAX_TBL_ROW_COLS);
           stbl->row.cols.total = stbl->col.total;
+          stbl->row.cols.hi = stbl->row.cols.cnt;
+
+          stbl->col.cnt = stbl->col.rng.cnt;
+          db_tbl_qry_cols(sdb, stbl, vtbl, 0, stbl->col.cnt, str_nil, 0);
         }
       }
       stbl->disp = cast(enum db_tbl_view_dsp_state, tab.sel.idx);

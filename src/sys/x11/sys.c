@@ -1028,3 +1028,4 @@ main(int argc, char *argv[]) {
   XCloseDisplay(g_x11.dpy);
   return 0;
 }
+

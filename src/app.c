@@ -44,6 +44,7 @@ struct app {
   struct gui_ctx gui;
   struct file_view fs;
   struct db_view db;
+
   /* views */
   struct app_view view;
   char path_buf[MAX_FILE_PATH];
