@@ -23,8 +23,7 @@ gui__hash(void *data, int len, struct gui_id hash) {
 }
 static inline struct gui_id
 gui_gen_id(struct gui_id uid, struct gui_id pid) {
-  struct gui_id ret = gui__hash(&uid, szof(uid), pid);
-  return ret;
+  return gui__hash(&uid, szof(uid), pid);
 }
 static inline int
 gui_id_eq(struct gui_id lhs, struct gui_id rhs) {
@@ -32,7 +31,7 @@ gui_id_eq(struct gui_id lhs, struct gui_id rhs) {
 }
 static inline int
 gui_id_neq(struct gui_id lhs, struct gui_id rhs) {
-  return !gui_id_eq(lhs, rhs);
+  return gui_id_eq(lhs, rhs) == 0;
 }
 static struct gui_bnd
 gui_min_max(int vmin, int vmax) {
@@ -5690,6 +5689,7 @@ gui_tbl_lst_end(struct gui_ctx *ctx, struct gui_tbl *tbl) {
   assert(tbl);
   gui_clip_end(ctx, &tbl->clip);
   gui_lst_end(ctx, &tbl->lst);
+
   if (tbl->lst.ctl.was_scrolled) {
     switch (tbl->lst.ctl.scrl) {
       case GUI_LST_FIT_ITEM_START: {
@@ -5792,6 +5792,18 @@ gui_tbl_lst_tm(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
   struct gui_panel item = {0};
   gui_tbl_lst_elm_col(&item.box, ctx, tbl, lay);
   gui_tm(ctx, &item, elm, fmt, time);
+}
+static void
+gui_tbl_lst_lnk(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay,
+                struct gui_panel *elm, struct gui_panel *item, struct str txt,
+                const struct gui_align *align) {
+  assert(ctx);
+  assert(tbl);
+  assert(elm);
+  assert(item);
+
+  gui_tbl_lst_elm_col(&item->box, ctx, tbl, lay);
+  gui_txt_uln(ctx, item, elm, txt, align, 0, txt.rng.cnt);
 }
 
 /* ---------------------------------------------------------------------------
@@ -6605,6 +6617,7 @@ static const struct gui_api gui__api = {
           .txt_ico = gui_tbl_lst_txt_ico,
           .txtf = gui_tbl_lst_txtf,
           .tm = gui_tbl_lst_tm,
+          .lnk = gui_tbl_lst_lnk,
         },
       },
     },

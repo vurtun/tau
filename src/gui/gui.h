@@ -1335,6 +1335,7 @@ struct gui_tbl_lst_elm_col_api {
   void (*txt_ico)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct str txt, enum res_ico_id icon);
   void (*txtf)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const struct gui_align *align, const char *fmt, ...);
   void (*tm)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, const char *fmt, struct tm *tm);
+  void (*lnk)(struct gui_ctx *ctx, struct gui_tbl *tbl, const int *lay, struct gui_panel *elm, struct gui_panel *item, struct str txt, const struct gui_align *align);
 };
 struct gui_tbl_lst_elm_api {
   struct gui_tbl_lst_elm_col_api col;

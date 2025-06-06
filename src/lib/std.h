@@ -92,6 +92,10 @@ typedef int (*sort_f)(const void *a, const void *b);
 struct rng {
   int lo, hi, cnt, total;
 };
+struct mem_rng {
+  unsigned char *addr;
+  struct rng rng;
+};
 struct str {
   const char *ptr;
   struct rng rng;

@@ -128,11 +128,16 @@ struct res_run_cache {
   int last_lru_cnt;
 #endif
 };
+enum res_fnt_run_mode {
+  RES_FNT_RUN_WORDS,
+  RES_FNT_RUN_FULL,
+};
 struct res {
   float fnt_pnt_size;
   struct sys *sys;
   struct res_fnt fnt;
   struct res_run_cache run_cache;
+  enum res_fnt_run_mode mod;
 };
 
 /* api */
@@ -159,6 +164,8 @@ struct res_api {
   struct res_ico_api ico;
   void (*init)(struct res *res, struct sys *sys);
   void (*shutdown)(struct res *r);
+  void (*full_text_mode)(struct res *rss);
+  void (*word_mode)(struct res *rss);
 };
 static void res_api(void *export, void *import);
 

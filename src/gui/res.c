@@ -690,9 +690,29 @@ res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
     run->pad[run->len * 2 + 1] = cast(signed char, math_roundi(gly->yoff));
 
     run->adv[run->len++] = cast(unsigned short, ext);
-    if (run->len >= RES_FNT_MAX_RUN || rune == ' ') {
+    if (run->len >= RES_FNT_MAX_RUN) {
       break;
     }
+    if (rss->mod == RES_FNT_RUN_WORDS && rune == ' ') {
+      break;
+    }
+  }
+}
+static void
+res_fnt_ext_blk(int *ext, struct res *rss, struct str txt) {
+  int cnt = div_round_up(str_len(txt), 16);
+  struct str blk = txt;
+  for loop(i,cnt) {
+    struct str seg = str_lhs(blk, 16);
+    unsigned long long hash = str_hash(seg);
+
+    struct res_run_cache_fnd_res ret = res_run_cache_fnd(&rss->run_cache, hash);
+    struct res_fnt_run *run = ret.run;
+    if (ret.is_new) {
+      res_fnt_fill_run(rss, run, seg);
+    }
+    ext[0] += run->adv[run->len-1];
+    blk = str_cut_lhs(&blk, run->off[run->len-1]);
   }
 }
 static void
@@ -705,28 +725,19 @@ res_fnt_ext(int *ext, struct res *rss, struct str txt) {
   if (!str_len(txt)) {
     return;
   }
-  for str_tok(itr, _, txt, strv(" ")) {
-    unsigned long long hash = FNV1A64_HASH_INITIAL;
-    int cnt = div_round_up(str_len(itr), 16);
-    struct str blk = itr;
-    for loop(i,cnt) {
-      struct str seg = str_lhs(blk, 16);
-      hash = str__hash(seg, hash);
-
-      struct res_run_cache_fnd_res ret = res_run_cache_fnd(&rss->run_cache, hash);
-      struct res_fnt_run *run = ret.run;
-      if (ret.is_new) {
-        res_fnt_fill_run(rss, run, seg);
-      }
-      ext[0] += run->adv[run->len-1];
-      blk = str_cut_lhs(&blk, run->off[run->len-1]);
+  switch (rss->mod) {
+  case RES_FNT_RUN_FULL: {
+    res_fnt_ext_blk(ext, rss, txt);
+  } break;
+  case RES_FNT_RUN_WORDS: {
+    for str_tok(itr, _, txt, strv(" ")) {
+      res_fnt_ext_blk(ext, rss, itr);
+      ext[0] += rss->fnt.space_adv * (!!str_len(_));
     }
-    ext[0] += rss->fnt.space_adv * (!!str_len(_));
-  }
+  } break;}
 }
 static void
-res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space,
-                int ext) {
+res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space, int ext) {
   assert(run);
   assert(bnd);
   int width = 0, len = 0;
@@ -743,9 +754,39 @@ res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space,
   bnd->len += len;
   bnd->width += width;
 }
+static int
+res_fnt_fit_blk(struct res_txt_bnd *bnd, int *ext, struct res *rss, int space,
+                struct str txt) {
+
+  unsigned long long h = FNV1A64_HASH_INITIAL;
+  int n = div_round_up(str_len(txt), 16);
+  struct str blk = txt;
+  for loop(i,n) {
+    struct str seg = str_lhs(blk, 16);
+    h = str__hash(seg, h);
+
+    struct res_run_cache_fnd_res ret = res_run_cache_fnd(&rss->run_cache, h);
+    struct res_fnt_run *run = ret.run;
+    if (ret.is_new) {
+      res_fnt_fill_run(rss, run, seg);
+    }
+    if (*ext + run->adv[run->len-1] < space) {
+      bnd->len += run->off[run->len-1];
+      bnd->width += run->adv[run->len-1];
+      *ext += run->adv[run->len-1];
+    } else {
+      if (*ext + run->adv[0] < space) {
+        res_fnt_fit_run(bnd, run, space, *ext);
+      }
+      return 1;
+    }
+    blk = str_cut_lhs(&blk, run->off[run->len-1]);
+  }
+  return 0;
+}
 static void
-res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
-  assert(r);
+res_fnt_fit(struct res_txt_bnd *bnd, struct res *rss, int space, struct str txt) {
+  assert(rss);
   assert(bnd);
 
   mset(bnd, 0, szof(*bnd));
@@ -754,35 +795,20 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt) {
     return;
   }
   int ext = 0;
-  for str_tok(it, _, txt, strv(" ")) {
-    unsigned long long h = FNV1A64_HASH_INITIAL;
-    int n = div_round_up(str_len(it), 16);
-    struct str blk = it;
-    for loop(i,n) {
-      struct str seg = str_lhs(blk, 16);
-      h = str__hash(seg, h);
-
-      struct res_run_cache_fnd_res ret = res_run_cache_fnd(&r->run_cache, h);
-      struct res_fnt_run *run = ret.run;
-      if (ret.is_new) {
-        res_fnt_fill_run(r, run, seg);
+  switch (rss->mod) {
+  case RES_FNT_RUN_FULL: {
+    res_fnt_fit_blk(bnd, &ext, rss, space, txt);
+  } break;
+  case RES_FNT_RUN_WORDS: {
+    for str_tok(it, _, txt, strv(" ")) {
+      if (res_fnt_fit_blk(bnd, &ext, rss, space, it)) {
+        bnd->width += rss->fnt.space_adv * (!!str_len(_));
+        break;
       }
-      if (ext + run->adv[run->len-1] < space) {
-        bnd->len += run->off[run->len-1];
-        bnd->width += run->adv[run->len-1];
-        ext += run->adv[run->len-1];
-      } else {
-        if (ext + run->adv[0] < space) {
-          res_fnt_fit_run(bnd, run, space, ext);
-        }
-        goto done;
-      }
-      blk = str_cut_lhs(&blk, run->off[run->len-1]);
     }
-    bnd->width += r->fnt.space_adv * (!!str_len(_));
-  }
-done:
-  bnd->end = str_beg(txt) + bnd->len;
+  } break;
+ }
+ bnd->end = str_beg(txt) + bnd->len;
 }
 static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
@@ -827,7 +853,14 @@ res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
   assert(rss);
   assert(itr);
   if (itr->i == itr->n) {
-    itr->at = str_split_cut(&itr->rest, strv(" "));
+    switch (rss->mod) {
+    case RES_FNT_RUN_FULL: {
+      itr->at = itr->rest;
+      itr->rest = str_nil;
+    } break;
+    case RES_FNT_RUN_WORDS: {
+      itr->at = str_split_cut(&itr->rest, strv(" "));
+    } break;}
     itr->n = div_round_up(str_len(itr->at), 16);
     itr->h = FNV1A64_HASH_INITIAL;
     itr->blk = itr->at;
@@ -905,6 +938,14 @@ res_shutdown(struct res *rss) {
   sys->gfx.tex.del(sys, rss->fnt.texid);
 }
 static void
+res_full_text_mode(struct res *rss) {
+  rss->mod = RES_FNT_RUN_FULL;
+}
+static void
+res_word_mode(struct res *rss) {
+  rss->mod = RES_FNT_RUN_WORDS;
+}
+static void
 res_ico_ext(int *ret, const struct res *rss, enum res_ico_id ico) {
   assert(ret);
   assert(rss);
@@ -922,6 +963,8 @@ static const struct res_api res__api = {
   .version = RES_VERSION,
   .init = res_init,
   .shutdown = res_shutdown,
+  .full_text_mode = res_full_text_mode,
+  .word_mode = res_word_mode,
   .run = {
     .begin = res_lay_begin,
     .nxt = res_lay_nxt,

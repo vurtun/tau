@@ -1365,6 +1365,7 @@ is_punct(long c) {
 #define str(p,r) (struct str){.ptr = (p), .rng = (r)}
 #define strn(s,n) str(s,rngn(n))
 #define str0(s) str(s,rngn(cstrn(s)))
+#define strc(c) str(&c,rngn(1))
 #define strv(s) (struct str){.ptr = (s),.rng ={0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
 #define strf(s) (s).rng.cnt, str_beg(s)
 #define str_nil (struct str){0,rngn(0)}

@@ -87,7 +87,7 @@ static const struct app_ui_shortcut app_ui_key_tbl[GUI_KEY_CNT] = {
 // clang-format on
 
 enum {
-  CFG_DB_MAX_MEMORY   = KB(512),
+  CFG_DB_MAX_MEMORY   = KB(128),
   CFG_GUI_VTX_MEMORY  = KB(128),
   CFG_GUI_IDX_MEMORY  = KB(128),
   CFG_GUI_MAX_MEMORY  = (CFG_GUI_VTX_MEMORY + CFG_GUI_IDX_MEMORY),

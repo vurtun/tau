@@ -18,6 +18,8 @@ enum {
   DB_MAX_FLTR_CNT               = 8,
   DB_MAX_FLTR_ELM               = 128,
   DB_MAX_FLTR_ELM_STR           = 64,
+  DB_MAX_BLB_ROW_CNT            = 128,
+  DB_MAX_BLB_HEX_COL_CNT        = 16,
 
   DB_INFO_NAME_STR_BUF_SIZ      = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME),
   DB_INFO_SQL_STR_BUF_SIZ       = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL),
@@ -28,6 +30,7 @@ enum {
   DB_TBL_ELM_STR_BUF_SIZ        = (DB_MAX_TBL_ELM*DB_MAX_TBL_ELM_DATA),
   DB_TBL_FLTR_STR_BUF_SIZ       = (DB_MAX_FLTR_ELM * DB_MAX_FLTR_ELM_STR),
   DB_SQL_QRY_BUF_SIZ            = KB(16),
+  DB_SQL_BLB_BUF_SIZ            = KB(8),
   DB_SQL_QRY_NAME_BUF_SIZ       = 128,
 };
 /* ----------------------------------------------------------------------------
@@ -130,6 +133,11 @@ enum db_tbl_view_dsp_state {
   DB_TBL_VIEW_DSP_LAYOUT,
   DB_TBL_VIEW_DSP_CNT
 };
+enum db_tbl_view_dsp_data_view {
+  DB_TBL_VIEW_DSP_DATA_LIST,
+  DB_TBL_VIEW_DSP_DATA_BLOB,
+  DB_TBL_VIEW_DSP_DATA_CNT,
+};
 enum db_tbl_col_state {
   DB_TBL_COL_STATE_LOCKED,
   DB_TBL_COL_STATE_UNLOCKED,
@@ -140,6 +148,17 @@ enum db_tbl_view_state {
 };
 struct db_tbl_ui_state {
   int state[GUI_TBL_CAP(DB_MAX_TBL_ROW_COLS)];
+  int off[2];
+};
+enum db_tbl_ui_blob_type {
+  DB_TBL_BLB_HEX,
+  DB_TBL_BLB_CNT,
+};
+struct db_tbl_ui_blob_state {
+  int sel_tab;
+  long long colid;
+  long long rowid;
+  struct rng rng;
   int off[2];
 };
 enum db_tbl_ui_disp_state_col {
@@ -173,7 +192,8 @@ struct db_tbl_state {
   unsigned active:1;
   unsigned kind:9;
   unsigned state:9;
-  unsigned disp:9;
+  unsigned disp:6;
+  unsigned data:6;
   unsigned qry_name:1;
 
   char title_buf[DB_MAX_TBL_NAME];
@@ -182,6 +202,7 @@ struct db_tbl_state {
 
   struct db_tbl_col_lst_state col;
   struct db_tbl_row_lst_state row;
+  struct db_tbl_ui_blob_state blb;
   struct db_tbl_fltr_state fltr;
 };
 
@@ -281,11 +302,18 @@ struct db_info_view {
   struct gui_txt_ed fnd_ed;
   struct tbl(long long, DB_MAX_INFO_ELM_CNT) sel;
 };
+struct dbl_blb_view {
+  long long colid;
+  long long rowid;
+  char buf[DB_SQL_BLB_BUF_SIZ];
+  struct str rows[DB_MAX_BLB_ROW_CNT];
+};
 struct db_view {
   unsigned long long id;
-  char sql_qry_buf[DB_SQL_QRY_BUF_SIZ];
   struct db_tbl_view tbl;
   struct db_info_view info;
+  struct dbl_blb_view blb;
+  char sql_qry_buf[DB_SQL_QRY_BUF_SIZ];
 };
 
 /* ----------------------------------------------------------------------------
