@@ -99,4 +99,3 @@ enum {
   CFG_WIN_MAX_HEIGHT  = 2048,
 };
 
-

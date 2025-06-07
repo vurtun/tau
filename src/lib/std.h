@@ -118,3 +118,5 @@ struct color {
   char mem[N];          \
 }
 
+#define strv(s) (struct str){.ptr = (s),.rng ={0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
+

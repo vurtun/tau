@@ -369,13 +369,17 @@ struct gui_scrl_bar {
 /* Widget: Spin */
 enum gui_spin_val_typ {
   GUI_SPIN_INT,
+  GUI_SPIN_UINT,
 #ifdef GUI_USE_FLT
   GUI_SPIN_FLT
 #endif
 };
 union gui_spin_dat {
-  float f;
   int i;
+  unsigned u;
+#ifdef GUI_USE_FLT
+  float f;
+#endif
 };
 struct gui_spin_val {
   enum gui_spin_val_typ typ;
@@ -1233,6 +1237,8 @@ struct gui_spin_api {
   int (*f)(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent, float *n);
   int (*num)(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent, int *n, int min, int max, int inc);
   int (*i)(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent, int *n);
+  int (*uint)(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent, unsigned *num, unsigned min, unsigned max, unsigned inc);
+  int (*u)(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent, unsigned *num);
 };
 struct gui_grp_api {
   void (*begin)(struct gui_ctx *ctx, struct gui_grp *grp, struct gui_panel *parent, struct str txt);

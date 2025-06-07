@@ -3626,6 +3626,10 @@ gui_spin_cur_ext(const struct gui_spin_val *val, int width) {
     int delta = val->num.i - val->min.i;
     ret = delta ? (width / (val->max.i / delta)) : 0;
   } break;
+  case GUI_SPIN_UINT: {
+    unsigned delta = val->num.u - val->min.u;
+    ret = casti(delta ? (castu(width) / (val->max.u / delta)) : 0);
+  } break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT: {
     float delta = val->num.f - val->min.f;
@@ -3671,6 +3675,14 @@ gui_spin_commit(struct gui_ctx *ctx, struct gui_spin_val *val) {
         mod = 1;
       }
     } break;
+    case GUI_SPIN_UINT: {
+      char *eptr = 0;
+      long num = strtol(ctx->txt_state.buf, &eptr, 10);
+      if (*eptr == '\0' && eptr != ctx->txt_state.buf) {
+        val->num.u = clamp(val->min.u, castu(num), val->max.u);
+        mod = 1;
+      }
+    } break;
 #ifdef GUI_USE_FLT
     case GUI_SPIN_FLT: {
       char *eptr = 0;
@@ -3700,6 +3712,9 @@ gui_spin_focus(struct gui_ctx *ctx, struct gui_spin_val *val,
   case GUI_SPIN_INT:
     ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%d", val->num.i);
     break;
+  case GUI_SPIN_UINT:
+    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%u", val->num.u);
+    break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT:
     ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%.2f", val->num.f);
@@ -3723,6 +3738,9 @@ gui_spin_key(struct gui_ctx *ctx, struct gui_spin_val *val) {
     case GUI_SPIN_INT:
       val->num.i = min(val->num.i + val->inc.i, val->max.i);
       break;
+    case GUI_SPIN_UINT:
+      val->num.u = min(val->num.u + val->inc.u, val->max.u);
+      break;
 #ifdef GUI_USE_FLT
     case GUI_SPIN_FLT:
       val->num.f = min(val->num.f + val->inc.f, val->max.f);
@@ -3738,6 +3756,9 @@ gui_spin_key(struct gui_ctx *ctx, struct gui_spin_val *val) {
     switch (val->typ) {
     case GUI_SPIN_INT:
       val->num.i = max(val->num.i - val->inc.i, val->min.i);
+      break;
+    case GUI_SPIN_UINT:
+      val->num.u = max(val->num.u - val->inc.u, val->min.u);
       break;
 #ifdef GUI_USE_FLT
     case GUI_SPIN_FLT:
@@ -3762,6 +3783,10 @@ gui_spin_scrl(struct sys *sys, struct gui_spin_val *val) {
     int idx = val->num.i + (val->inc.i * sys->mouse.scrl[1]);
     val->num.i = clamp(val->min.i, idx, val->max.i);
   } break;
+  case GUI_SPIN_UINT: {
+    int idx = casti(val->num.u) + casti(val->inc.u * castu(sys->mouse.scrl[1]));
+    val->num.u = clamp(val->min.u, castu(idx), val->max.u);
+  } break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT: {
     float delta = castf(sys->mouse.scrl[1]);
@@ -3784,6 +3809,10 @@ gui_spin_rel_drag(struct sys *sys, struct gui_spin_val *val) {
   case GUI_SPIN_INT: {
     int new_val = sys->mouse.pos_delta[0] * val->inc.i;
     val->num.i = clamp(val->min.i, val->num.i + new_val, val->max.i);
+  } break;
+  case GUI_SPIN_UINT: {
+    unsigned new_val = castu(sys->mouse.pos_delta[0]) * val->inc.u;
+    val->num.u = clamp(val->min.u, val->num.u + new_val, val->max.u);
   } break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT: {
@@ -3823,6 +3852,18 @@ gui_spin_abs_drag(struct sys *sys, struct gui_spin_val *val,
     int new_val = off + val->min.i;
     val->num.i = clamp(val->min.i, new_val, val->max.i);
   } break;
+  case GUI_SPIN_UINT: {
+    unsigned ratio = (castu(dst) << 7U) / castu(ext);
+    unsigned total = castu(val->max.i - val->min.i);
+
+    unsigned scaled = ratio * total;
+    unsigned rounded = scaled + (1U << 6U);
+    rounded &= ~((1U << 7U) - 1U);
+    unsigned off = rounded >> 7U;
+
+    unsigned new_val = off + val->min.u;
+    val->num.u = clamp(val->min.u, new_val, val->max.u);
+  } break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT: {
     float ratio = castf(dst) / castf(spin->pan.box.x.ext - 4);
@@ -3843,6 +3884,8 @@ gui_spin_str(char *buf, int cap, const struct gui_spin_val *val) {
   switch (val->typ) {
   case GUI_SPIN_INT:
     return str_fmtsn(buf, cap, "%d", val->num.i);
+  case GUI_SPIN_UINT:
+    return str_fmtsn(buf, cap, "%u", val->num.u);
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT:
     return str_fmtsn(buf, cap, "%.2f", val->num.f);
@@ -4030,6 +4073,45 @@ gui_spin_i(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent,
   assert(parent);
   return gui_spin_int(ctx, ctl, parent, num, 0, 0, 0);
 }
+static int
+gui_spin_uint(struct gui_ctx *ctx, struct gui_spin *ctl,
+             struct gui_panel *parent, unsigned *num, unsigned min,
+             unsigned max, unsigned inc) {
+
+  assert(num);
+  assert(ctx);
+  assert(parent);
+
+  struct gui_spin_val val = {0};
+  val.typ = GUI_SPIN_INT;
+  val.inc.u = inc == 0 ? 1 : inc;
+  val.num.u = *num;
+  val.min.u = min;
+  val.max.u = max;
+
+  if ((min == max) && min == 0) {
+    val.min.u = 0;
+    val.max.u = UINT_MAX;
+    val.inc.u = 1;
+  } else {
+    val.min.u = min;
+    val.max.u = max;
+  }
+  if (gui_spin(ctx, ctl, parent, &val)) {
+    *num = val.num.u;
+    return 1;
+  }
+  return 0;
+}
+static int
+gui_spin_u(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent,
+           unsigned *num) {
+  assert(num);
+  assert(ctx);
+  assert(parent);
+  return gui_spin_uint(ctx, ctl, parent, num, 0, 0, 0);
+}
+
 
 /* ---------------------------------------------------------------------------
  *                                  Group
@@ -6508,6 +6590,8 @@ static const struct gui_api gui__api = {
     .val = gui_spin,
     .num = gui_spin_int,
     .i = gui_spin_i,
+    .uint = gui_spin_uint,
+    .u = gui_spin_u,
 #ifdef GUI_USE_FLT
     .flt = gui_spin_flt,
     .f = gui_spin_f,

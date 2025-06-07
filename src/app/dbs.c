@@ -600,6 +600,8 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
     sqlite3_bind_text(fstmt, 2, db_str(name), SQLITE_STATIC);
     col->fk = (sqlite3_step(fstmt) == SQLITE_ROW);
     sqlite3_finalize(fstmt);
+
+    /* check if column text to big */
   }
   stbl->col.rng.hi = stbl->col.rng.lo + stbl->col.rng.cnt;
 
@@ -2448,7 +2450,7 @@ ui_db_view_info_tbl(struct db_state *sdb, struct db_view *vdb, int view,
           tbl.lst.end = 0;
         }
       }
-      for gui_tbl_lst_loopv(i,_,gui,&tbl,vinfo->elms) {
+      for gui_tbl_lst_loopv(i, _, gui, &tbl, vinfo->elms) {
         assert(i >= tbl.lst.begin);
         int elm_idx = i - tbl.lst.begin;
         assert(elm_idx < cntof(vinfo->elms));
