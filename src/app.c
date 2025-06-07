@@ -299,6 +299,9 @@ app_run(struct sys *sys) {
     struct app *app = &g_app;
     app_init(app, sys);
     sys->app = app;
+    if (sys->argc > 1) {
+      app_open_file(app, sys->argv[1]);
+    }
   } break;
 
   case SYS_RUN: {

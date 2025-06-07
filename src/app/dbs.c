@@ -1019,6 +1019,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   mset(&tbl->fltr.elms, 0, szof(tbl->fltr.elms));
   mset(&tbl->row.rng, 0, szof(tbl->row.rng));
   mset(&tbl->col.rng, 0, szof(tbl->col.rng));
+  mset(&tbl->row.cols, 0, szof(tbl->row.cols));
 
   tbl->title = str_sqz(tbl->title_buf, cntof(tbl->title_buf), name);
   tbl->qry_name = str_len(name) > str_len(tbl->title);
@@ -1151,9 +1152,12 @@ db_info_qry_cnt(struct db_state *sdb, enum db_tbl_type tab, struct str fltr) {
     err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_text(stmt, 1, type[tab], -1, SQLITE_STATIC);
   }
-  assert(err == SQLITE_OK);
-  err = sqlite3_step(stmt);
-  assert(err == SQLITE_ROW);
+  if (err != SQLITE_OK) {
+    return 0;
+  }
+  if (sqlite3_step(stmt) != SQLITE_ROW) {
+    return 0;
+  }
   int cnt = sqlite3_column_int(stmt, 0);
   err = sqlite3_finalize(stmt);
   unused(err);
@@ -1298,9 +1302,11 @@ db_setup(struct db_state *sdb, struct gui_ctx *ctx, struct str path) {
     sdb->info.tab_cnt[i] = db_info_qry_cnt(sdb, tab_type, str_nil);
     sdb->info.tab_act |= castu(!!sdb->info.tab_cnt[i]) << i;
   }
+  if (!sdb->info.tab_act) {
+    return 0;
+  }
   int sel = cpu_bit_ffs32(sdb->info.tab_act);
   sdb->info.sel_tab = cast(enum db_tbl_type, sel);
-
   sdb->tbls[0].active = 1;
   sdb->frame = DB_FRAME_TBL;
 
@@ -1953,13 +1959,15 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *sdb, struct db_view *vdb,
         gui.tbl.lst.elm.begin(ctx, &tbl, &item, id, 0);
         for looprn(j, stbl->row.cols, DB_MAX_TBL_ROW_COLS) {
           assert(j >= stbl->col.rng.lo);
+
           int col_idx = j - stbl->col.rng.lo;
           assert(col_idx < cntof(vtbl->col.lst));
-          struct db_tbl_col *col = &vtbl->col.lst[idx];
+          struct db_tbl_col *col = &vtbl->col.lst[col_idx];
 
           assert(elm_idx < cntof(vtbl->row.lst));
           unsigned elm = vtbl->row.lst[elm_idx++];
           struct str dat = str_buf_get(&vtbl->row.buf, elm);
+
           if (col->blob) {
             struct gui_panel cel = {0};
             gui.tbl.lst.elm.col.lnk(ctx, &tbl, tbl_lay, &item, &cel, dat, 0);
@@ -1968,6 +1976,7 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *sdb, struct db_view *vdb,
             struct gui_input pin = {0};
             gui.pan.input(&pin, ctx, &cel, GUI_BTN_LEFT);
             if (pin.mouse.btn.left.clk) {
+
               stbl->data = DB_TBL_VIEW_DSP_DATA_BLOB;
               stbl->blb.colid = col->rowid;
               stbl->blb.rowid = vtbl->row.rowids[idx];
@@ -2032,12 +2041,6 @@ ui_db_tbl_view_dsp_data_blb_hex(struct db_state *sdb, struct db_view *vdb,
         reg.lst.end = 0;
       }
     }
-    assert(vtbl->row.id == stbl->rowid);
-    assert(vdb->blb.rowid == stbl->blb.rowid);
-    assert(vdb->blb.colid == stbl->blb.colid);
-    assert(reg.lst.begin == stbl->blb.rng.lo);
-    assert(reg.lst.end == stbl->blb.rng.hi);
-
     res.full_text_mode(ctx->res);
     for gui_lst_reg_loop(i,gui,&reg) {
       /* display each line of hex/ascii data representation */
@@ -2099,7 +2102,6 @@ ui_db_tbl_view_dsp_data_blb(struct db_state *sdb, struct db_view *vdb,
     if (back.clk) {
       stbl->data = DB_TBL_VIEW_DSP_DATA_LIST;
       stbl->blb.rng = rng_nil;
-
       vdb->blb.colid = 0;
       vdb->blb.rowid = 0;
     }

@@ -215,6 +215,7 @@ struct sys_rnd_api {
 };
 
 /* platform */
+#define SYS_MAX_CMD_ARGS 64
 #define SYS_MAX_INPUT 256
 enum sys_op {
   SYS_SETUP,
@@ -229,7 +230,7 @@ struct sys {
 
   int quit;
   int argc;
-  char **argv;
+  struct str argv[SYS_MAX_CMD_ARGS];
 
   struct cpu_info cpu;
   enum sys_cur_style cursor;

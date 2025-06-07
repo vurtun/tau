@@ -1041,7 +1041,9 @@ extern int
 main(int argc, char *argv[]) {
   g_sys.platform = &g_mac;
   g_sys.argc = argc;
-  g_sys.argv = argv;
+  for loopn(i,argc, SYS_MAX_CMD_ARGS) {
+    g_sys.argv[i] = str0(argv[i]);
+  }
   cpu_info(&g_sys.cpu);
 
   /* memory */
