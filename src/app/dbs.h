@@ -20,6 +20,7 @@ enum {
   DB_MAX_FLTR_ELM_STR           = 64,
   DB_MAX_BLB_ROW_CNT            = 128,
   DB_MAX_BLB_HEX_COL_CNT        = 16,
+  DB_MAX_TBL_ROW_TXT            = KB(32),
 
   DB_INFO_NAME_STR_BUF_SIZ      = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME),
   DB_INFO_SQL_STR_BUF_SIZ       = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL),
@@ -261,11 +262,12 @@ struct db_tbl_col {
   long long rowid;
   unsigned name;
   unsigned type;
-  unsigned ico:27;
+  unsigned ico:26;
   unsigned pk:1;
   unsigned fk:1;
   unsigned nn:1;
   unsigned blob:1;
+  unsigned txt:1;
   unsigned qry_name:1;
 };
 struct db_tbl_col_lst_view {

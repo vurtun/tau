@@ -561,7 +561,7 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
       sqlite3_bind_int(stmt, 3, high-low);
     }
   }
-  for db_loopn(_,err,stmt,SQLITE_MAX_COLUMN) {
+  for db_loopn(_, err, stmt, SQLITE_MAX_COLUMN) {
     long long col_rowid = sqlite3_column_int64(stmt, 0);
     const char *col_name = (const char*)sqlite3_column_text(stmt, 1);
     const char *col_type = (const char*)sqlite3_column_text(stmt, 2);
@@ -591,6 +591,7 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
     col->nn = !strcmp(col_nn, "1");
     col->blob = !str_len(type) || col_type[0] == 0;
     col->blob = col->blob || str_eq(type, strv("BLOB"));
+    col->txt = (strstr(col_type, "CHAR") || strstr(col_type, "CLOB") || strstr(col_type, "TEXT"));
 
     /* check if foreign key */
     sqlite3_stmt *fstmt = 0;
@@ -600,8 +601,6 @@ db_tbl_qry_cols(struct db_state *sdb, struct db_tbl_state *stbl,
     sqlite3_bind_text(fstmt, 2, db_str(name), SQLITE_STATIC);
     col->fk = (sqlite3_step(fstmt) == SQLITE_ROW);
     sqlite3_finalize(fstmt);
-
-    /* check if column text to big */
   }
   stbl->col.rng.hi = stbl->col.rng.lo + stbl->col.rng.cnt;
 
@@ -797,9 +796,12 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
 
     struct db_name_lck clck = {0};
     struct db_tbl_col *col = &vtbl->col.lst[idx];
-
     db_tbl_col_name_acq(&clck, sdb, vtbl, col, tlck.name, col->rowid);
-    sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql, "%.*s, ", strf(clck.name));
+    if (col->txt) {
+      sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql, "SUBSTR(CAST(\"%.*s\" AS BLOB), 1, 1024), ", strf(clck.name));
+    } else {
+      sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql, "%.*s, ", strf(clck.name));
+    }
     db_tbl_col_name_rel(&clck);
   }
   sql.rng = rng_lhs(&sql.rng, sql.rng.cnt-2);
@@ -2157,7 +2159,7 @@ ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_view *vdb,
     struct gui_edit_box edt = {0};
     edt.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
     vdb->info.fnd_str = gui.edt.box(ctx, &edt, pan, vdb->info.fnd_buf, cntof(vdb->info.fnd_buf), vdb->info.fnd_str);
-    if (edt.mod){
+    if (edt.mod) {
       stbl->col.ui.off[1] = 0;
       stbl->col.rng.total = db_tbl_qry_col_cnt(sdb, stbl, vdb->info.fnd_str);
       stbl->col.rng.cnt = stbl->col.rng.lo = stbl->col.rng.hi = 0;
@@ -2618,6 +2620,7 @@ ui_db_tab_view_lst(struct db_state *sdb, struct gui_ctx *ctx,
             gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->row.rng.total);
             gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->fltr.cnt);
             gui.tbl.lst.elm.col.slot(&del.box, ctx, &tbl, tbl_lay);
+
             gui.ico.clk(ctx, &del, &elm, RES_ICO_TRASH);
             if (del.clk){
               del_idx = idx;
@@ -2715,7 +2718,6 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
       struct gui_panel lbl = {.box = hdr};
       gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, file);
       if (sdb->frame == DB_FRAME_TBL && sdb->tbls[sdb->sel_tbl].state == TBL_VIEW_DISPLAY) {
-
         struct db_tbl_state *tbl = &sdb->tbls[sdb->sel_tbl];
         gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, strv("/"));
         gui.lbl.txt(ctx, &lbl, pan, &(struct gui_box_cut){&hdr, GUI_BOX_CUT_LHS, 0}, tbl->title);

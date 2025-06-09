@@ -335,16 +335,18 @@ ui_app_var_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     struct gui_edit_box edt = {.box = fltr.box};
     app->fnd_str = ui_edit_fnd(ctx, &edt, &fltr, pan, &app->fnd_ed,
         arrv(app->fnd_buf), app->fnd_str);
-    if (edt.mod) {
 
-    }
     /* setup list */
+    int cnt = 0;
     struct var *lst[APP_MAX_VAR];
     for tbl_loop(n,i, &app->vars) {
       struct var *var = tbl_unref(&app->vars, n, 0);
-      lst[i] = var;
+      if (!str_len(app->fnd_str) ||
+          str_has(var->name, app->fnd_str)) {
+        lst[cnt++] = var;
+      }
     }
-    qsort(lst, castsz(app->vars.cnt), sizeof(lst[0]), app_sort_var);
+    qsort(lst, castsz(cnt), sizeof(lst[0]), app_sort_var);
 
     /* table */
     struct gui_tbl tbl = {.box = lay};
@@ -361,7 +363,7 @@ ui_app_var_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
 
       /* list */
       struct gui_tbl_lst_cfg cfg = {0};
-      gui.tbl.lst.cfg(ctx, &cfg, app->vars.cnt);
+      gui.tbl.lst.cfg(ctx, &cfg, cnt);
       cfg.ctl.focus = GUI_LST_FOCUS_ON_HOV;
       cfg.sel.src = GUI_LST_SEL_SRC_EXT;
       cfg.sel.mode = GUI_LST_SEL_SINGLE;
@@ -507,10 +509,9 @@ app_run(struct sys *sys) {
         bit_set(ctx->keys, i);
       }
     }
-    if (bit_tst(sys->keys, SYS_KEY_F1)) {
+    if (bit_tst_clr(sys->keys, SYS_KEY_F1)) {
       app->view.last_state = app->view.state;
       app->view.state = APP_VIEW_STATE_VARS;
-      bit_clr(sys->keys, SYS_KEY_F1);
     }
     /* run app ui */
     for gui_loop(_, &gui, &app->gui) {

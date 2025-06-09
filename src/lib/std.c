@@ -1483,7 +1483,7 @@ static purist inline int
 str_has(struct str hay, struct str needle) {
   requires(str__is_val(&hay));
   requires(str__is_val(&needle));
-  return str_fnd(hay, needle) >= str_len(hay);
+  return str_fnd(hay, needle) < str_len(hay);
 }
 static struct str
 str_split_cut(struct str *str, struct str delim) {
