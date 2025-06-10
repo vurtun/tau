@@ -30,7 +30,7 @@
 #include "app.h"
 
 enum {
-  APP_MAX_VAR       = 1024,
+  APP_MAX_VAR       = 256,
   APP_MAX_VAR_FLTR  = 32,
 };
 enum app_view_state {
@@ -81,7 +81,6 @@ struct app {
   struct tbl(struct var*, APP_MAX_VAR) vars;
   struct str fnd_str;
   char fnd_buf[APP_MAX_VAR_FLTR];
-  struct gui_txt_ed fnd_ed;
   int var_tbl_state[GUI_TBL_CAP(APP_TBL_VAR_CNT)];
   int var_tbl_off[2];
 
@@ -333,8 +332,7 @@ ui_app_var_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
     struct gui_panel fltr = {.box = gui.cut.top(&lay, ctx->cfg.item, gap)};
     struct gui_btn back = {.box = gui.cut.bot(&lay, ctx->cfg.item, gap)};
     struct gui_edit_box edt = {.box = fltr.box};
-    app->fnd_str = ui_edit_fnd(ctx, &edt, &fltr, pan, &app->fnd_ed,
-        arrv(app->fnd_buf), app->fnd_str);
+    app->fnd_str = gui.edt.box(ctx, &edt, pan, arrv(app->fnd_buf), app->fnd_str);
 
     /* setup list */
     int cnt = 0;

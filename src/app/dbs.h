@@ -63,9 +63,9 @@ enum db_tbl_fltr_elm_typ {
   DB_TBL_FLTR_ELM_TYP_TM
 };
 struct db_tbl_fltr_elm {
-  unsigned active: 1;
-  unsigned enabled: 1;
-  unsigned type: 30;
+  unsigned active:1;
+  unsigned enabled:1;
+  unsigned type:30;
   long long col;
   char fnd_buf[DB_MAX_FLTR_STR];
   struct str fnd;
@@ -307,7 +307,7 @@ struct db_info_view {
   struct gui_txt_ed fnd_ed;
   struct tbl(long long, DB_MAX_INFO_ELM_CNT) sel;
 };
-struct dbl_blb_view {
+struct db_blb_view {
   long long colid;
   long long rowid;
   char buf[DB_SQL_BLB_BUF_SIZ];
@@ -317,7 +317,7 @@ struct db_view {
   unsigned long long id;
   struct db_tbl_view tbl;
   struct db_info_view info;
-  struct dbl_blb_view blb;
+  struct db_blb_view blb;
   char sql_qry_buf[DB_SQL_QRY_BUF_SIZ];
 };
 
