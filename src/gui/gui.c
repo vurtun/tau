@@ -4294,7 +4294,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
   reg->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
   reg->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
   reg->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
-  {
+  if (!reg->no_vscrl) {
     /* setup vertical scrollbar */
     reg->vscrl.min_size = ctx->cfg.scrl;
     reg->vscrl.total = (pan->max[1] - pan->box.y.min);
@@ -4316,7 +4316,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
     }
     /* vertical scrollbar */
     reg->vscrl.off = reg->off[1];
-    if (reg->vscrl.total > reg->vscrl.size + ctx->cfg.scrl) {
+    if (reg->force_vscrl || reg->vscrl.total > reg->vscrl.size + ctx->cfg.scrl) {
       gui_vscrl(ctx, &reg->vscrl, pan);
       if (abs(reg->off[1] - reg->vscrl.off) >= 1) {
         reg->off[1] = reg->vscrl.off;
@@ -4327,13 +4327,13 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
     }
     reg->max_off[1] = reg->vscrl.total - reg->vscrl.size;
   }
-  {
+  if (!reg->no_hscrl){
     /* setup horizontal scrollbar */
     reg->hscrl.off = reg->off[0];
     reg->hscrl.min_size = ctx->cfg.scrl;
     reg->hscrl.total = pan->max[0] - pan->box.x.min;
     reg->hscrl.size = pan->box.x.max - pan->box.x.min + ctx->cfg.scrl;
-    if (reg->hscrl.total > reg->hscrl.size) {
+    if (reg->force_hscrl || reg->hscrl.total > reg->hscrl.size) {
       /* horizontal scrollbar */
       gui_hscrl(ctx, &reg->hscrl, pan);
       if (abs(reg->off[0] - reg->hscrl.off) >= 1) {

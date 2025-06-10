@@ -418,14 +418,18 @@ struct gui_grp {
 struct gui_reg {
   /* in */
   struct gui_box box;
+  unsigned no_vscrl:1;
+  unsigned no_hscrl:1;
+  unsigned force_vscrl:1;
+  unsigned force_hscrl:1;
   /* out */
+  unsigned scrolled : 1;
   struct gui_panel pan;
   int scrl_wheel;
   int off[2];
   struct gui_box space;
   struct gui_scrl_bar vscrl;
   struct gui_scrl_bar hscrl;
-  unsigned scrolled : 1;
   /* internal */
   int max_off[2];
   struct gui_clip clip_rect;

@@ -20,7 +20,6 @@ enum {
   DB_MAX_FLTR_ELM_STR           = 64,
   DB_MAX_BLB_ROW_CNT            = 128,
   DB_MAX_BLB_HEX_COL_CNT        = 16,
-  DB_MAX_TBL_ROW_TXT            = KB(32),
 
   DB_INFO_NAME_STR_BUF_SIZ      = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_NAME),
   DB_INFO_SQL_STR_BUF_SIZ       = (DB_MAX_INFO_ELM_CNT * DB_MAX_TBL_SQL),
@@ -190,7 +189,6 @@ struct db_tbl_row_lst_state {
   struct db_tbl_ui_state ui;
 };
 struct db_tbl_state {
-  unsigned active:1;
   unsigned kind:9;
   unsigned state:9;
   unsigned disp:6;
@@ -237,9 +235,14 @@ struct db_state {
   sqlite3 *con;
   unsigned long long id;
   struct db_info_state info;
+
   int tbl_lst_off[2];
   struct db_tbl_state tbls[DB_TBL_CNT];
+  unsigned long tbl_act;
   int sel_tbl;
+  int tbl_cnt;
+
+  int tab_off[2];
   enum db_state_frame frame;
   struct db_state_ui_state ui;
 };
