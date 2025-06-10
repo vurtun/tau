@@ -331,6 +331,6 @@ struct db_api {
   int (*setup)(struct db_state *state, struct gui_ctx *ctx, struct str path);
   void (*del)(struct db_state *db);
   void (*ui)(struct db_state *db, struct db_view *view, struct gui_ctx *ctx,
-             struct gui_panel *pan, struct gui_panel *parent, struct str file);
+             struct gui_panel *pan, struct gui_panel *parent);
 };
 

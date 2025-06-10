@@ -432,8 +432,7 @@ ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
       ui_app_file_view(app, &app->view, ctx, &bdy, pan);
     } break;
     case APP_VIEW_STATE_DB: {
-      struct str file = path_file(app->view.file_path);
-      dbs.ui(&app->view.db, &app->db, ctx, &bdy, pan, file);
+      dbs.ui(&app->view.db, &app->db, ctx, &bdy, pan);
     } break;
     case APP_VIEW_STATE_VARS: {
       ui_app_var_lst(app, ctx, pan, parent);

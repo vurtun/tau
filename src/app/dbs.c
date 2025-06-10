@@ -884,8 +884,7 @@ db_tbl_qry_blb_row_cnt(struct db_state *sdb, struct db_view *vdb,
     sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
     sqlite3_bind_int64(stmt, 1, stbl->blb.rowid);
 
-    int err = sqlite3_step(stmt);
-    assert(err == SQLITE_ROW);
+    sqlite3_step(stmt);
     siz = sqlite3_column_int64(stmt, 0);
     sqlite3_finalize(stmt);
   }
@@ -1085,11 +1084,8 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   sqlite3_stmt *stmt = 0;
   struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf), "SELECT COUNT(*) FROM \"%.*s\";", strf(name));
   if (str_len(sql) < cntof(vdb->sql_qry_buf)-1) {
-    int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
-    assert(err == SQLITE_OK);
-
-    err = sqlite3_step(stmt);
-    assert(err == SQLITE_ROW);
+    sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
+    sqlite3_step(stmt);
     tbl->row.rng.total = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
   } else {
@@ -2708,7 +2704,7 @@ ui_db_main(struct db_state *sdb, struct db_view *vdb, int view,
 }
 static void
 ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
-            struct gui_panel *pan, struct gui_panel *parent, struct str file) {
+            struct gui_panel *pan, struct gui_panel *parent) {
 
   requires(sdb);
   requires(vdb);
