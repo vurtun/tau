@@ -1,7 +1,7 @@
 # Tau
 Small sqlite database viewer immediate mode graphical user interface playground
 
-![image1](https://gist.github.com/user-attachments/assets/e45f9279-b700-4848-b956-b3f8c98d3c19) 
-![image2](https://gist.github.com/user-attachments/assets/ca4dba6f-2b05-4c16-9537-37e6607320c9) 
-![image3](https://gist.github.com/user-attachments/assets/a8b5978d-22c7-479b-bc63-b57759703f59) 
-![image4](https://gist.github.com/user-attachments/assets/93d2686a-fae5-4a1c-8170-843ef991eb50) 
+<img width="803" alt="image1" src="https://github.com/user-attachments/assets/51184fc2-e03c-4cb6-beeb-a6fc0b8ab562" />
+<img width="801" alt="image2" src="https://github.com/user-attachments/assets/bcf8075b-4fed-4c8d-b9dd-211db28998ed" />
+<img width="801" alt="image3" src="https://github.com/user-attachments/assets/07817d24-df77-4c8d-99c2-8993101e928c" />
+<img width="800" alt="image4" src="https://github.com/user-attachments/assets/5577b81e-1574-408f-81fe-ca2e37a235a6" />
