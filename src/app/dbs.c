@@ -960,7 +960,7 @@ db_tbl_qry_blb(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *s
   for loop(i, stbl->blb.rng.cnt) {
     /* generate hex value representation */
     int ln_begin = buf.rng.cnt;
-    buf = str_add_fmt(vdb->blb.buf, cntof(vdb->blb.buf), buf, "%0*X: ", digit_cnt, addr);
+    buf = str_add_fmt(vdb->blb.buf, cntof(vdb->blb.buf), buf, "%0*X: ", digit_cnt, off + addr);
     for (int c = 0; c < DB_MAX_BLB_HEX_COL_CNT && addr + c < siz; ++c) {
       unsigned char b = castb(vdb->sql_qry_buf[addr + c]);
       buf = str_add_fmt(vdb->blb.buf, cntof(vdb->blb.buf), buf, "%.2X ", b);
@@ -2066,7 +2066,7 @@ ui_db_tbl_view_dsp_data_blb_hex(struct db_state *sdb, struct db_view *vdb,
     for gui_lst_reg_loop(i,gui,&reg) {
       /* display each line of hex/ascii data representation */
       struct gui_panel elm = {0};
-      struct str ln = vdb->blb.rows[i];
+      struct str ln = vdb->blb.rows[i - reg.lst.begin];
       unsigned long long elm_id = hash_ptr(ln.ptr);
       gui.lst.reg.elm.txt(ctx, &reg, &elm, gui_id64(elm_id), 0, ln, 0);
     }
@@ -2123,6 +2123,7 @@ ui_db_tbl_view_dsp_data_blb(struct db_state *sdb, struct db_view *vdb,
     if (back.clk) {
       stbl->data = DB_TBL_VIEW_DSP_DATA_LIST;
       stbl->blb.rng = rng_nil;
+
       vdb->blb.colid = 0;
       vdb->blb.rowid = 0;
     }
@@ -2191,11 +2192,11 @@ ui_db_tbl_view_dsp_lay(struct db_state *sdb, struct db_view *vdb,
       if (ui_tbl_hdr_elm_lock(ctx, &tbl, tbl_cols, stbl->col.ui.state, !!stbl->col.state)) {
 
         switch (stbl->col.state) {
+        default: assert(0); break;
         case DB_TBL_COL_STATE_LOCKED: {
           stbl->col.state = DB_TBL_COL_STATE_UNLOCKED;
           tbl_clr(&stbl->col.sel);
         } break;
-        default: assert(0); break;
         case DB_TBL_COL_STATE_UNLOCKED: {
           stbl->col.state = DB_TBL_COL_STATE_LOCKED;
         } break;}

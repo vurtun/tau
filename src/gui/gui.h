@@ -780,7 +780,6 @@ struct gui_tab_ctl {
   int cnt;                          /* out */
   struct gui_tab_ctl_sel sel;       /* in-out */
   struct gui_btn btn;               /* out */
-  unsigned show_btn : 1;            /* in */
   struct gui_tab_ctl_sort sort;     /* out */
   enum gui_tab_ctl_hdr_pos hdr_pos; /* in */
   /* internal */

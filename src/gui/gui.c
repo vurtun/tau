@@ -4294,6 +4294,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
   reg->vscrl.box.y = gui_min_max(top, pan->box.y.max + off_y);
   reg->hscrl.box.x = gui_min_max(left, pan->box.x.max + off_x);
   reg->hscrl.box.y = gui_min_max(pan->box.y.max + off_y, bot);
+
   if (!reg->no_vscrl) {
     /* setup vertical scrollbar */
     reg->vscrl.min_size = ctx->cfg.scrl;
@@ -4333,6 +4334,7 @@ gui_reg_end(struct gui_ctx *ctx, struct gui_reg *reg, struct gui_panel *parent,
     reg->hscrl.min_size = ctx->cfg.scrl;
     reg->hscrl.total = pan->max[0] - pan->box.x.min;
     reg->hscrl.size = pan->box.x.max - pan->box.x.min + ctx->cfg.scrl;
+
     if (reg->force_hscrl || reg->hscrl.total > reg->hscrl.size) {
       /* horizontal scrollbar */
       gui_hscrl(ctx, &reg->hscrl, pan);
@@ -5769,6 +5771,7 @@ static void
 gui_tbl_lst_end(struct gui_ctx *ctx, struct gui_tbl *tbl) {
   assert(ctx);
   assert(tbl);
+
   gui_clip_end(ctx, &tbl->clip);
   gui_lst_end(ctx, &tbl->lst);
 
@@ -5996,24 +5999,6 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
 
   tab->pan.box = tab->box;
   gui_panel_begin(ctx, &tab->pan, parent);
-  if (tab->show_btn) {
-    /* open list button */
-    // gui_disable(ctx, tab->cnt >= cnt);
-    tab->btn.box = tab->hdr;
-    tab->btn.box.x = gui_min_ext(tab->off, ctx->cfg.scrl);
-    gui_btn_begin(ctx, &tab->btn, &tab->pan);
-    {
-      int iwidth = gui__scale_val(5, ctx->dpi_scale);
-      int iheight = gui__scale_val(3, ctx->dpi_scale);
-
-      struct gui_panel arr = {0};
-      arr.box = gui_box_mid_ext(&tab->btn.pan.box, iwidth, iheight);
-      gui_arrow(ctx, &arr, &tab->btn.pan, GUI_SOUTH);
-    }
-    gui_btn_end(ctx, &tab->btn, &tab->pan);
-    //gui_enable(ctx, tab->cnt >= cnt);
-    tab->hdr.x = gui_min_max(tab->btn.box.x.max, tab->hdr.x.max);
-  }
 }
 static void
 gui_tab_ctl_sel(struct gui_ctx *ctx, struct gui_tab_ctl *tab, int idx) {

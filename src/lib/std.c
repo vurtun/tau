@@ -1993,7 +1993,6 @@ str_add(char *buf, int cap, struct str in, struct str str) {
   requires(cap >= 0);
   requires(str__is_val(&str));
   requires(str__is_val(&in));
-
   if (str_len(in) + str_len(str) < cap) {
     mcpy(buf + str_len(in), str_beg(str), str_len(str));
     return strn(buf, str_len(str) + str_len(in));
@@ -2016,7 +2015,6 @@ str_rm(char *buf, struct str in, int cnt) {
   requires(buf);
   requires(cnt >= 0);
   requires(str__is_val(&in));
-
   int left = max(0, str_len(in) - cnt);
   return strn(buf, left);
 }
