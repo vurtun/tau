@@ -294,7 +294,7 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
   requires(str_is_val(path));
 
   char buf[MAX_FILE_PATH];
-  struct str ospath = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(path), strf(name));
+  struct str ospath = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(path), strf(name));
   mset(elm,0,szof(elm[0]));
 
   struct sys_file_info info = {0};
@@ -376,7 +376,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
   char lbl[MAX_FILE_NAME];
   int pidx = (qry->page >= lst->page.idx) ? 0 : lst->page.cnt-1;
   struct file_elm piv = lst->page.elms[pidx];
-  piv.name = str_set(lbl, cntof(lbl), piv.name);
+  piv.name = str_set(arrv(lbl), piv.name);
   lst->page.cur = (qry->page < lst->page.idx);
 
   /* iterate directory */
@@ -501,7 +501,7 @@ file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
   requires(ctx);
   requires(fpk);
 
-  fpk->home = str_set(fpk->home_path, cntof(fpk->home_path), str0(getenv("HOME")));
+  fpk->home = str_set(arrv(fpk->home_path), str0(getenv("HOME")));
   if (str_is_inv(fpk->home)) {
     return -ENAMETOOLONG;
   }
@@ -749,7 +749,7 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
       int path_len = str_len(lst->nav_path) + str_len(elm->name) + 1;
       if (path_len <= MAX_FILE_PATH) {
         char buf[MAX_FILE_PATH];
-        struct str file_path = str_fmtsn(buf, cntof(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
+        struct str file_path = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
 
         lst->fltr = str_nil;
         file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
@@ -813,7 +813,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
     char buf[FILE_MAX_PAGE_BUF];
-    struct str info = str_fmtsn(buf, cntof(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
+    struct str info = str_fmtsn(arrv(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
     confine gui_disable_on_scope(&gui, ctx, lst->page_cnt == 1) {
       struct gui_panel slot = {0};
       gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, gui_id64(str_hash(info)), info);

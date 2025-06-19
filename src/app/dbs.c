@@ -172,7 +172,7 @@ db_tbl_fltr_add_str(struct db_state *sdb, struct db_tbl_state *stbl,
 
   struct db_tbl_fltr_elm *elm = &fltr->elms[idx];
   elm->type = DB_TBL_FLTR_ELM_TYP_STR;
-  elm->fnd = str_sqz(elm->fnd_buf, cntof(elm->fnd_buf), str);
+  elm->fnd = str_sqz(arrv(elm->fnd_buf), str);
   elm->enabled = 1;
   elm->active = 1;
   elm->col = col;
@@ -695,7 +695,7 @@ db_tbl_qry_fltr_sql(struct db_state *sdb, struct db_view *vdb,
 
   /* fill with active filter conditions */
   const char *pre = " WHERE";
-  sql = str_add_fmt(vdb->sql_qry_buf, cntof(vdb->sql_qry_buf), sql,
+  sql = str_add_fmt(arrv(vdb->sql_qry_buf), sql,
     " FROM \"%.*s\" ", strf(tbl_name));
   for arr_loopv(idx, stbl->fltr.elms) {
     struct db_tbl_fltr_elm *elm = &stbl->fltr.elms[idx];
@@ -960,24 +960,24 @@ db_tbl_qry_blb(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *s
   for loop(i, stbl->blb.rng.cnt) {
     /* generate hex value representation */
     int ln_begin = buf.rng.cnt;
-    buf = str_add_fmt(vdb->blb.buf, cntof(vdb->blb.buf), buf, "%0*X: ", digit_cnt, off + addr);
+    buf = str_add_fmt(arrv(vdb->blb.buf), buf, "%0*X: ", digit_cnt, off + addr);
     for (int c = 0; c < DB_MAX_BLB_HEX_COL_CNT && addr + c < siz; ++c) {
       unsigned char b = castb(vdb->sql_qry_buf[addr + c]);
-      buf = str_add_fmt(vdb->blb.buf, cntof(vdb->blb.buf), buf, "%.2X ", b);
+      buf = str_add_fmt(arrv(vdb->blb.buf), buf, "%.2X ", b);
     }
     /* pad to align up to ascii represenation */
     if (off + addr + DB_MAX_BLB_HEX_COL_CNT > blb_siz) {
       int cnt = addr + DB_MAX_BLB_HEX_COL_CNT - siz;
       for loop(j,cnt) {
-        buf = str_add(vdb->blb.buf, cntof(vdb->blb.buf), buf, strv("   "));
+        buf = str_add(arrv(vdb->blb.buf), buf, strv("   "));
       }
     }
-    buf = str_add(vdb->blb.buf, cntof(vdb->blb.buf), buf, strv("   "));
+    buf = str_add(arrv(vdb->blb.buf), buf, strv("   "));
     for (int c = 0; c < DB_MAX_BLB_HEX_COL_CNT && addr + c < siz; ++c) {
       /* generate ascii representation */
       unsigned char byte = castb(vdb->sql_qry_buf[addr + c]);
       char sym = is_printable(byte) ? castc(byte) : '.';
-      buf = str_add(vdb->blb.buf, cntof(vdb->blb.buf), buf, strc(sym));
+      buf = str_add(arrv(vdb->blb.buf), buf, strc(sym));
     }
     vdb->blb.rows[i] = strn(buf.ptr + ln_begin, buf.rng.cnt - ln_begin);
     addr += DB_MAX_BLB_HEX_COL_CNT;
@@ -1027,7 +1027,7 @@ db_tbl_setup(struct db_state *sdb, struct db_view *vdb, int idx,
   mset(&tbl->col.rng, 0, szof(tbl->col.rng));
   mset(&tbl->row.cols, 0, szof(tbl->row.cols));
 
-  tbl->title = str_sqz(tbl->title_buf, cntof(tbl->title_buf), name);
+  tbl->title = str_sqz(arrv(tbl->title_buf), name);
   tbl->qry_name = str_len(name) > str_len(tbl->title);
   tbl->disp = DB_TBL_VIEW_DSP_DATA;
   tbl->state = TBL_VIEW_DISPLAY;
@@ -1421,8 +1421,12 @@ ui_tab(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, struc
   static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
   gui.btn.begin(ctx, btn, parent);
   {
-    struct gui_panel lbl = {.box = btn->pan.box};
-    lbl.box.x = gui.bnd.shrink(&btn->pan.box.x, ctx->cfg.pad[0]);
+    int gapx = ctx->cfg.gap[0];
+    struct gui_box lay = btn->pan.box;
+    struct gui_panel ico = {.box = gui.cut.lhs(&lay, ctx->cfg.item, gapx)};
+    gui.ico.img(ctx, &ico, &btn->pan, RES_ICO_TABLE);
+
+    struct gui_panel lbl = {.box = lay};
     gui.txt.lbl(ctx, &lbl, &btn->pan, txt, &align);
   }
   gui.btn.end(ctx, btn, parent);
@@ -2064,6 +2068,7 @@ ui_db_tbl_view_dsp_data_blb_hex(struct db_state *sdb, struct db_view *vdb,
     }
     res.full_text_mode(ctx->res);
     for gui_lst_reg_loop(i,gui,&reg) {
+      assert(i >= reg.lst.begin);
       /* display each line of hex/ascii data representation */
       struct gui_panel elm = {0};
       struct str ln = vdb->blb.rows[i - reg.lst.begin];
@@ -2764,17 +2769,18 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
             static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
             gui.btn.begin(ctx, &btn, parent);
             {
-              struct gui_panel lbl = {.box = btn.pan.box};
-              lbl.box.x = gui.bnd.shrink(&btn.pan.box.x, ctx->cfg.pad[0]);
-              gui.txt.lbl(ctx, &lbl, &btn.pan, tbl->title, &align);
+              struct gui_box hlay = btn.pan.box;
+              struct gui_panel ico = {.box = gui.cut.lhs(&hlay, ctx->cfg.item, gapx)};
+              gui.ico.img(ctx, &ico, &btn.pan, RES_ICO_TABLE);
 
               /* icon */
-              struct gui_icon del = {.box = btn.pan.box};
-              del.box.x = gui.bnd.max_ext(btn.pan.box.x.max, ctx->cfg.item);
+              struct gui_icon del = {.box = gui.cut.rhs(&hlay, ctx->cfg.item, gapx)};
               gui.ico.clk(ctx, &del, &btn.pan, RES_ICO_CLOSE);
               if (del.clk){
                 db_tbl_close(sdb, i);
               }
+              struct gui_panel lbl = {.box = hlay};
+              gui.txt.lbl(ctx, &lbl, &btn.pan, tbl->title, &align);
             }
             gui.btn.end(ctx, &btn, &elm);
             ret = btn.clk;
