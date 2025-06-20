@@ -1679,6 +1679,7 @@ gui_icon(struct gui_ctx *ctx, struct gui_icon *icn, struct gui_panel *parent,
   assert(icn);
   assert(parent);
 
+  icn->pan.focusable = !icn->unfocusable;
   icn->pan.box = icn->box;
   gui_ico(ctx, &icn->pan, parent, ico_id);
   gui_panel_cur_hov(ctx, &icn->pan, SYS_CUR_HAND);
@@ -1757,6 +1758,7 @@ gui_btn_begin(struct gui_ctx *ctx, struct gui_btn *btn,
   assert(ctx);
   assert(parent);
 
+  btn->pan.focusable = !btn->unfocusable;
   btn->pan.box = btn->box;
   gui_panel_begin(ctx, &btn->pan, parent);
   if (ctx->pass == GUI_RENDER) {
@@ -2380,8 +2382,10 @@ gui_sep(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   assert(ctx);
   assert(parent);
 
+  btn->unfocusable = 1;
   gui_btn_begin(ctx, btn, parent);
   gui_btn_end(ctx, btn, parent);
+
   if (btn->pan.is_hot || btn->in.mouse.btn.left.dragged) {
     switch (orient) {
       case GUI_HORIZONTAL:
@@ -2423,7 +2427,6 @@ gui__scrl_btn(struct gui_ctx *ctx, struct gui_btn *btn,
   assert(btn);
   assert(parent);
 
-  btn->pan.focusable = 0;
   gui_btn_begin(ctx, btn, parent);
   {
     int extx = (dir == GUI_SOUTH || dir == GUI_NORTH) ? 5 : 3;
@@ -2454,6 +2457,7 @@ gui_hscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
     bar->step = (bar->step <= 0) ? (bar->size >> 3U) : bar->step;
 
     /* decrement button */
+    bar->btn_dec.unfocusable = 1;
     bar->btn_dec.box.x = gui_min_ext(bar->box.x.min, bar->box.y.ext);
     bar->btn_dec.box.y = gui_max_ext(bar->box.y.max, bar->box.y.ext);
     gui__scrl_btn(ctx, &bar->btn_dec, &bar->pan, GUI_WEST);
@@ -2462,6 +2466,7 @@ gui_hscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
       bar->scrolled = 1;
     }
     /* increment button */
+    bar->btn_inc.unfocusable = 1;
     bar->btn_inc.box.x = gui_max_ext(bar->box.x.max, bar->box.y.ext);
     bar->btn_inc.box.y = gui_max_ext(bar->box.y.max, bar->box.y.ext);
     gui__scrl_btn(ctx, &bar->btn_inc, &bar->pan, GUI_EAST);
@@ -2508,6 +2513,7 @@ gui_vscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
     bar->step = (bar->step <= 0) ? (bar->size >> 3u): bar->step;
 
     /* decrement button */
+    bar->btn_dec.unfocusable = 1;
     bar->btn_dec.box.x = gui_min_ext(bar->box.x.min, bar->box.x.ext);
     bar->btn_dec.box.y = gui_min_ext(bar->box.y.min, bar->box.x.ext);
     gui__scrl_btn(ctx, &bar->btn_dec, &bar->pan, GUI_NORTH);
@@ -2516,6 +2522,7 @@ gui_vscrl(struct gui_ctx *ctx, struct gui_scrl_bar *bar,
       bar->scrolled = 1;
     }
     /* increment button */
+    bar->btn_inc.unfocusable = 1;
     bar->btn_inc.box.x = gui_min_ext(bar->box.x.min, bar->box.x.ext);
     bar->btn_inc.box.y = gui_max_ext(bar->box.y.max, bar->box.x.ext);
     gui__scrl_btn(ctx, &bar->btn_inc, &bar->pan, GUI_SOUTH);
@@ -4493,7 +4500,6 @@ gui_lst_ctl_focus(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
   parent->is_focused = 1;
   gui_focus(ctx, parent);
 
-  ctx->focus_next = 0;
   ctx->lst_state.focused = 1;
   ctx->lst_state.cur_idx = item_idx;
   ctx->lst_state.owner = parent->id;
@@ -4520,7 +4526,10 @@ gui_lst_ctl_elm(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
       ctx->prev_id = parent->id;
       if (ctx->focus_next) { /* keyboard list focus */
         gui_lst_ctl_focus(ctx, ctl, parent, item_idx, focused);
+        ctx->focus_next = 0;
       }
+    } else if (bit_tst_clr(ctx->keys, GUI_KEY_NEXT_WIDGET)) {
+      ctx->focus_next = 1;
     } else if (bit_tst_clr(ctx->keys, GUI_KEY_PREV_WIDGET)) {
       ctx->focused = ctx->prev_id;
       if (gui_id_eq(ctx->prev_id, ctx->root.id)) {
@@ -5583,8 +5592,10 @@ gui_tbl_hdr_begin(struct gui_ctx *ctx, struct gui_tbl *tbl, int *items,
 
   int offx = math_floori(tbl->reg.off[0]);
   int offy = math_floori(tbl->reg.off[1]);
+
   tbl->spt.box.x = gui_min_ext(pan->box.x.min, pan->box.x.ext + offx);
   tbl->spt.box.y = gui_min_ext(pan->box.y.min + offy, ctx->cfg.item);
+
   gui_split_begin(ctx, &tbl->spt, pan, GUI_SPLIT_EXP, GUI_HORIZONTAL, items,
                   item_cnt, state, state_cnt);
 }
@@ -5595,6 +5606,7 @@ gui_tbl_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
   assert(tbl);
   assert(slot);
 
+  slot->unfocusable = 1;
   slot->box = tbl->spt.item;
   gui_btn_begin(ctx, slot, &tbl->spt.pan);
   slot->box.x = gui_shrink(&slot->box.x, ctx->cfg.pan_pad[0]);

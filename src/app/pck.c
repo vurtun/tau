@@ -598,15 +598,17 @@ ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
   {
     int gap = ctx->cfg.gap[0];
     struct gui_box lay = pan->box;
-    struct gui_btn home = {.box = gui.cut.rhs(&lay, ctx->cfg.item, gap)};
-    if (gui.btn.ico(ctx, &home, pan, RES_ICO_HOME)) {
-      /* change the directory to home  */
-      lst->fltr = str_nil;
-      file_view_lst_cd(fpk, &fpk->lst, ctx->sys, fpk->home);
-    }
-    gui.tooltip(ctx, &home.pan, strv("Goto Home Directory"));
+    struct gui_box hbox = gui.cut.rhs(&lay, ctx->cfg.item, gap);
+    struct gui_box ubox = gui.cut.rhs(&lay, ctx->cfg.item, gap);
 
-    struct gui_btn dup = {.box = gui.cut.rhs(&lay, ctx->cfg.item, gap)};
+    /* navigation bar */
+    struct gui_edit_box edt = {.box = lay};
+    lst->nav_ed.buf = lst->nav_buf;
+    lst->nav_ed.cap = cntof(lst->nav_buf);
+    lst->nav_ed.str = lst->nav_path;
+    lst->nav_path = gui.edt.txt(ctx, &edt, pan, &lst->nav_ed);
+
+    struct gui_btn dup = {.box = ubox};
     if (gui.btn.ico(ctx, &dup, pan, RES_ICO_FOLDER)) {
       /* go up to parent directory  */
       struct str file_name = path_file(lst->nav_path);
@@ -619,12 +621,13 @@ ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
     }
     gui.tooltip(ctx, &dup.pan, strv("Move to Parent Directory"));
 
-    /* navigation bar */
-    struct gui_edit_box edt = {.box = lay};
-    lst->nav_ed.buf = lst->nav_buf;
-    lst->nav_ed.cap = cntof(lst->nav_buf);
-    lst->nav_ed.str = lst->nav_path;
-    lst->nav_path = gui.edt.txt(ctx, &edt, pan, &lst->nav_ed);
+    struct gui_btn home = {.box = hbox};
+    if (gui.btn.ico(ctx, &home, pan, RES_ICO_HOME)) {
+      /* change the directory to home  */
+      lst->fltr = str_nil;
+      file_view_lst_cd(fpk, &fpk->lst, ctx->sys, fpk->home);
+    }
+    gui.tooltip(ctx, &home.pan, strv("Goto Home Directory"));
   }
   gui.pan.end(ctx, pan, parent);
 }
@@ -733,8 +736,6 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
       if (tbl.lst.sel.mod) {
         /* selection handling */
         assert(tbl.lst.sel.idx < cntof(lst->page.elms));
-        struct file_elm *elm = lst->page.elms + tbl.lst.sel.idx;
-        elm->isvalid = !elm->isdir;
         lst->sel_idx = tbl.lst.sel.idx;
       }
     }
@@ -809,12 +810,13 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
+
   struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
     char buf[FILE_MAX_PAGE_BUF];
     struct str info = str_fmtsn(arrv(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
-    confine gui_disable_on_scope(&gui, ctx, lst->page_cnt == 1) {
+    confine gui_disable_on_scope(&gui, ctx, 1) {
       struct gui_panel slot = {0};
       gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, gui_id64(str_hash(info)), info);
       gui.tooltip(ctx, &slot, info);
@@ -873,14 +875,27 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
       if (!dis) {
         struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
         int path_len = str_len(fpk->lst.nav_path) + str_len(elm->name) + 1;
-        dis = elm->isdir || !elm->isvalid || path_len > MAX_FILE_PATH;
+        dis = path_len > MAX_FILE_PATH;
       }
       confine gui_disable_on_scope(&gui, ctx, dis) {
         struct gui_btn open = {.box = tab.hdr};
         open.box.x = gui.bnd.min_max(tab.off + ctx->cfg.gap[0], tab.hdr.x.max);
+
+        if (ctx->focus_next) {
+          printf("test!\n");
+        }
         if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
           struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
-          ret = str_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+          if (elm->isdir) {
+            char buf[MAX_FILE_PATH];
+            struct str file_path = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+
+            fpk->lst.fltr = str_nil;
+            file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
+            ctx->lst_state.cur_idx = -1;
+          } else {
+            ret = str_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+          }
         }
         gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));
       }

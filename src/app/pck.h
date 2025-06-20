@@ -18,7 +18,6 @@ struct file_elm {
   time_t mtime;
   unsigned file_type : 17;
   unsigned sys_type : 4;
-  unsigned isvalid : 1;
   unsigned isdir : 1;
   unsigned perm : 9;
 };

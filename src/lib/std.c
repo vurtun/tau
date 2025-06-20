@@ -77,6 +77,13 @@ npow2(int input) {
  * ---------------------------------------------------------------------------
  */
 static inline void*
+mmov(void* dst, const void *src, int cnt) {
+  if (dst && src && cnt > 0) {
+    memmove(dst, src, castsz(cnt));
+  }
+  return dst;
+}
+static inline void*
 mcpy(void* restrict dst, void const *restrict src, int cnt) {
   unsigned char *restrict dst8 = dst;
   const unsigned char *restrict src8 = src;
@@ -344,7 +351,7 @@ rnduf(unsigned long long *x, float mini, float maxi) {
 #define arr_loopn(i,a,n) (int i = 0; i < min(n,cntof(a)); ++i)
 #define arr_loopv(i,a) (int i = 0; i < cntof(a); ++i)
 #define arr_loop(i,r) (int (i) = (r).lo; (i) != (r).hi; (i) += 1)
-#define arr_rm(a,i,n) memmove(&(a)[i], &a[i+1], (size_t)(casti(n) - 1 - i) * sizeof((a)[0]))
+#define arr_rm(a,i,n) mmov(&(a)[i], &a[i+1], (casti(n) - 1 - i) * szof((a)[0]))
 
 /* ---------------------------------------------------------------------------
  *                                Sequence
@@ -2030,7 +2037,7 @@ str_put(char *buf, int cap, struct str in, int pos, struct str str) {
   }
   if (str_len(in) + str_len(str) < cap) {
     /* string fits into buffer */
-    memmove(buf + pos + str_len(str), buf + pos, castsz(str_len(in) - pos));
+    mmov(buf + pos + str_len(str), buf + pos, str_len(in) - pos);
     mcpy(buf + pos, str_beg(str), str_len(str));
     return strn(buf, str_len(in) + str_len(str));
   } else {
@@ -2057,7 +2064,7 @@ str_del(char *buf, struct str in, int pos, int len) {
     return in;
   }
   assert(pos + len <= str_len(in));
-  memmove(buf + pos, buf + pos + len, castsz(str_len(in) - pos));
+  mmov(buf + pos, buf + pos + len, str_len(in) - pos);
   return strn(buf, str_len(in) - len);
 }
 static struct str

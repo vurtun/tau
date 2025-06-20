@@ -862,6 +862,9 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
       if ((codepoint & 0xFF00) == 0xF700) {
         continue;
       }
+      if (codepoint == '\t') {
+        continue;
+      }
       char buf[UTF_SIZ+1];
       int cnt = utf_enc(buf, cntof(buf), codepoint);
       if (g_sys.txt_len + cnt < cntof(g_sys.txt)) {

@@ -192,10 +192,10 @@ struct gui_panel {
 
   unsigned dbl_clk : 1;   /* in */
   unsigned focusable : 1; /* in */
-  unsigned is_hot : 1;
-  unsigned is_hov : 1;
-  unsigned has_focus : 1;
-  unsigned is_focused : 1;
+  unsigned is_hot : 1;    /* out */
+  unsigned is_hov : 1;    /* out */
+  unsigned has_focus : 1; /* out */
+  unsigned is_focused : 1;/* out */
 };
 enum gui_collapse_state {
   GUI_COLLAPSED,
@@ -222,22 +222,25 @@ struct gui_align {
 struct gui_btn {
   struct gui_box box;
   struct gui_panel pan;
+  unsigned unfocusable:1;
+
   /* out */
-  struct gui_input in;
   unsigned clk : 1;
   unsigned pressed : 1;
   unsigned released : 1;
+  struct gui_input in;
 };
 
 /* Widget: Icon */
 struct gui_icon {
   struct gui_box box;
   struct gui_panel pan;
+  unsigned unfocusable:1;
   /* out */
-  struct gui_input in;
   unsigned clk : 1;
   unsigned pressed : 1;
   unsigned released : 1;
+  struct gui_input in;
 };
 
 enum gui_chk_state {
