@@ -738,6 +738,15 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
         assert(tbl.lst.sel.idx < cntof(lst->page.elms));
         lst->sel_idx = tbl.lst.sel.idx;
       }
+      if (tbl.lst.ctl.has_focus) {
+        /* shortcut handling */
+        if (bit_tst_clr(ctx->sys->keys, SYS_KEY_RETURN)) {
+          assert(tbl.lst.ctl.item_idx < cntof(lst->page.elms));
+          gui.in.eat(ctx);
+          dir = tbl.lst.ctl.item_idx;
+          chdir = 1;
+        }
+      }
     }
     gui.tbl.end(ctx, &tbl, pan, lst->off);
   }
@@ -881,9 +890,6 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
         struct gui_btn open = {.box = tab.hdr};
         open.box.x = gui.bnd.min_max(tab.off + ctx->cfg.gap[0], tab.hdr.x.max);
 
-        if (ctx->focus_next) {
-          printf("test!\n");
-        }
         if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
           struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
           if (elm->isdir) {

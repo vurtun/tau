@@ -4528,12 +4528,14 @@ gui_lst_ctl_elm(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
         gui_lst_ctl_focus(ctx, ctl, parent, item_idx, focused);
         ctx->focus_next = 0;
       }
-    } else if (bit_tst_clr(ctx->keys, GUI_KEY_NEXT_WIDGET)) {
-      ctx->focus_next = 1;
-    } else if (bit_tst_clr(ctx->keys, GUI_KEY_PREV_WIDGET)) {
-      ctx->focused = ctx->prev_id;
-      if (gui_id_eq(ctx->prev_id, ctx->root.id)) {
-        ctx->focus_last = 1;
+    } else {
+      if (bit_tst_clr(ctx->keys, GUI_KEY_NEXT_WIDGET)) {
+        ctx->focus_next = 1;
+      } else if (bit_tst_clr(ctx->keys, GUI_KEY_PREV_WIDGET)) {
+        ctx->focused = ctx->prev_id;
+        if (gui_id_eq(ctx->prev_id, ctx->root.id)) {
+          ctx->focus_last = 1;
+        }
       }
     }
   }
@@ -4578,6 +4580,7 @@ gui_lst_ctl_proc(struct gui_ctx *ctx, struct gui_lst_ctl *ctl,
   if (!ctl->has_focus) {
     return;
   }
+  ctl->item_idx = ctx->lst_state.cur_idx;
 
   int cur_inc = 0;
   int cur_dec = 0;
