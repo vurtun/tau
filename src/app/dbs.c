@@ -1681,7 +1681,6 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
     }
     int dis = !str_len(view->fnd_str) || fltr->cnt >= DB_MAX_FLTR_CNT;
     confine gui_disable_on_scope(&gui, ctx, dis) {
-
       struct gui_btn add = {0};
       add.box = gui.cut.bot(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
       gui.btn.txt(ctx, &add, pan, strv("Add"), 0);

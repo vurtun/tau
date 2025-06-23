@@ -6143,14 +6143,15 @@ gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
       tab->sel.mod = 1;
     }
     tab->sel.idx = tab->idx;
-    gui_focus(ctx, slot);
+    gui_focus(ctx, &tab->pan);
   }
-  if (slot->state == GUI_FOCUSED) {
+  if (tab->sel.idx == tab->idx &&
+      gui_id_eq(ctx->focused, tab->pan.id)) {
     if (bit_tst_clr(ctx->keys, GUI_KEY_TAB_NEXT)) {
-      tab->sel.idx = tab->sel.idx + 1;
+      tab->sel.idx = (tab->sel.idx + 1) % tab->cnt;
       tab->sel.mod = 1;
     } else if (bit_tst_clr(ctx->keys, GUI_KEY_TAB_PREV)) {
-      tab->sel.idx = max(0, tab->sel.idx - 1);
+      tab->sel.idx = max(0, (tab->sel.idx + tab->cnt - 1) % tab->cnt);
       tab->sel.mod = 1;
     }
   }
@@ -6175,8 +6176,8 @@ gui_tab_hdr_slot_end(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
     }
   }
   if (ctx->pass == GUI_RENDER &&
-      gui_id_eq(slot->id, ctx->focused) &&
-      !ctx->focus_next) {
+      gui_id_eq(tab->pan.id, ctx->focused) &&
+      tab->sel.idx == tab->idx) {
     gui_focus_drw(ctx, &hdr->slot, 0);
   }
   tab->idx++;
