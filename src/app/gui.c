@@ -6013,6 +6013,7 @@ gui_tab_ctl_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   tab->cnt = min(tab->total, (tab->hdr.x.ext - ctx->cfg.scrl) / tab->tab_w);
 
   tab->pan.box = tab->box;
+  tab->pan.focusable = !tab->unfocusable;
   gui_panel_begin(ctx, &tab->pan, parent);
 }
 static void
@@ -6113,7 +6114,6 @@ gui_tab_hdr_slot_begin(struct gui_ctx *ctx, struct gui_tab_ctl *tab,
   hdr->slot.y = hdr->pan.box.y;
 
   slot->box = hdr->slot;
-  slot->focusable = is_act != 0;
   if (ctx->pass == GUI_RENDER) {
     gui__tab_hdr_slot_drw(ctx, tab, slot, is_act);
   }

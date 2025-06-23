@@ -782,9 +782,9 @@ struct gui_tab_ctl {
   struct gui_box hdr;               /* out */
   int cnt;                          /* out */
   struct gui_tab_ctl_sel sel;       /* in-out */
-  struct gui_btn btn;               /* out */
   struct gui_tab_ctl_sort sort;     /* out */
   enum gui_tab_ctl_hdr_pos hdr_pos; /* in */
+  unsigned unfocusable:1;
   /* internal */
   int tab_w;
   int total, idx;

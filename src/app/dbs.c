@@ -2749,7 +2749,6 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
       cfg.sel.hov = GUI_LST_SEL_HOV_NO;
       cfg.lay.orient = GUI_HORIZONTAL;
       cfg.lay.item[0] = 2*GUI_CFG_TAB;
-      cfg.ctl.show_cursor = 0;
 
       struct gui_lst_reg reg = {.box = hdr};
       gui.lst.reg.begin(ctx, &reg, pan, &cfg, sdb->tab_off);
@@ -2792,6 +2791,36 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
           gui.tooltip(ctx, &btn.pan, tbl->title);
         }
         gui.lst.reg.elm.end(ctx, &reg, &elm);
+      }
+      /* shortcut handling */
+      if ((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+          (ctx->sys->keymod & SYS_KEYMOD_SHIFT) &&
+          bit_tst_clr(ctx->sys->keys, SYS_KEY_TAB)) {
+        int cnt = bit_cnt_set(&sdb->tbl_act, DB_TBL_CNT, 0);
+        int idx = (sdb->sel_tbl + max(0,cnt-1)) % cnt;
+        int bit = bit_set_at(&sdb->tbl_act, DB_TBL_CNT, 0, idx);
+        sdb->sel_tbl = bit >= DB_TBL_CNT ? sdb->sel_tbl : bit;
+      } else if ((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+          bit_tst_clr(ctx->sys->keys, SYS_KEY_TAB)) {
+        int cnt = bit_cnt_set(&sdb->tbl_act, DB_TBL_CNT, 0);
+        int idx = (sdb->sel_tbl + 1) % cnt;
+        int bit = bit_set_at(&sdb->tbl_act, DB_TBL_CNT, 0, idx);
+        sdb->sel_tbl = bit >= DB_TBL_CNT ? sdb->sel_tbl : bit;
+      } else if((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+          bit_tst_clr(ctx->sys->keys, 'w')) {
+        db_tbl_close(sdb, sdb->sel_tbl);
+      } else if((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+          bit_tst_clr(ctx->sys->keys, 't')) {
+        sdb->frame = DB_FRAME_LST;
+      }
+      if (ctx->sys->keymod == SYS_KEYMOD_ALT) {
+        int sel_tbl = sdb->sel_tbl;
+        for loop(i,9) {
+          if (bit_tst_clr(ctx->sys->keys, '1' + i)) {
+            sdb->sel_tbl = bit_ffs(&sdb->tbl_act, DB_TBL_CNT, i);
+          }
+        }
+        sdb->sel_tbl = (sdb->sel_tbl >= DB_TBL_CNT) ? sel_tbl : sdb->sel_tbl;
       }
       gui.lst.reg.end(ctx, &reg, pan, sdb->tab_off);
     }
