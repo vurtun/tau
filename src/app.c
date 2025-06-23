@@ -229,7 +229,6 @@ app_init(struct app *app, struct sys *sys) {
     exit(1);
   }
   dbs.init(app->db_mem, szof(app->db_mem));
-
 #ifdef DEBUG_MODE
   ut_bit();
   ut_str();

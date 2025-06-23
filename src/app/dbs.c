@@ -745,7 +745,7 @@ static int
 db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
                 struct db_tbl_state *stbl, struct db_tbl_view *vtbl,
                 int low, int high) {
-
+  int ret = 0;
   requires(vdb);
   requires(stbl);
   requires(vtbl);
@@ -812,8 +812,9 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   int elm_idx = 0;
   if (str_len(sql) <= cntof(vdb->sql_qry_buf)-1) {
     int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
-    assert(err == SQLITE_OK);
-
+    if (err != SQLITE_OK) {
+      goto failed;
+    }
     for db_loop(_,err,stmt,vtbl->row.rowids) {
       assert(elm_idx < DB_MAX_TBL_ELM);
       vtbl->row.rowids[stbl->row.rng.cnt++] = sqlite3_column_int64(stmt, 0);
@@ -839,10 +840,12 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
     err = sqlite3_finalize(stmt);
     assert(err == SQLITE_OK);
   } else {
+failed:
     stbl->row.rng.lo = 0;
     stbl->row.rng.hi = 0;
     stbl->row.rng.cnt = 0;
     stbl->row.rng.total = 0;
+    ret = -1;
   }
   db_tbl_name_rel(&tlck);
 
@@ -861,7 +864,7 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
   ensures(vtbl->row.buf.cnt <= cntof(vtbl->row.buf.mem));
   ensures(vtbl->row.id == stbl->rowid);
   ensures(db__state_is_val(sdb));
-  return 0;
+  return ret;
 }
 static int
 db_tbl_qry_blb_row_cnt(struct db_state *sdb, struct db_view *vdb,
@@ -1966,10 +1969,6 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *sdb, struct db_view *vdb,
           tbl.lst.end = 0;
         }
       }
-      assert(vtbl->row.id == stbl->rowid);
-      assert(tbl.lst.begin == stbl->row.rng.lo);
-      assert(tbl.lst.end == stbl->row.rng.hi);
-
       int elm_idx = 0;
       for gui_tbl_lst_loopv(i, _, gui, &tbl, vtbl->row.rowids) {
         assert(i >= tbl.lst.begin);
