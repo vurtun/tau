@@ -2764,7 +2764,7 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
         gui.lst.reg.elm.begin(ctx, &reg, &elm, id, 0);
         {
           int ret = 0;
-          struct gui_btn btn = {.box = elm.box};
+          struct gui_btn btn = {.box = elm.box, .unfocusable = 1};
           if (sdb->sel_tbl == i) {
             static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
             gui.btn.begin(ctx, &btn, parent);

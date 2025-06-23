@@ -614,6 +614,7 @@ ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
       struct str file_name = path_file(lst->nav_path);
       struct str file_path = strp(str_beg(lst->nav_path), str_beg(file_name));
       if (str_len(file_path) > str_len(fpk->home)) {
+
         lst->fltr = str_nil;
         struct str dir = strp(str_beg(lst->nav_path), str_beg(file_name));
         file_view_lst_cd(fpk, &fpk->lst, ctx->sys, dir);
