@@ -22,11 +22,12 @@
 #include "lib/sql.h"
 #include "sys/gfx.h"
 #include "sys/sys.h"
-#include "app/res.h"
-#include "app/gui.h"
-#include "app/cfg.h"
-#include "app/pck.h"
-#include "app/dbs.h"
+
+#include "res.h"
+#include "gui.h"
+#include "cfg.h"
+#include "pck.h"
+#include "dbs.h"
 #include "app.h"
 
 enum {
@@ -105,10 +106,11 @@ static struct app g_app;
 #include "lib/rpq.c"
 #include "lib/fnt.c"
 #include "lib/sql.c"
-#include "app/res.c"
-#include "app/gui.c"
-#include "app/pck.c"
-#include "app/dbs.c"
+
+#include "res.c"
+#include "gui.c"
+#include "pck.c"
+#include "dbs.c"
 
 struct app_tbl_col_def {
   struct str title;

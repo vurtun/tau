@@ -820,7 +820,6 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
-
   struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
