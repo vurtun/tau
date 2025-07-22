@@ -257,14 +257,14 @@ struct db_tbl_fltr_view {
   struct str fnd_str;
   char fnd_buf[DB_MAX_FILTER];
   long long rowid[DB_MAX_FLTR_ELM];
-  unsigned data[DB_MAX_FLTR_ELM];
+  unsigned long long data[DB_MAX_FLTR_ELM];
   struct str_buf(DB_TBL_FLTR_STR_BUF_SIZ) buf;
 };
 /* tables */
 struct db_tbl_col {
   long long rowid;
-  unsigned name;
-  unsigned type;
+  unsigned long long name;
+  unsigned long long type;
   unsigned ico:26;
   unsigned pk:1;
   unsigned fk:1;
@@ -281,7 +281,7 @@ struct db_tbl_col_lst_view {
 struct db_tbl_row_lst_view {
   long long id;
   long long rowids[DB_MAX_TBL_ROWS];
-  unsigned lst[DB_MAX_TBL_ELM];
+  unsigned long long lst[DB_MAX_TBL_ELM];
   struct str_buf(DB_TBL_ELM_STR_BUF_SIZ) buf;
 };
 struct db_tbl_view {
@@ -293,8 +293,8 @@ struct db_tbl_view {
 /* database */
 struct db_info_elm {
   long long rowid;
-  unsigned name;
-  unsigned sql;
+  unsigned long long name;
+  unsigned long long sql;
 };
 struct db_info_view {
   /* elms */

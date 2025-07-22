@@ -115,8 +115,8 @@ struct color {
 }
 #define str_buf(N) {    \
   int cnt;              \
+  int rev;              \
   char mem[N];          \
 }
-
 #define strv(s) (struct str){.ptr = (s),.rng ={0,cntof(s)-1,cntof(s)-1,cntof(s)-1}}
 

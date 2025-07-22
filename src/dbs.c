@@ -346,6 +346,12 @@ db__tbl_state_is_val(const struct db_tbl_state *tbl) {
   assert(tbl->blb.sel_tab >= DB_TBL_BLB_HEX && tbl->blb.sel_tab < DB_TBL_BLB_CNT);
   assert(str_is_val(tbl->title));
 
+  assert(rng__is_val(&tbl->row.rng));
+  assert(rng__is_val(&tbl->row.cols));
+  assert(rng__is_val(&tbl->row.data_rng));
+  assert(rng__is_val(&tbl->col.rng));
+  assert(rng__is_val(&tbl->blb.rng));
+
   assert(tbl->col.rng.lo >= 0);
   assert(tbl->col.rng.hi >= 0);
   assert(tbl->col.rng.hi >= tbl->col.rng.lo);
@@ -367,12 +373,6 @@ db__tbl_state_is_val(const struct db_tbl_state *tbl) {
   assert(tbl->row.rng.hi >= 0);
   assert(tbl->row.rng.hi >= tbl->row.rng.lo);
   assert(tbl->row.rng.cnt >= 0);
-
-  assert(rng__is_val(&tbl->row.rng));
-  assert(rng__is_val(&tbl->row.cols));
-  assert(rng__is_val(&tbl->row.data_rng));
-  assert(rng__is_val(&tbl->col.rng));
-  assert(rng__is_val(&tbl->blb.rng));
 
   assert(tbl->col.state == DB_TBL_COL_STATE_LOCKED ||
     tbl->col.state == DB_TBL_COL_STATE_UNLOCKED);
@@ -841,10 +841,7 @@ db_tbl_qry_rows(struct db_state *sdb, struct db_view *vdb,
     assert(err == SQLITE_OK);
   } else {
 failed:
-    stbl->row.rng.lo = 0;
-    stbl->row.rng.hi = 0;
-    stbl->row.rng.cnt = 0;
-    stbl->row.rng.total = 0;
+    stbl->row.rng = rng_nil;
     ret = -1;
   }
   db_tbl_name_rel(&tlck);
@@ -881,7 +878,9 @@ db_tbl_qry_blb_row_cnt(struct db_state *sdb, struct db_view *vdb,
   db_tbl_col_name_acq(&clck, sdb, vtbl, 0, tlck.name, stbl->blb.colid);
 
   long long siz = 0;
-  struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf), "SELECT LENGTH(\"%.*s\") FROM \"%.*s\" WHERE ROWID = ?", strf(clck.name), strf(tlck.name));
+  struct str sql = str_fmtsn(arrv(vdb->sql_qry_buf),
+    "SELECT LENGTH(\"%.*s\") FROM \"%.*s\" WHERE ROWID = ?",
+    strf(clck.name), strf(tlck.name));
   if (str_len(sql)+1 < cntof(vdb->sql_qry_buf)) {
     sqlite3_stmt *stmt = 0;
     sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
@@ -915,7 +914,9 @@ db_tbl_qry_blb(struct db_state *sdb, struct db_view *vdb, struct db_tbl_state *s
   requires(high - low < DB_MAX_BLB_ROW_CNT);
 
   /* query table and column name */
-  sqlite3_stmt *tbl_stmt = 0, *col_stmt = 0;
+  sqlite3_stmt *tbl_stmt = 0;
+  sqlite3_stmt *col_stmt = 0;
+
   struct str tbl_name = db__tbl_qry_name(&tbl_stmt, sdb, stbl->rowid);
   struct str col_name = db__tbl_qry_col_name(&col_stmt, sdb, tbl_name, colid);
 
@@ -1718,11 +1719,19 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
 
       int ret = db_tbl_fltr_view_qry(sdb, vdb, stbl, vtbl, fltr, view, reg.lst.begin, reg.lst.end);
       if (ret < 0) {
-        fltr->data_rng.total = 0;
+        fltr->data_rng = rng_nil;
         reg.lst.begin = 0;
         reg.lst.end = 0;
       }
       fltr->init = 0;
+
+      assert(view->id == stbl->rowid);
+      assert(view->buf.cnt >= 0);
+      assert(view->buf.cnt <= cntof(view->buf.mem));
+
+      assert(reg.lst.begin == fltr->data_rng.lo);
+      assert(reg.lst.end == fltr->data_rng.hi);
+      assert(db__tbl_fltr_val(fltr));
     }
     for gui_lst_reg_loopv(i, _, gui, &reg, view->data) {
       assert(i >= reg.lst.begin);
@@ -1734,8 +1743,7 @@ ui_db_tbl_fltr_view(struct db_state *sdb, struct db_view *vdb,
       gui.lst.reg.elm.begin(ctx, &reg, &elm, id, 0);
       {
         struct gui_panel lbl = {.box = elm.box};
-        unsigned hdl = view->data[idx];
-        struct str dat = str_buf_get(&view->buf, hdl);
+        struct str dat = str_buf_get(&view->buf, view->data[idx]);
         gui.txt.lbl(ctx, &lbl, &elm, dat, 0);
       }
       gui.lst.reg.elm.end(ctx, &reg, &elm);
@@ -1964,10 +1972,14 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *sdb, struct db_view *vdb,
 
         int err = db_tbl_qry_rows(sdb, vdb, stbl, vtbl, tbl.lst.begin, tbl.lst.end);
         if (err < 0) {
-          stbl->row.rng.total = 0;
+          stbl->row.rng = rng_nil;
           tbl.lst.begin = 0;
           tbl.lst.end = 0;
         }
+        assert(vtbl->row.id == stbl->rowid);
+        assert(tbl.lst.begin == stbl->row.rng.lo);
+        assert(tbl.lst.end == stbl->row.rng.hi);
+        assert(db__state_is_val(sdb));
       }
       int elm_idx = 0;
       for gui_tbl_lst_loopv(i, _, gui, &tbl, vtbl->row.rowids) {
@@ -1988,7 +2000,7 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *sdb, struct db_view *vdb,
           struct db_tbl_col *col = &vtbl->col.lst[col_idx];
 
           assert(elm_idx < cntof(vtbl->row.lst));
-          unsigned elm = vtbl->row.lst[elm_idx++];
+          unsigned long long elm = vtbl->row.lst[elm_idx++];
           struct str dat = str_buf_get(&vtbl->row.buf, elm);
 
           if (col->blob) {
@@ -2043,7 +2055,7 @@ ui_db_tbl_view_dsp_data_blb_hex(struct db_state *sdb, struct db_view *vdb,
     gui.lst.cfg(&cfg, stbl->blb.rng.total, stbl->blb.off[1]);
     cfg.sel.src = GUI_LST_SEL_SRC_EXT;
     cfg.sel.on = GUI_LST_SEL_ON_HOV;
-    cfg.ctl.show_cursor = 0;
+    cfg.ctl.show_cursor = 1;
 
     struct gui_lst_reg reg = {.box = pan->box};
     gui.lst.reg.begin(ctx, &reg, pan, &cfg, stbl->blb.off);
@@ -2056,13 +2068,15 @@ ui_db_tbl_view_dsp_data_blb_hex(struct db_state *sdb, struct db_view *vdb,
       int ret = db_tbl_qry_blb(sdb, vdb, stbl, vtbl, stbl->blb.colid,
         stbl->blb.rowid, reg.lst.begin, reg.lst.end);
       if (ret < 0) {
-        stbl->blb.rng.lo = 0;
-        stbl->blb.rng.hi = 0;
-        stbl->blb.rng.cnt = 0;
-
+        stbl->blb.rng = rng_nil;
         reg.lst.begin = 0;
         reg.lst.end = 0;
       }
+      assert(vtbl->row.id == stbl->rowid);
+      assert(vdb->blb.rowid == stbl->blb.rowid);
+      assert(vdb->blb.colid == stbl->blb.colid);
+      assert(reg.lst.begin == stbl->blb.rng.lo);
+      assert(reg.lst.end == stbl->blb.rng.hi);
     }
     res.full_text_mode(ctx->res);
     for gui_lst_reg_loop(i,gui,&reg) {
@@ -2556,7 +2570,6 @@ ui_db_view_info(struct db_state *sdb, struct db_view *vdb, int view,
         int dis = !(sinfo->tab_act & (1U << i));
         confine gui_disable_on_scope(&gui, ctx, dis) {
           struct gui_id iid = gui_id64(str_hash(def->title));
-
           struct gui_panel slot = {0};
           gui.tab.hdr.slot.begin(ctx, &tab, &hdr, &slot, iid);
           gui.ico.box(ctx, &slot, &hdr.pan, def->ico, def->title);
@@ -2787,32 +2800,33 @@ ui_db_explr(struct db_state *sdb, struct db_view *vdb, struct gui_ctx *ctx,
           if (ret) {
             sdb->sel_tbl = i;
           }
-          gui.tooltip(ctx, &btn.pan, tbl->title);
         }
         gui.lst.reg.elm.end(ctx, &reg, &elm);
+        gui.tooltip(ctx, &elm, tbl->title);
       }
       /* shortcut handling */
-      if ((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
-          (ctx->sys->keymod & SYS_KEYMOD_SHIFT) &&
-          bit_tst_clr(ctx->sys->keys, SYS_KEY_TAB)) {
+      struct sys *_sys = ctx->sys;
+      if ((_sys->keymod & SYS_KEYMOD_ALT) &&
+          (_sys->keymod & SYS_KEYMOD_SHIFT) &&
+          bit_tst_clr(_sys->keys, SYS_KEY_TAB)) {
         int cnt = bit_cnt_set(&sdb->tbl_act, DB_TBL_CNT, 0);
         int idx = (sdb->sel_tbl + max(0,cnt-1)) % cnt;
         int bit = bit_set_at(&sdb->tbl_act, DB_TBL_CNT, 0, idx);
         sdb->sel_tbl = bit >= DB_TBL_CNT ? sdb->sel_tbl : bit;
-      } else if ((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+      } else if ((_sys->keymod & SYS_KEYMOD_ALT) &&
           bit_tst_clr(ctx->sys->keys, SYS_KEY_TAB)) {
         int cnt = bit_cnt_set(&sdb->tbl_act, DB_TBL_CNT, 0);
         int idx = (sdb->sel_tbl + 1) % cnt;
         int bit = bit_set_at(&sdb->tbl_act, DB_TBL_CNT, 0, idx);
         sdb->sel_tbl = bit >= DB_TBL_CNT ? sdb->sel_tbl : bit;
-      } else if((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+      } else if((_sys->keymod & SYS_KEYMOD_ALT) &&
           bit_tst_clr(ctx->sys->keys, 'w')) {
         db_tbl_close(sdb, sdb->sel_tbl);
-      } else if((ctx->sys->keymod & SYS_KEYMOD_ALT) &&
+      } else if((_sys->keymod & SYS_KEYMOD_ALT) &&
           bit_tst_clr(ctx->sys->keys, 't')) {
         sdb->frame = DB_FRAME_LST;
       }
-      if (ctx->sys->keymod == SYS_KEYMOD_ALT) {
+      if (_sys->keymod == SYS_KEYMOD_ALT) {
         int sel_tbl = sdb->sel_tbl;
         for loop(i,9) {
           if (bit_tst_clr(ctx->sys->keys, '1' + i)) {

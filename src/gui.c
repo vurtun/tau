@@ -2207,7 +2207,8 @@ gui__scrl_cur_drag(int *off, const struct gui_ctx *ctx,
   space[0] = scl->total[0] - scl->size[0];
   space[1] = scl->total[1] - scl->size[1];
 
-  int new_off[2]; add2(new_off, ctx->drag_state, dta);
+  int new_off[2];
+  add2(new_off, ctx->drag_state, dta);
   off[0] = clamp(0, new_off[0], space[0]);
   off[1] = clamp(0, new_off[1], space[1]);
 }
@@ -4118,7 +4119,6 @@ gui_spin_u(struct gui_ctx *ctx, struct gui_spin *ctl, struct gui_panel *parent,
   assert(parent);
   return gui_spin_uint(ctx, ctl, parent, num, 0, 0, 0);
 }
-
 
 /* ---------------------------------------------------------------------------
  *                                  Group

@@ -102,6 +102,7 @@ cpu_bit_ffs64(unsigned long long u) {
 
 #define requires(x) assert(x)
 #define ensures(x) assert(x)
+#define maybe(x)
 #define loop_invariant(x) assert(x)
 
 #define sse_align alignto(16)

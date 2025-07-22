@@ -662,7 +662,9 @@ angle3(const float *restrict a3, const float *restrict b3) {
   float len1 = dot3(c,c);
   float len2 = dot3(d,d);
   float n = len1 * len2;
-  if (n < 1.e-6f) return 0.0f;
+  if (n < FLT_EPSILON) {
+    return 0.0f;
+  }
   float dot = dot3(c,d);
   return math_cos(dot/math_sqrt(n));
 }
@@ -999,7 +1001,7 @@ qalign3(float *restrict q, const float *restrict from3,
   float v[3]; cpy3(v,to3);
   float norm_u_norm_v = math_sqrt(dot3(u,u) * dot3(v,v));
   float real_part = norm_u_norm_v + dot3(u,v);
-  if (real_part < (1.e-6f * norm_u_norm_v)) {
+  if (real_part < (FLT_EPSILON * norm_u_norm_v)) {
     if (math_abs(u[0]) > math_abs(u[2])) {
       set3(w, -u[1], u[0], 0.0f);
     } else {
@@ -1046,6 +1048,7 @@ eulerq(float *restrict out3, const float *restrict qin) {
 static void
 qtransform(float *restrict o3, const float *restrict in3,
            const float *restrict qrot, const float *restrict mov3) {
+
   assert(o3);
   assert(in3);
   assert(qrot);
@@ -1061,6 +1064,7 @@ qtransform(float *restrict o3, const float *restrict in3,
 static void
 qtransformI(float *restrict o3, const float *restrict in3,
             const float *restrict qrot, const float *restrict mov3) {
+
   assert(o3);
   assert(in3);
   assert(qrot);
@@ -1154,6 +1158,7 @@ qnlerp(float *restrict qres, const float *restrict qsrc,
 static void
 qslerp(float *restrict qres, const float *restrict qfrom,
        const float *restrict qto, float t) {
+
   assert(qres);
   assert(qfrom);
   assert(qto);
@@ -1237,10 +1242,11 @@ qst_get(float *restrict qswing, float *restrict qtwist,
 static void
 qst__decomp(float *restrict qswing, float *restrict qtwist,
             const float *restrict q, const float *restrict axis3) {
+
   assert(qswing);
   assert(qtwist);
-  assert(q);
   assert(axis3);
+  assert(q);
 
   if (dot3(q,q) < 1.0e-9f) {
     /* singularity: rotation by 180 degree */
@@ -1267,6 +1273,7 @@ static void
 qst_decomp(float *restrict qfull_swing, float *restrict qfull_twist,
            const float *restrict qa, const float *restrict qb,
            const float *restrict twist_axis3) {
+
   assert(qfull_swing);
   assert(qfull_twist);
   assert(qa);
@@ -1281,6 +1288,7 @@ static void
 qst__nlerp(float *restrict qres, float *restrict qswing, float *restrict qtwist,
            const float *restrict qfull_swing, const float *restrict qfull_twist,
            float t_swing, float t_twist) {
+
   assert(qres);
   assert(qswing);
   assert(qtwist);

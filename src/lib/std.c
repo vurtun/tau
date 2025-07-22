@@ -24,6 +24,12 @@ chk_mul(int a, int b, unsigned *ovf) {
   *ovf |= ckd_mul(&ret, a, b);
   return ret;
 }
+static inline long long
+chk_mul_div(long long value, long long numer, long long denom) {
+  long long q = value / denom;
+  long long r = value % denom;
+  return q * numer + r * numer / denom;
+}
 static int
 ilog2(int n) {
   requires(n >= 0);
@@ -1785,7 +1791,7 @@ static void
 ut_utf(void) {
   {
     static const struct str test_cases[] = {
-      strv("a"),       // ASCII character
+      strv("a"),        // ASCII character
       strv("\u00C4"),   // Umlaut character (Ä)
       strv("\u20AC"),   // Euro symbol (€)
       strv("\u4E00"),   // CJK character (一)
@@ -2000,6 +2006,8 @@ str_add(char *buf, int cap, struct str in, struct str str) {
   requires(cap >= 0);
   requires(str__is_val(&str));
   requires(str__is_val(&in));
+  requires(cap >= str_len(in));
+
   if (str_len(in) + str_len(str) < cap) {
     mcpy(buf + str_len(in), str_beg(str), str_len(str));
     return strn(buf, str_len(str) + str_len(in));
@@ -2032,6 +2040,7 @@ str_put(char *buf, int cap, struct str in, int pos, struct str str) {
   requires(pos >= 0);
   requires(str__is_val(&in));
   requires(str__is_val(&str));
+  requires(cap >= str_len(in));
   if (pos >= str_len(in)) {
     return str_add(buf, cap, in, str);
   }
@@ -2084,6 +2093,7 @@ str_add_fmt(char *buf, int cap, struct str in, const char *fmt, ...) {
   requires(buf);
   requires(cap >= 0);
   requires(fmt != 0);
+  requires(cap >= str_len(in));
 
   va_list va;
   va_start(va, fmt);
@@ -2474,29 +2484,17 @@ ut_str2(void) {
 #define time_240fps time_ns(4166667)
 
 #define ns_time(t)    (t)
-#define us_time(t)    ((t)/1000ll)
-#define ms_time(t)    ((t)/1000000ll)
-#define sec_time(t)   ((t)/1000000000ll)
-#define min_time(t)   ((t)/60000000000ll)
-#define hour_time(t)  ((t)/3600000000000ll)
+#define us_time(t)    ((t)/1000LL)
+#define ms_time(t)    ((t)/1000000LL)
+#define sec_time(t)   ((t)/1000000000LL)
+#define min_time(t)   ((t)/60000000000LL)
+#define hour_time(t)  ((t)/3600000000000LL)
+#define day_time(t)   ((t)/(1000000000LL * 60LL * 60LL * 24LL))
 
 #define sec_flt_time(t)   castf(castd(t)*(1.0/1000000000.0))
 #define min_flt_time(t)   castf(castd(t)*(1.0/10000000000.0))
 #define hour_flt_time(t)  castf(castd(t)*(1.0/3600000000000.0))
 
-static purist long long
-time_sub(long long a, long long b) {
-  if (a == time_inf) {
-    return (b == time_inf) ? 0ll : time_inf;
-  } else if (a == time_ninf) {
-    return (b == time_ninf) ? 0ll : time_ninf;
-  } else if (b == time_inf) {
-    return time_ninf;
-  } else if (b == time_ninf) {
-    return time_inf;
-  }
-  return a - b;
-}
 static purist long long
 time_add(long long a, long long b) {
   if (a == time_inf) {
@@ -2509,6 +2507,19 @@ time_add(long long a, long long b) {
     return time_ninf;
   }
   return a + b;
+}
+static purist long long
+time_sub(long long a, long long b) {
+  if (a == time_inf) {
+    return (b == time_inf) ? 0ll : time_inf;
+  } else if (a == time_ninf) {
+    return (b == time_ninf) ? 0ll : time_ninf;
+  } else if (b == time_inf) {
+    return time_ninf;
+  } else if (b == time_ninf) {
+    return time_inf;
+  }
+  return a - b;
 }
 static long long
 time_neg(long long a) {
@@ -2605,70 +2616,87 @@ path_ext(struct str path) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define str_buf_push(b,s) str_buf__push(&(b)->cnt, (b)->mem, cntof((b)->mem), s)
-#define str_buf_sqz(b,s,m) str_buf__sqz(&(b)->cnt, (b)->mem, cntof((b)->mem), s, m)
-#define str_buf_get(b,h) str_buf__get((b)->mem, (b)->cnt, h)
-#define str_buf_clr(b) str_buf__clr((b)->mem, &(b)->cnt)
-#define str_buf_off(hdl) casti(((hdl) >> 16u) & 0xffff)
-#define str_buf_len(hdl) casti((hdl) & 0xffff)
+#define str_buf_push(b,s) str_buf__push(&(b)->cnt, (b)->mem, (b)->rev, cntof((b)->mem), s)
+#define str_buf_sqz(b,s,m) str_buf__sqz(&(b)->cnt, (b)->mem, (b)->rev, cntof((b)->mem), s, m)
+#define str_buf_get(b,h) str_buf__get((b)->mem, (b)->rev, (b)->cnt, h)
+#define str_buf_clr(b) str_buf__clr((b)->mem, &(b)->rev, &(b)->cnt)
+#define str_buf_len(hdl) casti((hdl) & 0xfffffffLLU)
+#define str_buf_off(hdl) casti(((hdl) >> 28LLU) & 0xfffffffLLU)
+#define str_buf_rev(hdl) casti(((hdl) >> 56LLU) & 0xffLLU)
 // clang-format on
 
-static unsigned
-str_buf__push(int *cnt, char *mem, int cap, struct str s) {
+static unsigned long long
+str_buf__push(int *cnt, int rev, char *mem, int cap, struct str s) {
   requires(cnt);
   requires(*cnt >= 0);
-  requires(*cnt <= 0xffff);
+  requires(*cnt <= 0xfffffff);
   requires(*cnt <= cap);
   requires(cap >= 0);
+  requires(rev >= 0);
+  requires(rev <= 0xff);
   requires(mem);
   requires(cap);
 
-  unsigned off = castu(*cnt) & 0xffff;
-  int lft = max(0, cap - *cnt);
-  char *dst = mem + *cnt;
-  struct str p = str_set(dst, lft, s);
-  int n = str_is_val(p) * str_len(p);
-  unsigned ret = (off << 16u)|(n & 0xffff);
-  *cnt += n;
+  unsigned long long ret = 0;
+  {
+    unsigned off = castu(*cnt);
+    int lft = max(0, cap - *cnt);
+    char *dst = mem + *cnt;
+    struct str p = str_set(dst, lft, s);
+    int n = str_is_val(p) * str_len(p);
+    ret = (castull(rev) << 56LLU)|(castull(off) << 28LLU)|(castull(n) & 0xfffffffLLU);
+    *cnt += n;
+  }
   return ret;
 }
-static unsigned
-str_buf__sqz(int *cnt, char *mem, int cap, struct str s, int max_len) {
+static unsigned long long
+str_buf__sqz(int *cnt, char *mem, int rev, int cap, struct str s, int max_len) {
   requires(cnt);
-  requires(cap <= 0x10000);
   requires(*cnt >= 0);
-  requires(*cnt <= 0x10000);
   requires(*cnt <= cap);
   requires(cap >= 0);
   requires(*cnt <= cap);
+  requires(rev >= 0);
+  requires(rev <= 0xff);
   requires(mem);
   requires(cap);
 
-  unsigned off = castu(*cnt) & 0xffff;
-  int lft = min(max_len, max(0, cap - *cnt));
-  char *dst = mem + *cnt;
-  struct str p = str_sqz(dst, lft, s);
-  *cnt += str_len(p);
-  unsigned ret = (off << 16u)|(str_len(p) & 0xffff);
+  unsigned long long ret = 0;
+  {
+    unsigned off = castu(*cnt) & 0xfffffffu;
+    int lft = min(max_len, max(0, cap - *cnt));
+    char *dst = mem + *cnt;
+    struct str p = str_sqz(dst, lft, s);
+    *cnt += str_len(p);
+    ret = (castull(rev) << 56LLU)|(castull(off) << 28LLU)|(castull(str_len(p)) & 0xfffffffu);
+  }
   return ret;
 }
 static purist struct str
-str_buf__get(char *mem, int cnt, unsigned hdl) {
+str_buf__get(const char *mem, int at_rev, int cnt, unsigned long long hdl) {
   requires(mem);
+  requires(at_rev >= 0);
+  requires(at_rev <= 0xff);
   requires(cnt >= 0);
+
   requires(str_buf_len(hdl) <= cnt);
   requires(str_buf_off(hdl) <= cnt);
   requires(str_buf_len(hdl) + str_buf_off(hdl) <= cnt);
+  requires(str_buf_rev(hdl) == at_rev);
 
+  int rev = str_buf_rev(hdl);
   int off = str_buf_off(hdl);
   int len = str_buf_len(hdl);
-  return strn(mem + off, len);
+  return rev == at_rev ? strn(mem + off, len) : str_nil;
 }
 static void
-str_buf__clr(char *mem, int *cnt) {
+str_buf__clr(char *mem, int *rev, int *cnt) {
   requires(mem);
   requires(cnt);
+  requires(rev);
   requires(*cnt >= 0);
+  requires(*rev >= 0);
+  *rev = (*rev + 1) & 0xff;
   *cnt = 0;
 }
 
@@ -2785,12 +2813,12 @@ tbl__del(unsigned long long* set, int cap, int *cnt, unsigned long long key) {
   if (!cap) {
     return cap;
   }
-  int i = tbl__fnd(set, cap, key);
-  if (i < cap) {
-    set[i] |= 0x8000000000000000llu;
+  int idx = tbl__fnd(set, cap, key);
+  if (idx < cap) {
+    set[idx] |= 0x8000000000000000llu;
     *cnt -= 1;
   }
-  return i;
+  return idx;
 }
 static purist int
 tbl__nxt_idx(unsigned long long *keys, int cap, int i) {

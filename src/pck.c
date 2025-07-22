@@ -743,9 +743,9 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
         /* shortcut handling */
         if (bit_tst_clr(ctx->sys->keys, SYS_KEY_RETURN)) {
           assert(tbl.lst.ctl.item_idx < cntof(lst->page.elms));
-          gui.in.eat(ctx);
           dir = tbl.lst.ctl.item_idx;
           chdir = 1;
+          gui.in.eat(ctx);
         }
       }
     }
@@ -845,6 +845,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
       qry.fullpath = lst->nav_path;
       qry.page = lst->page.idx + 1;
       qry.fltr = lst->fltr;
+
       file_view_lst_qry(lst, ctx->sys, &qry);
     }
     tab->off = nxt.box.x.max;
@@ -870,7 +871,7 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
     ui_file_lst_view_nav_bar(fpk, &fpk->lst, ctx, &nav, pan);
     {
       /* file table */
-      struct gui_tab_ctl tab = {.box = lay, .hdr_pos = GUI_TAB_HDR_BOT};
+      struct gui_tab_ctl tab = {.box = lay, .hdr_pos = GUI_TAB_HDR_BOT, .unfocusable = 1};
       gui.tab.begin(ctx, &tab, pan, 1, 0);
       {
         struct gui_panel bdy = {.box = tab.bdy};
