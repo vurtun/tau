@@ -64,6 +64,7 @@ cpu_bit_ffs64(unsigned long long u) {
 #define assume(x) __assume(x)
 #define likely(x)
 #define unlikely(x)
+#define not_null
 
 #define no_sanitize_int
 #define no_sanitize_addr
@@ -92,6 +93,7 @@ cpu_bit_ffs64(unsigned long long u) {
 #define assume(x)         __attribute__((__assume__(x)))
 #define likely(x)         __builtin_expect(!!(x), 1)
 #define unlikely(x)       __builtin_expect(!!(x), 0)
+#define not_null          __nonnull
 
 #define no_sanitize_int   __attribute__((no_sanitize("integer")))
 #define no_sanitize_addr  __attribute__((no_sanitize("address")))

@@ -179,7 +179,7 @@ static const struct file_tbl_col_def file_tbl_def[FILE_TBL_MAX] = {
  *                                  VIEW
  * -----------------------------------------------------------------------------
  */
-static int no_sanitize_int
+priv int no_sanitize_int
 file_type(struct str ext) {
   unsigned hash = 0;
   unsigned idx = 0;
@@ -221,7 +221,7 @@ file_type(struct str ext) {
   idx = min(idx, cntof(file_defs) -1);
   return (file_defs[idx].id == hash) ? casti(idx) : 0;
 }
-static enum res_ico_id
+priv enum res_ico_id
 file_icon(int file_type) {
   assert(file_type >= 0 && file_type < cntof(file_defs));
   const struct file_def *def = file_defs + file_type;
@@ -238,7 +238,7 @@ struct file_view_lst_qry {
   struct str fullpath;
   int(*cmp)(const void*, const void*);
 };
-static int
+priv int
 file_view_lst_elm_cmp_name_asc(const void *aptr, const void *bptr) {
   requires(aptr);
   requires(bptr);
@@ -251,7 +251,7 @@ file_view_lst_elm_cmp_name_asc(const void *aptr, const void *bptr) {
   }
   return str_cmp(elm_a->name, elm_b->name);
 }
-static int
+priv int
 file_view_lst_elm_cmp_name_dec(const void *aptr, const void *bptr) {
   requires(aptr);
   requires(bptr);
@@ -264,7 +264,7 @@ file_view_lst_elm_cmp_name_dec(const void *aptr, const void *bptr) {
   }
   return str_cmp(elm_b->name, elm_b->name);
 }
-static void
+priv void
 file_view_lst_elm_swp(void *aptr, void *bptr) {
   requires(aptr);
   requires(bptr);
@@ -283,8 +283,9 @@ file_view_lst_elm_swp(void *aptr, void *bptr) {
   ensures(!memcmp(elm_b, &old_a, sizeof(old_a)));
   ensures(!memcmp(elm_a, &old_b, sizeof(old_a)));
 }
-static void
-file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
+priv void
+file_view_lst_elm_init(struct file_elm *not_null elm,
+                       struct sys *not_null sys,
                        struct str path, struct str name) {
   requires(sys);
   requires(elm);
@@ -294,11 +295,11 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
   requires(str_is_val(path));
 
   char buf[MAX_FILE_PATH];
-  struct str ospath = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(path), strf(name));
+  struct str ospath = str_set_fmtsn(arrv(buf), "%.*s/%.*s", strf(path), strf(name));
   mset(elm,0,szof(elm[0]));
 
   struct sys_file_info info = {0};
-  if (!sys->file.info(sys, &info, ospath)) {
+  if (str_is_inv(ospath) || !sys->file.info(sys, &info, ospath)) {
     elm->sys_type = SYS_FILE_DEF;
     elm->file_type = 0;
     elm->name = name;
@@ -320,8 +321,9 @@ file_view_lst_elm_init(struct file_elm *elm, struct sys *sys,
   elm->mtime = info.mtime;
   elm->sys_type = info.type;
 }
-static int
-file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*)) {
+priv int
+file_view_lst_partition(struct file_elm *not_null arr,
+                        int(*cmp)(const void*, const void*)) {
   requires(arr);
   requires(cmp);
 
@@ -346,8 +348,8 @@ file_view_lst_partition(struct file_elm *arr, int(*cmp)(const void*, const void*
   file_view_lst_elm_swp(&arr[rhs], &arr[piv_idx]);
   return rhs;
 }
-static struct str
-file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
+priv struct str
+file_view_lst_str(struct file_list_view *not_null lst, struct str name, int cur) {
   requires(lst);
   requires(cur >= 0 && cur <= cntof(lst->page.txt.buf));
 
@@ -362,9 +364,10 @@ file_view_lst_str(struct file_list_view *lst, struct str name, int cur) {
   ensures(lst->page.txt.cnt <= FILE_LIST_STR_BUF_SIZ);
   return ret;
 }
-static void
-file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
-                  const struct file_view_lst_qry *qry) {
+priv void
+file_view_lst_qry(struct file_list_view *not_null lst,
+                  struct sys *not_null sys,
+                  const struct file_view_lst_qry *not_null qry) {
   requires(sys);
   requires(qry);
   requires(lst);
@@ -421,7 +424,7 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
     file_view_lst_partition(ptr, qry->cmp);
   }
   qsort(ptr, castsz(lst->page.cnt), szof(lst->page.elms[0]), qry->cmp);
-  lst->page_cnt = (lst->page.total + FILE_LIST_ELM_CNT - 1) / FILE_LIST_ELM_CNT;
+  lst->page_cnt = div_round_up(lst->page.total, FILE_LIST_ELM_CNT);
   lst->page.idx = qry->page;
 
   ensures(lst->page_cnt >= 0);
@@ -429,8 +432,8 @@ file_view_lst_qry(struct file_list_view *lst, struct sys *sys,
   ensures(lst->page.total >= 0);
   ensures(lst->page.idx < lst->page_cnt);
 }
-static void
-file_view_lst_clr(struct file_list_view *lst) {
+priv void
+file_view_lst_clr(struct file_list_view *not_null lst) {
   requires(lst);
   zero2(lst->off);
   lst->sel_idx = -1;
@@ -452,9 +455,11 @@ file_view_lst_clr(struct file_list_view *lst) {
   ensures(lst->page.txt.cur == 0);
   ensures(lst->page.txt.cnt <= FILE_LIST_STR_BUF_SIZ);
 }
-static void
-file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
-                 struct sys *sys, struct str fullpath) {
+priv void
+file_view_lst_cd(struct file_view *not_null fpk,
+                 struct file_list_view *not_null lst,
+                 struct sys *not_null sys,
+                 struct str fullpath) {
   requires(fpk);
   requires(sys);
   requires(lst);
@@ -474,8 +479,10 @@ file_view_lst_cd(struct file_view *fpk, struct file_list_view *lst,
   ensures(lst->page.idx < lst->page_cnt);
   ensures(lst->page.cnt <= lst->page.total);
 }
-static void
-file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
+priv void
+file_view_lst_init(struct file_view *not_null fpk,
+                   struct sys *not_null sys,
+                   struct gui_ctx *not_null ctx) {
   requires(ctx);
   requires(fpk);
   requires(sys);
@@ -495,8 +502,11 @@ file_view_lst_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) 
   ensures(fpk->lst.page.idx < fpk->lst.page_cnt);
   ensures(fpk->lst.page.cnt <= fpk->lst.page.total);
 }
-static int
-file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
+pub int
+file_view_init(struct file_view *not_null fpk,
+               struct sys *not_null sys,
+               struct gui_ctx *not_null ctx) {
+
   requires(sys);
   requires(ctx);
   requires(fpk);
@@ -513,11 +523,11 @@ file_view_init(struct file_view *fpk, struct sys *sys, struct gui_ctx *ctx) {
   ensures(fpk->lst.page.cnt <= fpk->lst.page.total);
   return 0;
 }
-static void
-file_view_free(struct file_view *fpk, struct sys *sys) {
+pub void
+file_view_free(struct file_view *not_null fpk,
+               struct sys *not_null sys) {
   requires(fpk);
   requires(sys);
-
   unused(sys);
   file_view_lst_clr(&fpk->lst);
 }
@@ -526,10 +536,14 @@ file_view_free(struct file_view *fpk, struct sys *sys) {
  *                                  GUI
  * -----------------------------------------------------------------------------
  */
-static struct str
-ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
-               struct gui_panel *pan, struct gui_panel *parent,
-               struct gui_txt_ed *ted, char *buf, int cap, struct str str) {
+priv struct str
+ui_edit_search(struct gui_ctx *not_null ctx,
+               struct gui_edit_box *not_null edt,
+               struct gui_panel *not_null pan,
+               struct gui_panel *not_null parent,
+               struct gui_txt_ed *not_null ted,
+               char *not_null buf, int cap,
+               struct str str) {
 
   requires(ted);
   requires(buf);
@@ -565,9 +579,11 @@ ui_edit_search(struct gui_ctx *ctx, struct gui_edit_box *edt,
   gui.pan.end(ctx, pan, parent);
   return ted->str;
 }
-static void
-ui_file_lst_view_fnd(struct file_list_view *lst, struct gui_ctx *ctx,
-                     struct gui_panel *pan, struct gui_panel *parent) {
+priv void
+ui_file_lst_view_fnd(struct file_list_view *not_null lst,
+                     struct gui_ctx *not_null ctx,
+                     struct gui_panel *not_null pan,
+                     struct gui_panel *not_null parent) {
   requires(lst);
   requires(ctx);
   requires(pan);
@@ -585,10 +601,12 @@ ui_file_lst_view_fnd(struct file_list_view *lst, struct gui_ctx *ctx,
     file_view_lst_qry(lst, ctx->sys, &qry);
   }
 }
-static void
-ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
-                         struct gui_ctx *ctx, struct gui_panel *pan,
-                         struct gui_panel *parent) {
+priv void
+ui_file_lst_view_nav_bar(struct file_view *not_null fpk,
+                         struct file_list_view *not_null lst,
+                         struct gui_ctx *not_null ctx,
+                         struct gui_panel *not_null pan,
+                         struct gui_panel *not_null parent) {
   requires(lst);
   requires(ctx);
   requires(pan);
@@ -632,8 +650,8 @@ ui_file_lst_view_nav_bar(struct file_view *fpk, struct file_list_view *lst,
   }
   gui.pan.end(ctx, pan, parent);
 }
-static struct str
-ui__file_view_tbl_elm_perm(char *mod, unsigned perm, int cnt) {
+priv struct str
+ui__file_view_tbl_elm_perm(char *not_null mod, unsigned perm, int cnt) {
   assert(mod);
   mod[0] = (perm & SYS_FILE_PERM_USR_READ)  ? 'r' : '-';
   mod[1] = (perm & SYS_FILE_PERM_USR_WRITE) ? 'w' : '-';
@@ -648,10 +666,13 @@ ui__file_view_tbl_elm_perm(char *mod, unsigned perm, int cnt) {
   mod[8] = (perm & SYS_FILE_PERM_ALL_EXEC)  ? 'x' : '-';
   return strn(mod,cnt);
 }
-static void
-ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
-                     const int *lay, struct gui_panel *pan,
-                     const struct file_elm *elm, int is_sel) {
+priv void
+ui_file_view_tbl_elm(struct gui_ctx *not_null ctx,
+                     struct gui_tbl *not_null tbl,
+                     const int *not_null lay,
+                     struct gui_panel *not_null pan,
+                     const struct file_elm *not_null elm,
+                     int is_sel) {
   requires(elm);
   requires(tbl);
   requires(lay);
@@ -681,10 +702,13 @@ ui_file_view_tbl_elm(struct gui_ctx *ctx, struct gui_tbl *tbl,
   gui.tbl.lst.elm.end(ctx, tbl, pan);
   gui.tooltip(ctx, pan, elm->name);
 }
-static struct str
-ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
-                 struct file_list_view *lst, struct gui_ctx *ctx,
-                 struct gui_panel *pan, struct gui_panel *parent) {
+priv struct str
+ui_file_view_tbl(char *not_null filepath, int cnt,
+                 struct file_view *not_null fpk,
+                 struct file_list_view *not_null lst,
+                 struct gui_ctx *not_null ctx,
+                 struct gui_panel *not_null pan,
+                 struct gui_panel *not_null parent) {
   requires(fpk);
   requires(lst);
   requires(ctx);
@@ -760,22 +784,26 @@ ui_file_view_tbl(char *filepath, int cnt, struct file_view *fpk,
       int path_len = str_len(lst->nav_path) + str_len(elm->name) + 1;
       if (path_len <= MAX_FILE_PATH) {
         char buf[MAX_FILE_PATH];
-        struct str file_path = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
-
-        lst->fltr = str_nil;
-        file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
-        ctx->lst_state.cur_idx = -1;
+        struct str file_path = str_set_fmtsn(arrv(buf), "%.*s/%.*s", strf(lst->nav_path), strf(elm->name));
+        if (str_is_val(file_path)) {
+          lst->fltr = str_nil;
+          file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
+          ctx->lst_state.cur_idx = -1;
+        }
       }
     } else {
-      ret = str_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+      ret = str_set_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
     }
   }
   return ret;
 }
-static struct str
-ui_file_sel_view(char *filepath, int cnt, struct file_view *fpk,
-                 struct file_list_view *lst, struct gui_ctx *ctx,
-                 struct gui_panel *pan, struct gui_panel *parent) {
+priv struct str
+ui_file_sel_view(char *not_null filepath, int cnt,
+                 struct file_view *not_null fpk,
+                 struct file_list_view *not_null lst,
+                 struct gui_ctx *not_null ctx,
+                 struct gui_panel *not_null pan,
+                 struct gui_panel *not_null parent) {
   requires(fpk);
   requires(lst);
   requires(ctx);
@@ -797,9 +825,10 @@ ui_file_sel_view(char *filepath, int cnt, struct file_view *fpk,
   gui.pan.end(ctx, pan, parent);
   return ret;
 }
-static void
-ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
-                  struct gui_tab_ctl *tab) {
+priv void
+ui_file_view_page(struct file_list_view *not_null lst,
+                  struct gui_ctx *not_null ctx,
+                  struct gui_tab_ctl *not_null tab) {
   requires(lst);
   requires(ctx);
   requires(tab);
@@ -824,7 +853,7 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
     char buf[FILE_MAX_PAGE_BUF];
-    struct str info = str_fmtsn(arrv(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
+    struct str info = str_sqz_fmtsn(arrv(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
     confine gui_disable_on_scope(&gui, ctx, 1) {
       struct gui_panel slot = {0};
       gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, gui_id64(str_hash(info)), info);
@@ -851,9 +880,12 @@ ui_file_view_page(struct file_list_view *lst, struct gui_ctx *ctx,
     tab->off = nxt.box.x.max;
   }
 }
-static struct str
-ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
-            struct gui_panel *pan, struct gui_panel *parent) {
+pub struct str
+ui_file_sel(char *not_null filepath, int cnt,
+            struct file_view *not_null fpk,
+            struct gui_ctx *not_null ctx,
+            struct gui_panel *not_null pan,
+            struct gui_panel *not_null parent) {
 
   requires(fpk);
   requires(ctx);
@@ -895,13 +927,14 @@ ui_file_sel(char *filepath, int cnt, struct file_view *fpk, struct gui_ctx *ctx,
           struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
           if (elm->isdir) {
             char buf[MAX_FILE_PATH];
-            struct str file_path = str_fmtsn(arrv(buf), "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
-
-            fpk->lst.fltr = str_nil;
-            file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
-            ctx->lst_state.cur_idx = -1;
+            struct str file_path = str_set_fmtsn(arrv(buf), "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+            if (str_is_val(file_path)) {
+              fpk->lst.fltr = str_nil;
+              file_view_lst_cd(fpk, &fpk->lst, ctx->sys, file_path);
+              ctx->lst_state.cur_idx = -1;
+            }
           } else {
-            ret = str_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
+            ret = str_set_fmtsn(filepath, cnt, "%.*s/%.*s", strf(fpk->lst.nav_path), strf(elm->name));
           }
         }
         gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));

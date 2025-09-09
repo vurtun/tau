@@ -124,7 +124,7 @@ static const struct app_tbl_col_def app_tbl_var_def[DB_TBL_FLTR_COL_MAX] = {
  *                                  App
  * ---------------------------------------------------------------------------*/
 static inline int
-app_is_val(struct app *app) {
+app_is_val(struct app *not_null app) {
   unused(app);
   assert(app);
   assert(app->view.state >= APP_VIEW_STATE_FILE ||
@@ -136,7 +136,7 @@ app_is_val(struct app *app) {
   return 1;
 }
 static void
-app_var_reg(struct app *app, struct var *var) {
+app_var_reg(struct app *not_null app, struct var *not_null var) {
   requires(app_is_val(app));
   requires(var);
   requires(app->vars.cnt < APP_MAX_VAR);
@@ -145,7 +145,7 @@ app_var_reg(struct app *app, struct var *var) {
   tbl_put(&app->vars, key, &var);
 }
 static struct var*
-app_var_fnd(struct app *app, struct str name) {
+app_var_fnd(struct app *not_null app, struct str name) {
   requires(app_is_val(app));
   requires(str__is_val(&name));
 
@@ -155,14 +155,17 @@ app_var_fnd(struct app *app, struct str name) {
   return var ? *var : 0;
 }
 static void
-app_view_init(struct app_view *view) {
+app_view_init(struct app_view *not_null view) {
   requires(view);
   view->state = APP_VIEW_STATE_FILE;
   view->last_state = view->state;
   view->db.con = 0;
 }
 static int
-app_view_setup(struct app *app, struct app_view *view, struct str path) {
+app_view_setup(struct app *not_null app,
+               struct app_view *not_null view,
+               struct str path) {
+
   requires(app_is_val(app));
   view->file_path = str_set(app->path_buf, MAX_FILE_PATH, path);
   if (str_is_inv(view->file_path)) {
@@ -182,7 +185,7 @@ app_view_setup(struct app *app, struct app_view *view, struct str path) {
   return 0;
 }
 static int
-app_open_file(struct app *app, struct str file) {
+app_open_file(struct app *not_null app, struct str file) {
   requires(app_is_val(app));
   if (app->view.db.con) {
     dbs.del(&app->view.db);
@@ -193,7 +196,8 @@ app_open_file(struct app *app, struct str file) {
   return ret;
 }
 static void
-app_init(struct app *app, struct sys *sys) {
+app_init(struct app *not_null app,
+         struct sys *not_null sys) {
   requires(sys);
   requires(app_is_val(app));
   res.init(&app->res, sys);
@@ -241,7 +245,8 @@ app_init(struct app *app, struct sys *sys) {
   ensures(app_is_val(app));
 }
 static void
-app_shutdown(struct app *app, struct sys *sys) {
+app_shutdown(struct app *not_null app,
+             struct sys *not_null sys) {
   requires(sys);
   requires(app_is_val(app));
   if (app->view.db.con) {
@@ -258,8 +263,11 @@ app_shutdown(struct app *app, struct sys *sys) {
  * -----------------------------------------------------------------------------
  */
 static void
-ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
-                 struct gui_panel *pan, struct gui_panel *parent) {
+ui_app_file_view(struct app *not_null app,
+                 struct app_view *not_null view,
+                 struct gui_ctx *not_null ctx,
+                 struct gui_panel *not_null pan,
+                 struct gui_panel *not_null parent) {
 
   requires(app_is_val(app));
   requires(ctx);
@@ -280,7 +288,9 @@ ui_app_file_view(struct app *app, struct app_view *view, struct gui_ctx *ctx,
   ensures(app_is_val(app));
 }
 static void
-ui_app_dnd_file(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan) {
+ui_app_dnd_file(struct app *not_null app,
+                struct gui_ctx *not_null ctx,
+                struct gui_panel *not_null pan) {
   requires(app_is_val(app));
   requires(ctx);
   requires(pan);
@@ -317,8 +327,10 @@ app_sort_var(const void *lhs, const void *rhs) {
   return str_cmp((*lv)->name, (*rv)->name);
 }
 static void
-ui_app_var_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
-               struct gui_panel *parent) {
+ui_app_var_lst(struct app *not_null app,
+               struct gui_ctx *not_null ctx,
+               struct gui_panel *not_null pan,
+               struct gui_panel *not_null parent) {
 
   requires(ctx);
   requires(pan);
@@ -414,8 +426,10 @@ ui_app_var_lst(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
   ensures(app_is_val(app));
 }
 static void
-ui_app_main(struct app *app, struct gui_ctx *ctx, struct gui_panel *pan,
-            struct gui_panel *parent) {
+ui_app_main(struct app *not_null app,
+            struct gui_ctx *not_null ctx,
+            struct gui_panel *not_null pan,
+            struct gui_panel *not_null parent) {
 
   requires(ctx);
   requires(pan);

@@ -231,9 +231,17 @@ struct db_state_ui_state {
   int state[GUI_TBL_CAP(DB_STATE_TBL_COL_CNT)];
   int off[2];
 };
+struct db_sql_limits {
+  int row_len; /* The maximum size of any string or BLOB or table row in bytes */
+  int sql_len; /* The maximum length of an SQL statement, in bytes */
+  int col_cnt; /* The maximum number of columns in a table definition or in the
+                * result set of a [SELECT] or the maximum number of columns in an index
+                * or in an ORDER BY or GROUP BY clause */
+};
 struct db_state {
   sqlite3 *con;
   unsigned long long id;
+  struct db_sql_limits limits;
   struct db_info_state info;
 
   int tbl_lst_off[2];

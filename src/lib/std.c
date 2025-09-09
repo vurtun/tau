@@ -2077,16 +2077,38 @@ str_del(char *buf, struct str in, int pos, int len) {
   return strn(buf, str_len(in) - len);
 }
 static struct str
-str_fmtsn(char *buf, int n, const char *fmt, ...) {
+str_set_fmtsn(char *buf, int cnt, const char *fmt, ...) {
   requires(buf);
-  requires(n >= 0);
+  requires(cnt >= 0);
 
   int ret;
   va_list va;
   va_start(va, fmt);
-  ret = fmtvsn(buf, n, fmt, va);
+  ret = fmtvsn(buf, cnt, fmt, va);
   va_end(va);
-  return strn(buf, ret);
+
+  if (ret >= cnt) {
+    return str_inv;
+  } else {
+    return strn(buf, ret);
+  }
+}
+static struct str
+str_sqz_fmtsn(char *buf, int cnt, const char *fmt, ...) {
+  requires(buf);
+  requires(cnt >= 0);
+
+  int ret;
+  va_list va;
+  va_start(va, fmt);
+  ret = fmtvsn(buf, cnt, fmt, va);
+  va_end(va);
+
+  if (ret >= cnt) {
+    return str0(buf);
+  } else {
+    return strn(buf, ret);
+  }
 }
 static struct str
 str_add_fmt(char *buf, int cap, struct str in, const char *fmt, ...) {
@@ -2094,6 +2116,7 @@ str_add_fmt(char *buf, int cap, struct str in, const char *fmt, ...) {
   requires(cap >= 0);
   requires(fmt != 0);
   requires(cap >= str_len(in));
+  requires(str_is_val(in));
 
   va_list va;
   va_start(va, fmt);
@@ -2101,7 +2124,25 @@ str_add_fmt(char *buf, int cap, struct str in, const char *fmt, ...) {
   char *dst = buf + str_len(in);
   int ret = fmtvsn(dst, left, fmt, va);
   va_end(va);
-  return strn(buf, str_len(in) + ret);
+
+  return strn(buf, str_len(in) + min(ret, left));
+}
+static struct str
+str_add_fmt_or_inv(char *buf, int cap, struct str in, const char *fmt, ...) {
+  requires(buf);
+  requires(cap >= 0);
+  requires(fmt != 0);
+  requires(cap >= str_len(in));
+  if (str_is_inv(in)) {
+    return in;
+  }
+  va_list va;
+  va_start(va, fmt);
+  int left = max(0, cap - str_len(in));
+  char *dst = buf + str_len(in);
+  int ret = fmtvsn(dst, left, fmt, va);
+  va_end(va);
+  return (ret < left) ? strn(buf, str_len(in) + ret) : str_inv;
 }
 static void
 ut_str2(void) {

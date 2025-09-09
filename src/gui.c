@@ -3718,14 +3718,14 @@ gui_spin_focus(struct gui_ctx *ctx, struct gui_spin_val *val,
   ctx->txt_state.str = str_nil;
   switch (val->typ) {
   case GUI_SPIN_INT:
-    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%d", val->num.i);
+    ctx->txt_state.str = str_sqz_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%d", val->num.i);
     break;
   case GUI_SPIN_UINT:
-    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%u", val->num.u);
+    ctx->txt_state.str = str_sqz_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%u", val->num.u);
     break;
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT:
-    ctx->txt_state.str = str_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%.2f", val->num.f);
+    ctx->txt_state.str = str_sqz_fmtsn(ctx->txt_state.buf, cntof(ctx->txt_state.buf), "%.2f", val->num.f);
     break;
 #endif
   default:
@@ -3891,12 +3891,12 @@ gui_spin_str(char *buf, int cap, const struct gui_spin_val *val) {
 
   switch (val->typ) {
   case GUI_SPIN_INT:
-    return str_fmtsn(buf, cap, "%d", val->num.i);
+    return str_sqz_fmtsn(buf, cap, "%d", val->num.i);
   case GUI_SPIN_UINT:
-    return str_fmtsn(buf, cap, "%u", val->num.u);
+    return str_sqz_fmtsn(buf, cap, "%u", val->num.u);
 #ifdef GUI_USE_FLT
   case GUI_SPIN_FLT:
-    return str_fmtsn(buf, cap, "%.2f", val->num.f);
+    return str_sqz_fmtsn(buf, cap, "%.2f", val->num.f);
 #endif
   default:
     assert(0);
@@ -6741,7 +6741,7 @@ static const struct gui_api gui__api = {
 static void
 gui_api(void *export, void *import) {
   unused(import);
-  struct gui_api *api = (struct gui_api*)export;
-  *api = gui__api;
+  struct gui_api *_api = (struct gui_api*)export;
+  *_api = gui__api;
 }
 

@@ -3,6 +3,9 @@
 #undef max
 #endif
 
+#define priv static
+#define pub static
+
 // clang-format off
 #define unused(a) ((void)a)
 #define szof(a) ((int)sizeof(a))
