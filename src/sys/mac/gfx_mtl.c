@@ -24,7 +24,7 @@ struct gfx_mtl {
   id<MTLBuffer> buf[GFX_MTL_BUF_DEPTH];
 
   int tex_cnt;
-  struct tbl(int, GFX_MAX_TEX_CNT) tex_cache;
+  struct tbl(GFX_MAX_TEX_CNT) tex_cache;
   id<MTLTexture> tex_buf[GFX_MAX_TEX_CNT];
   id<MTLBuffer> arg_buf[GFX_MTL_BUF_DEPTH];
   struct gfx_tex tex[GFX_TEX_MAX];
@@ -128,7 +128,7 @@ gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dstx, int dsty, int dstw,
   if (tbl_inval(&mtl->tex_cache, tok)) {
     int tex_idx = mtl->tex_cnt++;
     mtl->tex_buf[tex_idx] = mtl->tex[tex].hdl;
-    tbl_put(&mtl->tex_cache, hash, &tex_idx);
+    tbl_put(&mtl->tex_cache, hash, tex_idx);
     cmd->tex = castu(tex_idx);
   } else {
     cmd->tex = castu(tbl_unref(&mtl->tex_cache,tok,0));

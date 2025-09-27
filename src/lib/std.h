@@ -45,7 +45,7 @@
 #define zero(d, sz) memset(d, 0, (size_t)(sz))
 #define container_of(ptr, type, member)\
   ((type *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
-#define div_round_up(n, d) (((n) + (d)-1) / (d))
+#define div_ceil(n, d) (((n) + (d)-1) / (d))
 #define ispow2(x) (((x) != 0u) && ((x) & ((x) - 1)) == 0u)
 
 #define twocc(s) castu((s[0] << 8u) + s[1])
@@ -77,7 +77,7 @@
 #define bit_word(nr) ((unsigned long)(nr) / BITS_PER_LONG)
 #define bit_word_idx(nr) ((unsigned long)(nr) & (BITS_PER_LONG - 1))
 #define bit_word_nxt(nr) ((unsigned long)((nr) + BITS_PER_LONG - bit_word_idx(nr)))
-#define bits_to_long(nr) (int)div_round_up((unsigned long)nr, BITS_PER_LONG)
+#define bits_to_long(nr) (int)div_ceil((unsigned long)nr, BITS_PER_LONG)
 
 #define heap_parent(i) (((i)-1) >> 1)
 #define heap_right(i) (((i)+1) << 1)
@@ -111,9 +111,9 @@ struct color {
 };
 #define confine for
 #define TBL_CAP(n) ((n)+((n)>>2))
-#define tbl(T,N) {                    \
+#define tbl(N) {                      \
   unsigned long long keys[TBL_CAP(N)];\
-  T vals[TBL_CAP(N)+1];               \
+  long long vals[TBL_CAP(N)];         \
   int cnt;                            \
 }
 #define str_buf(N) {    \

@@ -2746,12 +2746,6 @@ str_buf__clr(char *mem, int *rev, int *cnt) {
  * ---------------------------------------------------------------------------
  */
 // clang-format off
-#define tbl__is_del(k) (((k) >> 63llu) != 0)
-#define tbl__dist(h,n,i) (((i) + (n) - ((h) % n)) % (n))
-#define tbl__key(k) ((k) != 0u && !tbl__is_del(k))
-#define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap && i < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
-#define tbl__clr(s,cnt,cap) do {mset(s,0,szof(unsigned long long)*cap); *cnt = 0;} while(0)
-
 #define tbl_fnd(t, k) tbl__fnd((t)->keys, cntof((t)->keys), k)
 #define tbl_del(t, k) tbl__del((t)->keys, cntof((t)->keys), &(t)->cnt, k)
 #define tbl_clr(t) tbl__clr((t)->keys, &(t)->cnt, cntof((t)->keys))
@@ -2761,10 +2755,13 @@ str_buf__clr(char *mem, int *rev, int *cnt) {
 #define tbl_get(t,i) (tbl_val(t,i) ? ((t)->vals + (i)): 0)
 #define tbl_unref(t,i,d) (tbl_val(t,i) ? (t)->vals[i] : (d))
 #define tbl_has(t,k) tbl_val(t,tbl_fnd(t,k))
-#define tbl_put(t, k, v) do {\
-  assert(szof(*(v)) == szof((t)->vals[0]));\
-  tbl__put((t)->keys,(t)->vals,&(t)->cnt,cntof((t)->keys),k,v,szof((t)->vals[0]));\
-} while(0)
+#define tbl_put(t, k, v) tbl__put((t)->keys,(t)->vals,&(t)->cnt,cntof((t)->keys),k,v)
+
+#define tbl__is_del(k) (((k) >> 63llu) != 0)
+#define tbl__dist(h,n,i) (((i) + (n) - ((h) % n)) % (n))
+#define tbl__key(k) ((k) != 0u && !tbl__is_del(k))
+#define tbl__loop(n,i,t,cap) (int n = tbl__nxt_idx(t,cap,0), i = 0; n < cap && i < cap; n = tbl__nxt_idx(t,cap,n+1),++i)
+#define tbl__clr(s,cnt,cap) do {mset(s,0,szof(unsigned long long)*cap); *cnt = 0;} while(0)
 // clang-format on
 
 static purist force_inline unsigned long long
@@ -2772,34 +2769,24 @@ tbl__hash(unsigned long long key) {
   unsigned long long hsh = key & 0x7fffffffffffffffllu;
   return hsh | (hsh == 0);
 }
-static force_inline void
-tbl__swap(void *restrict a, void *restrict b, int siz) {
-  requires(siz <= 64);
-  char tmp[64];
-  mcpy(tmp, a, siz);
-  mcpy(a, b, siz);
-  mcpy(b, tmp, siz);
-}
 static force_inline long long
-tbl__store(unsigned long long *keys, void *vals, int *cnt, int cap,
+tbl__store(unsigned long long *not_null keys,
+           long long *not_null vals, int *not_null cnt,
            unsigned long long idx, unsigned long long hsh,
-           void* val, int val_siz) {
+           long long val) {
 
-  unused(cap);
   assert(cnt);
   assert(keys);
-
   keys[idx] = hsh;
   if (vals) {
-    unsigned long long off = (unsigned long long)val_siz * idx;
-    mcpy((unsigned char*)vals + off, val, val_siz);
+    vals[idx] = val;
   }
   *cnt += 1;
   return castll(idx);
 }
 static long long
-tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
-         unsigned long long key, void *val, int val_siz) {
+tbl__put(unsigned long long *keys, long long *vals, int *cnt, int cap,
+         unsigned long long key, long long val) {
 
   assert(cnt);
   assert(keys);
@@ -2814,10 +2801,10 @@ tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
   do {
     unsigned long long slot = keys[idx];
     if (!slot) {
-      return tbl__store(keys, vals, cnt, cap, idx, hsh, val, val_siz);
+      return tbl__store(keys, vals, cnt, idx, hsh, val);
     }
     if (tbl__is_del(slot)) {
-      return tbl__store(keys, vals, cnt, cap, idx, hsh, val, val_siz);
+      return tbl__store(keys, vals, cnt, idx, hsh, val);
     }
     unsigned long long d = tbl__dist(slot, siz, idx);
     if (d++ > dist++) {
@@ -2825,8 +2812,7 @@ tbl__put(unsigned long long *keys, void *vals, int *cnt, int cap,
     }
     iswap(hsh, keys[idx]);
     if (vals) {
-      void *cur_val = (unsigned char*)vals + idx * (unsigned long long)val_siz;
-      tbl__swap(cur_val, val, val_siz);
+      iswap(vals[idx], val);
     }
     dist = d;
   } while ((idx = ((idx + 1) % siz)) != beg);
@@ -2879,14 +2865,14 @@ ut_tbl(void) {
   } Person;
   {
     // 1. Normal expected inputs (int values)
-    struct tbl(int, 16) table_int = {0};
+    struct tbl(16) table_int = {0};
     tbl_clr(&table_int);
 
     assert(table_int.cnt == 0);
 
-    tbl_put(&table_int, 10, &(int){100});
-    tbl_put(&table_int, 20, &(int){200});
-    tbl_put(&table_int, 30, &(int){300});
+    tbl_put(&table_int, 10, 100);
+    tbl_put(&table_int, 20, 200);
+    tbl_put(&table_int, 30, 300);
 
     assert(table_int.cnt == 3);
     assert(tbl_has(&table_int, 10));
@@ -2894,7 +2880,7 @@ ut_tbl(void) {
     assert(tbl_has(&table_int, 30));
     assert(!tbl_has(&table_int, 40));
 
-    int *val = tbl_get(&table_int, tbl_fnd(&table_int, 20));
+    long long *val = tbl_get(&table_int, tbl_fnd(&table_int, 20));
     assert(val != 0 && *val == 200);
 
     tbl_del(&table_int, 20);
@@ -2906,35 +2892,33 @@ ut_tbl(void) {
   }
   {
     // 2. Normal expected inputs (Person struct values)
-    struct tbl(Person, 8) table_person = {0};
-    tbl_clr(&table_person);
-
-    Person p1 = {1, "Alice"};
-    Person p2 = {2, "Bob"};
-    tbl_put(&table_person, 1, &p1);
-    tbl_put(&table_person, 2, &p2);
+    static const Person p[] = {
+      {1, "Alice"},
+      {2, "Bob"},
+    };
+    struct tbl(8) table_person = {0};
+    tbl_put(&table_person, 1, 0);
+    tbl_put(&table_person, 2, 1);
 
     assert(tbl_has(&table_person, 1));
     assert(tbl_has(&table_person, 2));
 
     int itr = tbl_fnd(&table_person, 2);
-    Person *found_person = (Person *)tbl_get(&table_person, itr);
-    assert(found_person != 0);
+    long long *fnd_person = tbl_get(&table_person, itr);
+    assert(fnd_person != 0);
     {
-      assert((found_person->id - p2.id) == 0);
-      assert(!strcmp(found_person->name, p2.name));
+      assert((p[*fnd_person].id == p[1].id));
+      assert(!strcmp(p[*fnd_person].name, p[1].name));
     }
   }
   {
     // 3. Edge cases (full table, collisions, deletions)
-    struct tbl(int, 4) table_edge = {0};
-    tbl_clr(&table_edge);
-
-    tbl_put(&table_edge, 2, &(int){1});
-    tbl_put(&table_edge, 5, &(int){5}); // Collision with 1 (assuming a simple modulo hash)
-    tbl_put(&table_edge, 9, &(int){9}); // Collision with 1 and 5
-    tbl_put(&table_edge, 13, &(int){13}); // Collision with 1, 5 and 9
-    tbl_put(&table_edge, 27, &(int){27}); // Collision with 1, 5 and 9
+    struct tbl(4) table_edge = {0};
+    tbl_put(&table_edge, 2, 1);
+    tbl_put(&table_edge, 5, 5); // Collision with 1 (assuming a simple modulo hash)
+    tbl_put(&table_edge, 9, 9); // Collision with 1 and 5
+    tbl_put(&table_edge, 13, 13); // Collision with 1, 5 and 9
+    tbl_put(&table_edge, 27, 27); // Collision with 1, 5 and 9
 
     assert(table_edge.cnt == 5);
     assert(tbl_has(&table_edge, 2));
@@ -2944,7 +2928,7 @@ ut_tbl(void) {
     assert(tbl_has(&table_edge, 27));
 
     // Try to insert when full (should fail gracefully)
-    long long result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, &(int){17}, szof(int));
+    long long result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, 17);
     assert(result == cntof(table_edge.keys)); // Check for "table full" return value
     assert(table_edge.cnt == 5); // Count should not have changed
 
@@ -2952,17 +2936,17 @@ ut_tbl(void) {
     assert(!tbl_has(&table_edge, 5));
     assert(table_edge.cnt == 4);
 
-    result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, &(int){17}, szof(int));
+    result = tbl__put(table_edge.keys, table_edge.vals, &table_edge.cnt, cntof(table_edge.keys), 17, 17);
     assert(result < cntof(table_edge.keys)); // Check for "table full" return value
     assert(table_edge.cnt == 5); // Count should not have changed
   }
   {
     // 5. More Comprehensive Collision Testing (important)
-    struct tbl(int, 16) collision_table = {0};
+    struct tbl(16) collision_table = {0};
     tbl_clr(&collision_table);
     for (int i = 0; i < 16; i++) {
       unsigned long long key = castull(i) * 16;
-      tbl_put(&collision_table, key, &(int){i}); // All keys will have the same hash.
+      tbl_put(&collision_table, key, i); // All keys will have the same hash.
     }
     assert(collision_table.cnt == 16);
     for (int i = 0; i < 16; i++) {
@@ -2972,15 +2956,14 @@ ut_tbl(void) {
     for (int i = 0; i < 16; i++) {
       unsigned long long key = castull(i * 16);
       int itr = tbl_fnd(&collision_table, key);
-      int *val = tbl_get(&collision_table, itr);
-      assert(val != 0 && *val == i);
+      long long *val = tbl_get(&collision_table, itr);
+      assert(val != 0 && casti(*val) == i);
     }
   }
   {
     // 6. Test with different value sizes
-    struct tbl(long long, 16) long_table = {0};
-    tbl_clr(&long_table);
-    tbl_put(&long_table, 1, &(long long){100});
+    struct tbl(16) long_table = {0};
+    tbl_put(&long_table, 1, 100);
     assert(tbl_has(&long_table, 1));
     int itr = tbl_fnd(&long_table, 1);
     long long *long_val = tbl_get(&long_table, itr);

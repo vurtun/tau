@@ -333,76 +333,21 @@ cpu_rintf(float x) {
   __asm__ ("frndint" : "+t"(x));
   return x;
 }
-
-#define flt4                __m128
-#define flt4_flt(a)         _mm_set_ps1(a)
-#define flt4_str(d,r)       _mm_storeu_ps(((float*)(d)),r)
-#define flt4_max(a,b)       _mm_max_ps(a,b)
-#define flt4_mul(a,b)       _mm_mul_ps(a,b)
-#define flt4_add(a,b)       _mm_add_ps(a,b)
-#define flt4_cmp_gt(a,b)    _mm_castps_si128(_mm_cmpgt_ps(a,b))
-#define flt4_and(a,b)       _mm_and_ps(a,b)
-#define flt4_xor(a,b)       _mm_xor_ps(a,b)
-#define flt4_zip_lo32(a,b)  _mm_unpacklo_ps(a,b)
-#define flt4_zip_hi32(a,b)  _mm_unpackhi_ps(a,b)
-#define flt4_zip_lo64(a,b)  _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
-#define flt4_zip_hi64(a,b)  _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a),_mm_castps_pd(b)))
-#define flt4_int4(a)        _mm_castsi128_ps(a)
-#define flt4_cmpu(a,b)      _mm_cmpunord_ps(a,b)
-#define flt4_rsqrt(a)       _mm_rsqrt_ps(a)
-#define flt4_sqrt(a)        _mm_sqrt_ps(a)
-#define flt4_strs(d,a)      _mm_store_ss(d,a)
-
 static inline float
 cpu_rsqrt(float n) {
-  flt4_strs(&n, flt4_rsqrt(flt4_flt(n)));
+  _mm_store_ss(&n, _mm_rsqrt_ps(_mm_set_ps1(n)));
   return n;
 }
 static inline float
 cpu_sqrt(float n) {
-  flt4_strs(&n, flt4_sqrt(flt4_flt(n)));
+  _mm_store_ss(&n, _mm_rsqrt_ps(_mm_set_ps1(n)));
   return n;
 }
-
-#define int4                __m128i
-#define int4_ld(p)          _mm_loadu_si128((const __m128i*)(const void*)p)
-#define int4_set(x,y,z,w)   _mm_setr_epi32(x,y,z,w)
-#define int4_str(p,i)       _mm_storeu_si128((__m128i*)(void*)p, i)
-#define int4_char(i)        _mm_set1_epi8(i)
-#define int4_int(i)         _mm_set1_epi32(i)
-#define int4_uint(i)        _mm_set1_epi32(i)
-#define int4_sll(v,i)       _mm_slli_epi32(v,i)
-#define int4_srl(v,i)       _mm_srli_epi32(v,i)
-#define int4_sra(v,i)       _mm_srai_epi32(v,i)
-#define int4_and(a,b)       _mm_and_si128(a, b)
-#define int4_andnot(a,b)    _mm_andnot_si128(a, b)
-#define int4_or(a,b)        _mm_or_si128(a, b)
-#define int4_add(a,b)       _mm_add_epi32(a, b)
-#define int4_sub(a,b)       _mm_sub_epi32(a, b)
-#define int4_mul(a,b)       _mm_mullo_epi32(a, b)
-#define int4_blend(a,b,m)   _mm_blendv_epi8(a,b,m)
-#define int4_flt4(a)        _mm_castps_si128(a)
-#define int4_cmp_gt(a,b)    _mm_cmpgt_epi32(a,b)
 
 /* simd 256-bit */
 #ifdef USE_SIMD_256
 #define CPU_SIMD_256
 #endif
-
-#define flt8                __m256
-#define int8                __m256i
-#define int8_ld(p)          _mm256_loadu_si256((const __m256i*)(const void*)p)
-#define int8_store(p,i)     _mm256_storeu_si256((__m256i*)(void*)p, i)
-#define int8_char(i)        _mm256_set1_epi8(i)
-#define int8_int(i)         _mm256_set1_epi32(i)
-#define int8_sll(v,i)       _mm256_slli_epi32(v,i)
-#define int8_srl(v,i)       _mm256_srli_epi32(v,i)
-#define int8_and(a,b)       _mm256_and_si256(a, b)
-#define int8_andnot(a,b)    _mm256_andnot_si256(a, b)
-#define int8_or(a,b)        _mm256_or_si256(a, b)
-#define int8_add(a,b)       _mm256_add_epi32(a, b)
-#define int8_sub(a,b)       _mm256_sub_epi32(a, b)
-#define int8_mul(a,b)       _mm256_mullo_epi32(a, b)
 
 /* string */
 #ifdef CPU_SIMD_256
@@ -450,6 +395,27 @@ cpu_str_fnd(const char *s, int n, const char *needle, int k) {
   }
   return n;
 }
+static inline int
+cpu_str_cnt_ln(const char* buf, int len) {
+  assert(buf);
+  assert(len >= 0);
+
+  int cnt = 0;
+  int blk = len >> 5;
+  int lft = len & 0x1f;
+  __m256i newline = _mm256_set1_epi8('\n');
+  for (int i = 0; i < blk; ++i, buf += 32) {
+    __m256i data = _mm256_loadu_si256((__m256i*)(buf));
+    __m256i mask = _mm256_cmpeq_epi8(data, newline);
+    int mask_bits = _mm256_movemask_epi8(mask);
+    cnt += _mm_popcnt_u32(mask_bits);
+  }
+  for (int i = 0; i < lft; i++) {
+    cnt += (buf[i] == '\n');
+  }
+  return cnt;
+}
+
 #else
 
 static inline const char*
@@ -495,6 +461,26 @@ cpu_str_fnd(const char *str, int cnt, const char *ndl, size_t len) {
   }
   return cnt;
 }
+static inline int
+cpu_str_cnt_ln(const char* buf, int len) {
+  assert(buf);
+  assert(len >= 0);
+  __m128i newline = _mm_set1_epi8('\n');
+
+  int cnt = 0;
+  int blk = len >> 4;
+  int lft = len & 0x0f;
+  for (int i = 0; i < blk; ++i, buf += 16) {
+    __m128i data = _mm_loadu_si128((__m128i*)(buffer + i));
+    __m128i mask = _mm_cmpistrm(newline, data, _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_EACH);
+    int mask_bits = _mm_movemask_epi8(mask);
+    cnt += _mm_popcnt_u32(mask_bits);
+  }
+  for (int i = 0; i < lft; i++) {
+    cnt += (buf[i] == '\n');
+  }
+  return cnt;
+}
 #endif
 
 #elif defined(__arm__) || defined(__aarch64__)
@@ -519,7 +505,7 @@ cpu_info(struct cpu_info *cpu) {
   cpu->vendor = CPU_SAMSUNG;
 #endif
   cpu->has_simd_128 = 1;
-  cpu->has_simd_256 = 1;
+  cpu->has_simd_256 = 0;
 }
 static inline float
 cpu_fma(float x, float y, float z) {
@@ -531,66 +517,15 @@ cpu_rintf(float x) {
   __asm__("frintx %s0, %s1" : "=w"(x) : "w"(x));
   return x;
 }
-
-/* float4 */
-#define flt4                float32x4_t
-#define flt4_flt(a)         vdupq_n_f32(a)
-#define flt4_str(d,r)       vst1q_f32((float*)d, r)
-#define flt4_max(a,b)       vmaxnmq_f32(a,b)
-#define flt4_mul(a,b)       vmulq_f32(a,b)
-#define flt4_add(a,b)       vaddq_f32(a,b)
-#define flt4_cmp_gt(a,b)    vcgtq_f32(a,b)
-#define flt4_and(a,b)       vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
-#define flt4_xor(a,b)       vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a),vreinterpretq_u32_f32(b)))
-#define flt4_zip_lo32(a,b)  vzip1q_f32(a,b)
-#define flt4_zip_hi32(a,b)  vzip2q_f32(a,b)
-#define flt4_zip_lo64(a,b)  vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
-#define flt4_zip_hi64(a,b)  vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(a),vreinterpretq_f64_f32(b)))
-#define flt4_int4(a)        vreinterpretq_f32_s32(a)
-#define flt4_rsqrt(a)       vrsqrteq_f32(a)
-#define flt4_sqrt(a)        vsqrtq_f32(a)
-#define flt4_strs(d,a)      vst1q_lane_f32(d,a,0)
-
-static inline flt4
-flt4_cmpu(flt4 a, flt4 b) {
-  uint32x4_t f32a = vceqq_f32(a, a);
-  uint32x4_t f32b = vceqq_f32(b, b);
-  return vreinterpretq_f32_u32(vmvnq_u32(vandq_u32(f32a, f32b)));
-}
 static inline float
 cpu_rsqrt(float n) {
-  flt4_strs(&n, flt4_rsqrt(flt4_flt(n)));
+  vst1q_lane_f32(&n, vrsqrteq_f32(vdupq_n_f32(n)), 0);
   return n;
 }
 static inline float
 cpu_sqrt(float n) {
-  flt4_strs(&n, flt4_sqrt(flt4_flt(n)));
+  vst1q_lane_f32(&n, vsqrtq_f32(vdupq_n_f32(n)), 0);
   return n;
-}
-
-#define int4                int32x4_t
-#define int4_ld(p)          vld1q_s32((const int*)(const void*)p)
-#define int4_str(p,i)       vst1q_s32((int*)(void*)p, i)
-#define int4_char(i)        vreinterpretq_s32_s8(vdupq_n_s8(i))
-#define int4_int(i)         vdupq_n_s32(i)
-#define int4_uint(i)        vreinterpretq_s32_u32(vdupq_n_u32(i))
-#define int4_and(a,b)       vandq_s32(a,b)
-#define int4_andnot(a,b)    vbicq_s32(b,a)
-#define int4_or(a,b)        vorrq_s32(a,b)
-#define int4_add(a,b)       vaddq_s32(a,b)
-#define int4_sub(a,b)       vsubq_s32(a,b)
-#define int4_mul(a,b)       vmulq_s32(a,b)
-#define int4_sll(a,i)       vshlq_s32(a, vdupq_n_s32(i))
-#define int4_srl(a,i)       vshlq_s32(a, vdupq_n_s32(-i))
-#define int4_sra(v,i)       vshlq_s32(v, vdupq_n_s32(-i))
-#define int4_blend(a,b,msk) vbslq_s32(msk, b, a)
-#define int4_flt4(a)        vreinterpretq_s32_f32(a)
-#define int4_cmp_gt(a,b)    vreinterpretq_s32_u32(vcgtq_s32(a,b))
-
-static inline int4
-int4_set(int i3, int i2, int i1, int i0) {
-  int sse_align v[4] = {i3, i2, i1, i0};
-  return vld1q_s32(v);
 }
 
 /* string */
@@ -680,6 +615,32 @@ cpu_str_fnd(const char *s, size_t n, const char *needle, size_t k) {
   }
   return (int)n;
 }
+static inline int
+cpu_str_cnt_ln(const char* buf, int len) {
+  assert(buf);
+  assert(len >= 0);
+
+  int cnt = 0;
+  uint8x16_t newline = vdupq_n_u8('\n');
+  uint64x2_t cnt_vec = vdupq_n_u64(0);
+
+  int blk = len >> 4;
+  int lft = len & 0x0f;
+  for (int i = 0; i < blk; ++i, buf += 16) {
+    uint8x16_t data = vld1q_u8((const uint8_t*)buf);
+    uint8x16_t mask = vceqq_u8(data, newline);
+    uint8x16_t ones = vshrq_n_u8(mask, 7);
+    uint16x8_t sum_u16 = vpaddlq_u8(ones);
+    uint32x4_t sum_u32 = vpaddlq_u16(sum_u16);
+    uint64x2_t sum_u64 = vpaddlq_u32(sum_u32);
+    cnt_vec = vaddq_u64(cnt_vec, sum_u64);
+  }
+  cnt += vaddvq_u64(cnt_vec);
+  for (int i = 0; i < lft; i++) {
+    cnt += (buf[i] == '\n');
+  }
+  return cnt;
+}
 
 #elif defined(__EMSCRIPTEN__)
 
@@ -722,7 +683,6 @@ cpu_rintf(float x) {
   }
   return y;
 }
-
 static inline float
 cpu_rsqrt(float x) {
   /* Exact bits: 13.71 */
@@ -763,7 +723,6 @@ cpu_sqrt(float x) {
   }
   return y;
 }
-
 /* string */
 static const char*
 cpu_str_chr(const char *str, int n, int chr) {
@@ -804,6 +763,26 @@ cpu_str_fnd(const char *hay, int hay_len, const char *needle, int needle_len) {
   }
   return hay_len;
 }
+static inline int
+cpu_str_cnt_ln(const char *buf, int len) {
+  assert(blk);
+  assert(len >= 0);
 
+  int blk = len >> 3;
+  int lft = len & 0x7;
+  unsigned long long nl = 0x0A0A0A0A0A0A0A0A0A0A0A0ALLU;
+
+  int cnt = 0;
+  for (int i = 0; i < blk; ++i, buf += 8) {
+    unsigned long long dat = *((unsigned long long*)buf);
+    unsigned long long mask = dat ^ 0x0A0A0A0A0A0A0A0AULL;
+    mask = ((~mask) & 0x8080808080808080ULL) >> 7u;
+    cnt += __builtin_popcountll(mask);
+  }
+  for (int i = 0; i < lft; i++) {
+    cnt += (buf[i] == '\n');
+  }
+  return cnt;
+}
 #endif
 

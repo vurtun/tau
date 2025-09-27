@@ -424,7 +424,7 @@ file_view_lst_qry(struct file_list_view *not_null lst,
     file_view_lst_partition(ptr, qry->cmp);
   }
   qsort(ptr, castsz(lst->page.cnt), szof(lst->page.elms[0]), qry->cmp);
-  lst->page_cnt = div_round_up(lst->page.total, FILE_LIST_ELM_CNT);
+  lst->page_cnt = div_ceil(lst->page.total, FILE_LIST_ELM_CNT);
   lst->page.idx = qry->page;
 
   ensures(lst->page_cnt >= 0);

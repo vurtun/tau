@@ -700,7 +700,7 @@ res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
 }
 static void
 res_fnt_ext_blk(int *ext, struct res *rss, struct str txt) {
-  int cnt = div_round_up(str_len(txt), 16);
+  int cnt = div_ceil(str_len(txt), 16);
   struct str blk = txt;
   for loop(i,cnt) {
     struct str seg = str_lhs(blk, 16);
@@ -759,7 +759,7 @@ res_fnt_fit_blk(struct res_txt_bnd *bnd, int *ext, struct res *rss, int space,
                 struct str txt) {
 
   unsigned long long h = FNV1A64_HASH_INITIAL;
-  int n = div_round_up(str_len(txt), 16);
+  int n = div_ceil(str_len(txt), 16);
   struct str blk = txt;
   for loop(i,n) {
     struct str seg = str_lhs(blk, 16);
@@ -861,7 +861,7 @@ res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
     case RES_FNT_RUN_WORDS: {
       itr->at = str_split_cut(&itr->rest, strv(" "));
     } break;}
-    itr->n = div_round_up(str_len(itr->at), 16);
+    itr->n = div_ceil(str_len(itr->at), 16);
     itr->h = FNV1A64_HASH_INITIAL;
     itr->blk = itr->at;
     itr->i = 0;

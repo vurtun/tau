@@ -4374,7 +4374,7 @@ gui_lst_lay_init(struct gui_lst_lay *lst) {
   if (lst->orient == GUI_VERTICAL) {
     lst->space[0] = max(0, lst->box.x.ext - (lst->pad[0] << 1));
     lst->space[1] = max(0, lst->box.y.ext - lst->pad[1]);
-    lst->cnt[0] = div_round_up(lst->space[0], lst->slot[0]);
+    lst->cnt[0] = div_ceil(lst->space[0], lst->slot[0]);
     lst->cnt[0] = max(1, lst->cnt[0]);
     lst->off = lst->offset / lst->slot[1];
     lst->off_idx = lst->off * lst->cnt[0];
@@ -4387,7 +4387,7 @@ gui_lst_lay_init(struct gui_lst_lay *lst) {
   } else {
     lst->space[0] = max(0, lst->box.x.ext - lst->pad[0]);
     lst->space[1] = max(0, lst->box.y.ext - (lst->pad[1] << 1));
-    lst->cnt[1] = div_round_up(lst->space[1], lst->slot[1]);
+    lst->cnt[1] = div_ceil(lst->space[1], lst->slot[1]);
     lst->cnt[1] = max(1, lst->cnt[1]);
     lst->off = lst->offset / lst->slot[0];
     lst->off_idx = lst->off * lst->cnt[1];
@@ -4883,7 +4883,7 @@ gui_lst_view(struct gui_lst_view *view, const struct gui_lst_lay *lay) {
   const int total = max(1, view->total_cnt) - 1;
   if (lay->orient == GUI_VERTICAL) {
     int cnt = max(1, lay->cnt[0]);
-    view->cnt[1] = div_round_up(total, cnt);
+    view->cnt[1] = div_ceil(total, cnt);
     view->cnt[1] = max(1, view->cnt[1]);
     view->cnt[0] = lay->cnt[0];
 
@@ -4895,7 +4895,7 @@ gui_lst_view(struct gui_lst_view *view, const struct gui_lst_lay *lay) {
     view->at[1] = lay->lay.y.min + lay->off * lay->slot[1];
   } else {
     int cnt = max(1, lay->cnt[1]);
-    view->cnt[0] = div_round_up(total, cnt);
+    view->cnt[0] = div_ceil(total, cnt);
     view->cnt[0] = max(1, view->cnt[0]);
     view->cnt[1] = lay->cnt[1];
 
