@@ -2733,8 +2733,8 @@ ui_db_tbl_view_dsp_data_lst(struct db_state *not_null sdb,
 
   gui.pan.begin(ctx, pan, parent);
   {
+    /* reload column data */
     if (vtbl->col.id != stbl->rowid) {
-      /* reload column data */
       db_tbl_qry_row_cols(sdb, stbl, vtbl, stbl->row.cols.lo);
     }
     int back = 0;
@@ -3029,6 +3029,7 @@ ui_db_tbl_view_dsp_data_str(struct db_state *not_null sdb,
         reg.lst.begin != stbl->str.rng.lo ||
         reg.lst.end != stbl->str.rng.hi) {
 
+      /* reload stale view data */
       int ret = db_tbl_qry_str(sdb, vdb, stbl, vtbl, stbl->str.colid,
         stbl->str.rowid, reg.lst.begin, reg.lst.end);
       if (ret < 0) {
@@ -3144,7 +3145,6 @@ ui_db_tbl_view_dsp_lay(struct db_state *not_null sdb,
       int tbl_cols[GUI_TBL_COL(DB_TBL_DISP_COL_MAX)];
       gui.tbl.hdr.begin(ctx, &tbl, arrv(tbl_cols), arrv(stbl->col.ui.state));
       if (ui_tbl_hdr_elm_lock(ctx, &tbl, tbl_cols, stbl->col.ui.state, !!stbl->col.state)) {
-
         switch (stbl->col.state) {
         default: assert(0); break;
         case DB_TBL_COL_STATE_LOCKED: {

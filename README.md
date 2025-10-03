@@ -1,15 +1,15 @@
 # Tau
-Small sqlite database viewer immediate mode graphical user interface playground
+Small sqlite database viewer
 
 ## Features: 
-    - Small sqlite graphical user interface
+    - Small sqlite viewer
     - No dependencies (outside system APIs) 
     - Small memory footprint (~1MB)
-    - No heap allocation after startup
-    - Hardware rendering
+    - Absolutely no heap allocation
+    - GPU ui rendering
     - Custom immediate mode graphical user interface
     - Designed to be as robust as possible
-    - Uses platform specific color scheme
+    - Uses platform specific color scheme with classic win32 styling
 
 ## Platforms:
     - Mac (M Series)

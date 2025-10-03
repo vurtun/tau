@@ -1,3 +1,16 @@
+enum {
+  RES_BAKE_IMG_WIDTH    = 256,
+  RES_BAKE_IMG_HEIGHT   = 512,
+  RES_BAKE_IMG_MEM      = (RES_BAKE_IMG_WIDTH * RES_BAKE_IMG_HEIGHT),
+  RES_UNPACK_COMPR_SIZ  = KB(32),
+  RES_DEF_FNT_MEM       = KB(64),
+  RES_ICO_FNT_MEM       = KB(32),
+};
+static unsigned char res__bake_img[RES_BAKE_IMG_MEM];
+static unsigned char res__compr_buf[RES_UNPACK_COMPR_SIZ];
+static unsigned char res__def_fnt_mem[RES_DEF_FNT_MEM];
+static unsigned char res__ico_fnt_mem[RES_ICO_FNT_MEM];
+
 /* ---------------------------------------------------------------------------
  *                            Decompression
  * --------------------------------------------------------------------------- */
@@ -154,22 +167,21 @@ res__decode_85(unsigned char* dst, const unsigned char* src) {
 }
 /* clang-format on */
 
-static void *
-res_unpack(int *data_siz, const char *src) {
-  unsigned char *data = 0;
+static void
+res_unpack(unsigned char *data, int cap, int *data_siz, const char *src) {
+  requires(src);
+  requires(data);
+  requires(data_siz);
+
+  const int com_size = (((int)strlen(src) + 4) / 5) * 4;
+  assert(com_size < cntof(res__compr_buf));
+  res__decode_85(res__compr_buf, cast(const unsigned char*, src));
   {
-    const int com_size = (((int)strlen(src) + 4) / 5) * 4;
-    unsigned char *com_buf = calloc(1, castsz(com_size));
-    res__decode_85(com_buf, cast(const unsigned char *, src));
-    {
-      unsigned un_siz = res__decompress_len(com_buf);
-      data = calloc(1, castsz(un_siz));
-      res__decompress(data, com_buf, un_siz);
-      *data_siz = cast(int, un_siz);
-    }
-    free(com_buf);
+    unsigned un_siz = res__decompress_len(res__compr_buf);
+    assert(un_siz < castu(cap));
+    res__decompress(data, res__compr_buf, un_siz);
+    *data_siz = cast(int, un_siz);
   }
-  return data;
 }
 /* ---------------------------------------------------------------------------
  *                                  Font
@@ -453,11 +465,15 @@ static const char res__ico_fnt[] =
 
 static void *
 res_default_fnt(int *data_siz) {
-  return res_unpack(data_siz, res__default_fnt);
+  requires(data_siz);
+  res_unpack(res__def_fnt_mem, RES_DEF_FNT_MEM, data_siz, res__default_fnt);
+  return res__def_fnt_mem;
 }
 static void *
 res_ico_fnt(int *data_siz) {
-  return res_unpack(data_siz, res__ico_fnt);
+  requires(data_siz);
+  res_unpack(res__ico_fnt_mem, RES_ICO_FNT_MEM, data_siz, res__ico_fnt);
+  return res__ico_fnt_mem;
 }
 // clang-format on
 
@@ -473,28 +489,24 @@ struct res__bake_cfg {
 };
 static int
 res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *sys) {
-  int width = 256;
-  int height = 512;
-retry:;
-  unsigned char *img = calloc(castsz(width), castsz(height));
+  requires(fnt);
+  requires(cfg);
+  requires(sys);
+
+  unsigned char *img = res__bake_img;
   {
     fnt_pack_context pc;
-    fnt_PackBegin(&pc, img, width, height, 0, 1, 0);
+    fnt_PackBegin(&pc, img, RES_BAKE_IMG_WIDTH, RES_BAKE_IMG_HEIGHT, 0, 1, 0);
     int ok0 = fnt_PackFontRange(&pc, cfg->txt_ttf_fnt, 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
     int ok1 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
     int ok2 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
     fnt_PackEnd(&pc);
-
     if (!ok0 || !ok1 || !ok2) {
-      width *= 2;
-      height *= 2;
-      free(img);
-      goto retry;
+      return 0;
     }
   }
-  fnt->texid = sys->gfx.tex.load(sys, GFX_PIX_FMT_R8, img, width, height);
-  free(img);
-  return 0;
+  fnt->texid = sys->gfx.tex.load(sys, GFX_PIX_FMT_R8, img, RES_BAKE_IMG_WIDTH, RES_BAKE_IMG_HEIGHT);
+  return 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -503,22 +515,26 @@ retry:;
  */
 static int*
 res__run_cache_slot(struct res_run_cache *rrc, unsigned long long hash) {
+  requires(rrc);
   int slot = casti(hash & castull(rrc->hmsk));
   assert(slot < rrc->hcnt);
   return &rrc->htbl[slot];
 }
 static struct res_fnt_run*
 res__run_cache_get(struct res_run_cache *rrc, int i) {
+  requires(rrc);
   assert(i < rrc->run_cnt);
   return &rrc->runs[i];
 }
 static struct res_fnt_run*
 res__run_cache_sen(struct res_run_cache *rrc) {
+  requires(rrc);
   return rrc->runs;
 }
 #ifdef DEBUG_MODE
 static void
 res__run_cache_val_lru(struct res_run_cache *rrc, int expct_cnt_chng) {
+  requires(rrc);
   int i;
   int run_cnt = 0;
   struct res_fnt_run *sen = res__run_cache_sen(rrc);
@@ -540,6 +556,7 @@ res__run_cache_val_lru(struct res_run_cache *rrc, int expct_cnt_chng) {
 #endif
 static void
 res__run_cache_recycle_lru(struct res_run_cache *rrc) {
+  requires(rrc);
   struct res_fnt_run *sen = res__run_cache_sen(rrc);
   assert(sen->lru_prv);
 
@@ -566,6 +583,7 @@ res__run_cache_recycle_lru(struct res_run_cache *rrc) {
 }
 static int
 res__run_cache_free_entry(struct res_run_cache *rrc) {
+  requires(rrc);
   struct res_fnt_run *sen = res__run_cache_sen(rrc);
   if (!sen->nxt) {
     res__run_cache_recycle_lru(rrc);
@@ -589,6 +607,8 @@ struct res_run_cache_tbl_fnd_res {
 };
 static struct res_run_cache_tbl_fnd_res
 res__run_cache_tbl_fnd(struct res_run_cache *rrc, unsigned long long hash) {
+  requires(rrc);
+
   struct res_run_cache_tbl_fnd_res ret = {0};
   ret.slot = res__run_cache_slot(rrc, hash);
   ret.idx = *ret.slot;
@@ -608,6 +628,8 @@ struct res_run_cache_fnd_res {
 };
 static struct res_run_cache_fnd_res
 res_run_cache_fnd(struct res_run_cache *rrc, unsigned long long hash) {
+  requires(rrc);
+
   struct res_run_cache_fnd_res ret = {0};
   struct res_run_cache_tbl_fnd_res fnd = res__run_cache_tbl_fnd(rrc, hash);
   if (fnd.run) {
@@ -644,6 +666,7 @@ res_run_cache_fnd(struct res_run_cache *rrc, unsigned long long hash) {
 }
 static void
 res_run_cache_init(struct res_run_cache *rrc) {
+  requires(rrc);
   assert(ispow2(cntof(rrc->htbl)));
   rrc->hcnt = cntof(rrc->htbl);
   rrc->hmsk = cntof(rrc->htbl) - 1;
@@ -660,8 +683,8 @@ res_run_cache_init(struct res_run_cache *rrc) {
  */
 static void
 res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
-  assert(rss);
-  assert(run);
+  requires(rss);
+  requires(run);
 
   struct res_fnt *fnt = &rss->fnt;
   int cnt = 0;
@@ -700,6 +723,7 @@ res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
 }
 static void
 res_fnt_ext_blk(int *ext, struct res *rss, struct str txt) {
+  requires(rss);
   int cnt = div_ceil(str_len(txt), 16);
   struct str blk = txt;
   for loop(i,cnt) {
@@ -717,8 +741,8 @@ res_fnt_ext_blk(int *ext, struct res *rss, struct str txt) {
 }
 static void
 res_fnt_ext(int *ext, struct res *rss, struct str txt) {
-  assert(ext);
-  assert(rss);
+  requires(ext);
+  requires(rss);
 
   ext[0] = 0;
   ext[1] = rss->fnt.txt_height;
@@ -738,8 +762,9 @@ res_fnt_ext(int *ext, struct res *rss, struct str txt) {
 }
 static void
 res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space, int ext) {
-  assert(run);
-  assert(bnd);
+  requires(run);
+  requires(bnd);
+
   int width = 0, len = 0;
   assert(run->len <= RES_FNT_MAX_RUN);
   for loop(i, run->len) {
@@ -757,6 +782,8 @@ res_fnt_fit_run(struct res_txt_bnd *bnd, struct res_fnt_run *run, int space, int
 static int
 res_fnt_fit_blk(struct res_txt_bnd *bnd, int *ext, struct res *rss, int space,
                 struct str txt) {
+  requires(bnd);
+  requires(rss);
 
   unsigned long long h = FNV1A64_HASH_INITIAL;
   int n = div_ceil(str_len(txt), 16);
@@ -786,8 +813,8 @@ res_fnt_fit_blk(struct res_txt_bnd *bnd, int *ext, struct res *rss, int space,
 }
 static void
 res_fnt_fit(struct res_txt_bnd *bnd, struct res *rss, int space, struct str txt) {
-  assert(rss);
-  assert(bnd);
+  requires(rss);
+  requires(bnd);
 
   mset(bnd, 0, szof(*bnd));
   bnd->end = str_end(txt);
@@ -814,8 +841,8 @@ static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
           int in_rune) {
 
-  assert(ret);
-  assert(fnt);
+  requires(ret);
+  requires(fnt);
 
   int rune = in_rune >= RES_GLYPH_SLOTS ? '?': in_rune;
   const fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
@@ -834,8 +861,8 @@ res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y,
 static void
 res_run_glyph(struct res_glyph *ret, const struct res_fnt_run *run,
               int i, int x, int y) {
-  assert(ret);
-  assert(run);
+  requires(ret);
+  requires(run);
 
   int w = run->ext[i * 2 + 0];
   int h = run->ext[i * 2 + 1];
@@ -850,8 +877,9 @@ res_run_glyph(struct res_glyph *ret, const struct res_fnt_run *run,
 }
 static const struct res_fnt_run*
 res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
-  assert(rss);
-  assert(itr);
+  requires(rss);
+  requires(itr);
+
   if (itr->i == itr->n) {
     switch (rss->mod) {
     case RES_FNT_RUN_FULL: {
@@ -883,8 +911,8 @@ res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
 }
 static const struct res_fnt_run*
 res_lay_begin(struct res_fnt_run_it *itr, struct res *rss, struct str txt) {
-  assert(itr);
-  assert(rss);
+  requires(itr);
+  requires(rss);
 
   mset(itr, 0, szof(*itr));
   itr->rest = txt;
@@ -894,12 +922,16 @@ res_lay_begin(struct res_fnt_run_it *itr, struct res *rss, struct str txt) {
  *                                System
  * ---------------------------------------------------------------------------
  */
-static void
+static int
 res_init(struct res *rss, struct sys *sys) {
+  requires(rss);
+  requires(sys);
+
   static const float fnt_pnt_siz[] = {8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 20.0f,
     22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f, 36.0f, 38.0f, 40.0f, 42.0f};
   float pnt_siz = math_floor(sys->fnt_pnt_size * sys->dpi_scale);
 
+  int ret = 0;
   double best_diff = 10000.0;
   rss->fnt_pnt_size = 16.0f;
   for arr_loopv(i, fnt_pnt_siz) {
@@ -921,34 +953,35 @@ res_init(struct res *rss, struct sys *sys) {
       cfg.txt_ttf_pnt_siz = rss->fnt_pnt_size;
       cfg.ico_ttf_fnt = ico_ttf_mem;
       cfg.ico_ttf_pnt_siz = rss->fnt_pnt_size;
-      res__bake_fnt(&rss->fnt, &cfg, sys);
+      ret = res__bake_fnt(&rss->fnt, &cfg, sys);
     }
     rss->fnt.space_adv = math_roundi(rss->fnt.glyphs[' '].xadvance);
     rss->fnt.txt_height = math_ceili(rss->fnt_pnt_size);
     rss->fnt.ico_height = math_ceili(rss->fnt_pnt_size);
-
-    free(txt_ttf_mem);
-    free(ico_ttf_mem);
   }
   res_run_cache_init(&rss->run_cache);
+  return ret;
 }
 static void
 res_shutdown(struct res *rss) {
+  requires(rss);
   struct sys *sys = rss->sys;
   sys->gfx.tex.del(sys, rss->fnt.texid);
 }
 static void
 res_full_text_mode(struct res *rss) {
+  requires(rss);
   rss->mod = RES_FNT_RUN_FULL;
 }
 static void
 res_word_mode(struct res *rss) {
+  requires(rss);
   rss->mod = RES_FNT_RUN_WORDS;
 }
 static void
 res_ico_ext(int *ret, const struct res *rss, enum res_ico_id ico) {
-  assert(ret);
-  assert(rss);
+  requires(ret);
+  requires(rss);
 
   const fnt_packedchar *g = &rss->fnt.glyphs[ico];
   ret[0] = math_roundi(g->xadvance);

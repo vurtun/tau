@@ -163,7 +163,7 @@ struct res_api {
   struct res_fnt_api fnt;
   struct res_run_api run;
   struct res_ico_api ico;
-  void (*init)(struct res *res, struct sys *sys);
+  int (*init)(struct res *res, struct sys *sys);
   void (*shutdown)(struct res *r);
   void (*full_text_mode)(struct res *rss);
   void (*word_mode)(struct res *rss);
