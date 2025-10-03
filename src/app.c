@@ -130,6 +130,7 @@ app_open_file(struct app *not_null app, struct str file) {
 static void
 app_init(struct app *not_null app,
          struct sys *not_null sys) {
+
   requires(sys);
   requires(app_is_val(app));
   res.init(&app->res, sys);
@@ -213,6 +214,7 @@ static void
 ui_app_dnd_file(struct app *not_null app,
                 struct gui_ctx *not_null ctx,
                 struct gui_panel *not_null pan) {
+
   requires(app_is_val(app));
   requires(ctx);
   requires(pan);

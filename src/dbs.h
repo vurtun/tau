@@ -260,8 +260,10 @@ struct db_state {
   int tbl_lst_off[2];
   struct db_tbl_state tbls[DB_TBL_CNT];
   unsigned long tbl_act;
-  int sel_tbl;
-  int tbl_cnt;
+
+  char tabs[DB_TBL_CNT];
+  int sel_tab;
+  int tab_cnt;
 
   int tab_off[2];
   enum db_state_frame frame;
