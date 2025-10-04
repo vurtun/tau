@@ -868,7 +868,7 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
       char buf[UTF_SIZ+1];
       int cnt = utf_enc(buf, cntof(buf), codepoint);
       if (g_sys.txt_len + cnt < cntof(g_sys.txt)) {
-        memcpy(g_sys.txt + g_sys.txt_len, buf, castsz(cnt));
+        mcpy(g_sys.txt + g_sys.txt_len, buf, casti(cnt));
         g_sys.txt_len += cnt;
       }
     }

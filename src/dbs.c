@@ -3782,6 +3782,7 @@ ui_db_explr(struct db_state *not_null sdb,
             }
             gui.btn.end(ctx, &btn, &elm);
             if (btn.in.mouse.btn.left.dragged) {
+              /* resort tabs handling */
               int min_x = elm.box.x.min - (elm.box.x.ext >> 1);
               int max_x = elm.box.x.max + (elm.box.x.ext >> 1);
               if (i > 0 && btn.in.mouse.pos[0] < min_x) {
@@ -3800,21 +3801,23 @@ ui_db_explr(struct db_state *not_null sdb,
         }
         gui.lst.reg.elm.end(ctx, &reg, &elm);
       }
+      gui.lst.reg.end(ctx, &reg, pan, sdb->tab_off);
+
       /* shortcut handling */
       struct sys *_sys = ctx->sys;
       if ((_sys->keymod & SYS_KEYMOD_ALT) &&
           (_sys->keymod & SYS_KEYMOD_SHIFT) &&
           bit_tst_clr(_sys->keys, SYS_KEY_TAB)) {
-        sdb->sel_tab = (sdb->sel_tab + sdb->sel_tab + 1) % sdb->sel_tab;
+        sdb->sel_tab = (sdb->sel_tab + sdb->tab_cnt - 1) % sdb->tab_cnt;
       } else if ((_sys->keymod & SYS_KEYMOD_ALT) &&
           bit_tst_clr(ctx->sys->keys, SYS_KEY_TAB)) {
-        sdb->sel_tab = (sdb->sel_tab + 1) % sdb->sel_tab;
+        sdb->sel_tab = (sdb->sel_tab + 1) % sdb->tab_cnt;
       } else if((_sys->keymod & SYS_KEYMOD_ALT) &&
           bit_tst_clr(ctx->sys->keys, 'w')) {
         db_tab_close(sdb, sdb->sel_tab);
       } else if((_sys->keymod & SYS_KEYMOD_ALT) &&
-          bit_tst_clr(ctx->sys->keys, 't')) {
-        sdb->frame = DB_FRAME_LST;
+          bit_tst_clr(ctx->sys->keys, 't') && sdb->tab_cnt < DB_TBL_CNT) {
+        db_tab_open_new(sdb);
       }
       if (_sys->keymod == SYS_KEYMOD_ALT) {
         for loop(i, 9) {
@@ -3823,8 +3826,6 @@ ui_db_explr(struct db_state *not_null sdb,
           }
         }
       }
-      gui.lst.reg.end(ctx, &reg, pan, sdb->tab_off);
-
       confine gui_disable_on_scope(&gui, ctx, !(~sdb->tbl_act)) {
         if (gui.btn.ico(ctx, &add, pan, RES_ICO_PLUS)) {
           db_tab_open_new(sdb);
