@@ -609,7 +609,6 @@ static purist int
 bit_set_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
   requires(nbits >= 0);
-  requires(off < nbits);
   if (!idx && !off) {
     return bit_ffs(addr, nbits, idx);
   }
@@ -624,7 +623,6 @@ static purist int
 bit_zero_at(const unsigned long *addr, int nbits, int off, int idx) {
   requires(addr);
   requires(nbits >= 0);
-  requires(off < nbits);
   if (!idx && !off) {
     return bit_ffz(addr, nbits, idx);
   }

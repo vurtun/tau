@@ -3560,7 +3560,12 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
   int del_idx = -1;
   gui.pan.begin(ctx, pan, parent);
   {
-    struct gui_tbl tbl = {.box = pan->box};
+    struct gui_box lay = pan->box;
+    struct gui_edit_box edt = {.flags = GUI_EDIT_SEL_ON_ACT};
+    edt.box = gui.cut.top(&lay, ctx->cfg.item, ctx->cfg.gap[1]);
+    sdb->fnd_str = gui.edt.box(ctx, &edt, pan, arrv(sdb->fnd_buf), sdb->fnd_str);
+
+    struct gui_tbl tbl = {.box = lay};
     gui.tbl.begin(ctx, &tbl, pan, sdb->ui.off, 0);
     {
       /* header */
@@ -3572,6 +3577,21 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
       }
       gui.tbl.hdr.end(ctx, &tbl);
 
+      /* filter */
+      unsigned long fltr = 0;
+      if (str_len(sdb->fnd_str)) {
+        for arr_loopn(tab_idx, sdb->tabs, sdb->tab_cnt) {
+          int tbl_idx = sdb->tabs[tab_idx];
+          assert(tbl_idx < cntof(sdb->tabs));
+          assert(tbl_idx < DB_TBL_CNT);
+          assert(tbl_idx >= 0);
+          struct db_tbl_state *stbl = &sdb->tbls[tbl_idx];
+          if (!(sdb->tbl_act & (1u << tbl_idx)) ||
+              !str_has(stbl->title, sdb->fnd_str)) {
+            fltr |= 1UL << tab_idx;
+          }
+        }
+      }
       /* list */
       struct gui_tbl_lst_cfg cfg = {0};
       gui.tbl.lst.cfg(ctx, &cfg, sdb->tab_cnt);
@@ -3579,6 +3599,8 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
       cfg.sel.src = GUI_LST_SEL_SRC_EXT;
       cfg.sel.mode = GUI_LST_SEL_SINGLE;
       cfg.sel.on = GUI_LST_SEL_ON_HOV;
+      cfg.fltr.on = GUI_LST_FLTR_ON_ONE;
+      cfg.fltr.bitset = &fltr;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for gui_tbl_lst_loopn(idx, _, gui, &tbl, DB_TBL_CNT) {

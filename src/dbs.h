@@ -266,6 +266,8 @@ struct db_state {
   int tab_cnt;
 
   int tab_off[2];
+  struct str fnd_str;
+  char fnd_buf[DB_MAX_FILTER];
   enum db_state_frame frame;
   struct db_state_ui_state ui;
 };
