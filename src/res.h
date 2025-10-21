@@ -168,5 +168,5 @@ struct res_api {
   void (*full_text_mode)(struct res *rss);
   void (*word_mode)(struct res *rss);
 };
-static void res_api(void *export, void *import);
+static void res_api(void *exp, void *imp);
 

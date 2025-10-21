@@ -78,5 +78,5 @@ struct pck_api {
   struct str (*ui)(char *filepath, int n, struct file_view*, struct gui_ctx *ctx,
                    struct gui_panel *pan, struct gui_panel *parent);
 };
-static void pck_api(void *export, void *import);
+static void pck_api(void *exp, void *imp);
 

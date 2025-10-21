@@ -295,7 +295,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
     /* allocate fragment argument buffers */
     id<MTLArgumentEncoder> enc = [mtl->fshdr_f newArgumentEncoderWithBufferIndex:0];
     for loop(i, GFX_MTL_BUF_DEPTH) {
-      mtl->arg_buf[i] = [mtl->dev newBufferWithLength:enc.encodedLength options:0];
+      mtl->arg_buf[i] = [mtl->dev newBufferWithLength:enc.encodedLength options:(MTLResourceOptions)0];
       mtl->arg_buf[i].label = @"Argument Buffer";
     }
   }
@@ -385,7 +385,7 @@ gfx_mtl_end(struct sys *sys, void *view_ptr) {
     [enc setFragmentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)sys->gfx.buf2d.icnt];
     [enc endEncoding];
-    [cmd_buf presentDrawable:view.currentDrawable];
+    [cmd_buf presentDrawable:cast(id<MTLDrawable>, view.currentDrawable)];
   }
   [cmd_buf commit];
 }

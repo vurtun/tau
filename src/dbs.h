@@ -259,9 +259,9 @@ struct db_state {
 
   int tbl_lst_off[2];
   struct db_tbl_state tbls[DB_TBL_CNT];
-  unsigned long tbl_act;
+  unsigned long long tbl_act;
 
-  char tabs[DB_TBL_CNT];
+  unsigned char tabs[DB_TBL_CNT];
   int sel_tab;
   int tab_cnt;
 

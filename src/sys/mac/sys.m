@@ -168,7 +168,7 @@ sys__file_path_push(struct sys_file_path *sfp, struct str path) {
     sfp->buf[str_len(path)] = 0;
     sfp->ospath = sfp->buf;
   } else {
-    sfp->ospath = calloc(1, castsz(str_len(path) + 1));
+    sfp->ospath = cast(char*, calloc(1, castsz(str_len(path) + 1)));
     if (!sfp->ospath) {
       return 0;
     }
@@ -261,7 +261,7 @@ sys__dir_free(struct sys *sys, struct sys_dir_iter *itr) {
   }
   itr->valid = 0;
   itr->err = 0;
-  closedir(itr->handle);
+  closedir(cast(DIR*, itr->handle));
 }
 static int
 sys__dir_excl(struct sys_dir_iter *itr) {
@@ -277,7 +277,7 @@ sys_dir_nxt(struct sys *sys, struct sys_dir_iter *itr) {
     return;
   }
   do {
-    struct dirent *ent = readdir(itr->handle);
+    struct dirent *ent = readdir(cast(DIR*, itr->handle));
     if (!ent) {
       sys__dir_free(sys, itr);
       return;
@@ -617,7 +617,8 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
     NSWindowStyleMaskMiniaturizable |
     NSWindowStyleMaskResizable;
   NSRect win_rect = NSMakeRect(0, 0, g_sys.win.w, g_sys.win.h);
-  g_mac.win = [[NSWindow alloc] initWithContentRect:win_rect styleMask:style
+  g_mac.win = [[NSWindow alloc] initWithContentRect:win_rect
+    styleMask:cast(NSWindowStyleMask, style)
     backing:NSBackingStoreBuffered defer:NO];
 
   g_mac.win.releasedWhenClosed = NO;
@@ -634,7 +635,7 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
   g_mac.view = [[sys__mac_view alloc] initWithFrame:win_rect];
   g_mac.view_dlg = [[sys__mac_view_delegate alloc] init];
   g_mac.view.delegate = g_mac.view_dlg;
-  g_mac.view.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
+  g_mac.view.autoresizingMask = cast(NSAutoresizingMaskOptions,(NSViewWidthSizable|NSViewHeightSizable));
   g_mac.view.enableSetNeedsDisplay = YES;
   g_mac.view.paused = YES;
 
@@ -676,7 +677,7 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
   [NSEvent setMouseCoalescingEnabled:NO];
   NSEvent *focusevent = [NSEvent otherEventWithType:NSEventTypeAppKitDefined
     location:NSZeroPoint
-    modifierFlags:0x40
+    modifierFlags:cast(NSEventModifierFlags,0x40)
     timestamp:0
     windowNumber:0
     context:nil
@@ -732,9 +733,9 @@ sys_mac__mouse_pos(const NSEvent *const evt) {
     [self removeTrackingArea:g_mac.track_area];
     SYS__OBJ_REL(g_mac.track_area);
   }
-  const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited |
+  const NSTrackingAreaOptions options = cast(NSTrackingAreaOptions,(NSTrackingMouseEnteredAndExited |
     NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag |
-    NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
+    NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside));
   g_mac.track_area = [[NSTrackingArea alloc] initWithRect:[self bounds]
                      options:options owner:self userInfo:nil];
   [self addTrackingArea:g_mac.track_area];

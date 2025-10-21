@@ -223,7 +223,7 @@ ui_app_dnd_file(struct app *not_null app,
     struct gui_dnd_paq *paq = gui.dnd.dst.get(ctx, GUI_DND_SYS_FILES);
     if (paq) {
       /* file drag & drop */
-      const struct str *file_urls = paq->data;
+      const struct str *file_urls = cast(const struct str*, paq->data);
       switch (paq->state) {
       case GUI_DND_LEFT: break;
       case GUI_DND_ENTER:
@@ -346,7 +346,7 @@ app_run(struct sys *sys) {
 
   case SYS_QUIT: {
     /* shutdown */
-    app_shutdown(sys->app, sys);
+    app_shutdown(cast(struct app*, sys->app), sys);
     sys->app = 0;
   } break;
   }

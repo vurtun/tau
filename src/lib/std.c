@@ -91,8 +91,8 @@ mmov(void* dst, const void *src, int cnt) {
 }
 static inline void*
 mcpy(void* restrict dst, void const *restrict src, int cnt) {
-  unsigned char *restrict dst8 = dst;
-  const unsigned char *restrict src8 = src;
+  unsigned char *restrict dst8 = (unsigned char *restrict)dst;
+  const unsigned char *restrict src8 = (const unsigned char*)src;
   for loop(i, cnt) {
     dst8[i] = src8[i];
   }
@@ -100,7 +100,7 @@ mcpy(void* restrict dst, void const *restrict src, int cnt) {
 }
 static inline void*
 mset(void *addr, int val, int cnt) {
-  unsigned char *dst = addr;
+  unsigned char *dst = (unsigned char*)addr;
   for loop(i, cnt) {
     dst[i] = castb(val);
   }
@@ -202,7 +202,7 @@ fnv1a32(const void *ptr, int cnt, unsigned hash) {
   requires(ptr);
   requires(cnt >= 0);
   requires(hash >= 0);
-  const unsigned char *ptr8 = ptr;
+  const unsigned char *ptr8 = cast(const unsigned char*, ptr);
   if (!ptr || !cnt) {
     return FNV1A32_HASH_INITIAL;
   }
@@ -217,7 +217,7 @@ fnv1a64(const void *ptr, int len, unsigned long long hash) {
   requires(len >= 0);
   requires(hash >= 0);
 
-  const unsigned char *ptr8 = ptr;
+  const unsigned char *ptr8 = cast(const unsigned char*, ptr);
   if (!ptr || !len) {
     return FNV1A64_HASH_INITIAL;
   }
@@ -2939,7 +2939,7 @@ ut_tbl(void) {
     assert(table_edge.cnt == 5); // Count should not have changed
   }
   {
-    // 5. More Comprehensive Collision Testing (important)
+    // 5. More Comprehensive Collision Testing
     struct tbl(16) collision_table = {0};
     tbl_clr(&collision_table);
     for (int i = 0; i < 16; i++) {

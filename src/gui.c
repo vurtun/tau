@@ -1051,7 +1051,7 @@ gui_cfg_pushi(struct gui_cfg_stk *stk, void *ptr, int val) {
   assert(stk);
   assert(ptr);
 
-  stk->ptr = ptr;
+  stk->ptr = cast(int*, ptr);
   mcpy(&stk->val, ptr, sizeof(val));
   mcpy(ptr, &val, sizeof(val));
   return 1;
@@ -1071,7 +1071,7 @@ gui_cfg_pushu(struct gui_cfg_stk *stk, void *ptr, unsigned val) {
   assert(stk);
   assert(ptr);
 
-  stk->ptr = ptr;
+  stk->ptr = cast(int*, ptr);
   mcpy(&stk->val, ptr, sizeof(val));
   mcpy(ptr, &val, sizeof(val));
   return 1;
@@ -1232,7 +1232,7 @@ gui_begin(struct gui_ctx *ctx) {
     } break;
     case GUI_RENDER: {
       sys->tooltip.str = str_nil;
-      sys->gfx.buf2d.vtx = ctx->vtx_buf;
+      sys->gfx.buf2d.vtx = cast(unsigned char*,ctx->vtx_buf);
       sys->gfx.buf2d.idx = recast(unsigned*, ctx->idx_buf);
 
       ctx->oom = 0;
@@ -1859,46 +1859,9 @@ gui_btn_ico_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *pare
 }
 
 /* ---------------------------------------------------------------------------
- *                                  Check
+ *                                  Toggle
  * ---------------------------------------------------------------------------
  */
-#define gui_chk_box_bool(chkd) ((chkd) == GUI_CHK_UNSELECTED ? 0 : 1)
-#define gui_chk_box_state(b) ((b) ? GUI_CHK_SELECTED : GUI_CHK_UNSELECTED)
-
-static enum gui_chk_state
-gui__chk_tog(enum gui_chk_state state) {
-  switch (state) {
-    case GUI_CHK_UNSELECTED:
-      state = GUI_CHK_SELECTED;
-      break;
-    case GUI_CHK_PARTIAL:
-      state = GUI_CHK_UNSELECTED;
-      break;
-    case GUI_CHK_SELECTED:
-      state = GUI_CHK_UNSELECTED;
-      break;
-  }
-  return state;
-}
-static void
-gui__chk_cur(struct gui_ctx *ctx, const struct gui_panel *pan,
-             enum gui_chk_state chkd) {
-
-  assert(ctx);
-  assert(pan);
-
-  int ext[2]; res.ico.ext(ext, ctx->res, RES_ICO_CHECK);
-  struct gui_box cur = gui_box_mid_ext(&pan->box, ext[0], ext[1]);
-  if (ctx->pass == GUI_RENDER) {
-    if (chkd == GUI_CHK_SELECTED) {
-      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_ICO]);
-      gui_drw_ico(ctx, cur.x.min, cur.y.min, RES_ICO_CHECK);
-    } else if (chkd == GUI_CHK_PARTIAL) {
-      gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT]);
-      gui_drw_box(ctx, gui_unbox(&cur));
-    }
-  }
-}
 static void
 gui__chk_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   assert(ctx);
@@ -1921,92 +1884,6 @@ gui__chk_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
   gui_drw_hln(ctx, box->y.max - 2, box->x.min + 1, box->x.max - 2);
   gui_drw_vln(ctx, box->x.max - 2, box->y.min + 2, box->y.max - 2);
 }
-static enum gui_chk_state
-gui_chk(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
-        enum gui_chk_state chkd) {
-
-  assert(ctx);
-  assert(pan);
-  assert(parent);
-
-  pan->box = gui_box_mid_ext(&pan->box, ctx->cfg.item, ctx->cfg.item);
-  gui_panel_begin(ctx, pan, parent);
-  switch (ctx->pass) {
-    case GUI_INPUT:
-      break;
-    case GUI_RENDER: {
-      if (pan->state != GUI_HIDDEN) {
-        gui__chk_drw(ctx, pan);
-        gui__chk_cur(ctx, pan, chkd);
-      }
-    } break;
-    case GUI_FINISHED:
-      break;
-  }
-  gui_panel_end(ctx, pan, parent);
-
-  struct gui_input pin = {0};
-  gui_input(&pin, ctx, pan, GUI_BTN_LEFT);
-  if (pin.mouse.btn.left.clk) {
-    chkd = gui__chk_tog(chkd);
-  }
-  return chkd;
-}
-static int
-gui_chk_box(struct gui_ctx *ctx, struct gui_panel *pan,
-            struct gui_panel *parent, struct gui_box_cut *cut,
-            struct str txt, enum gui_chk_state *chkd) {
-
-  assert(ctx);
-  assert(pan);
-  assert(chkd);
-  assert(parent);
-
-  int txtw = gui_txt_width(ctx, txt);
-  int ext = txtw + ctx->cfg.item + ctx->cfg.gap[0];
-  pan->box = gui_cut_box(cut, ext);
-
-  gui_panel_begin(ctx, pan, parent);
-  {
-    struct gui_panel chk = {.box = pan->box};
-    gui_chk(ctx, &chk, pan, *chkd);
-
-    struct gui_panel lbl = {.box = pan->box};
-    lbl.box.x = gui_min_max(chk.box.x.max + ctx->cfg.gap[0], pan->box.x.max);
-    gui_txt(ctx, &lbl, pan, txt, 0);
-    if (ctx->pass == GUI_RENDER && pan->state == GUI_FOCUSED) {
-      gui_focus_drw(ctx, &pan->box, 0);
-    }
-  }
-  gui_panel_hot(ctx, pan, parent);
-  gui_panel_end(ctx, pan, parent);
-
-  struct gui_input pin = {0};
-  gui_input(&pin, ctx, pan, GUI_BTN_LEFT);
-  int act = pan->state == GUI_FOCUSED && bit_tst_clr(ctx->keys, GUI_KEY_ACT);
-  if (act || pin.mouse.btn.left.clk) {
-    *chkd = gui__chk_tog(*chkd);
-  }
-  return 0;
-}
-static int
-gui_chk_boxi(struct gui_ctx *ctx, struct gui_panel *pan,
-             struct gui_panel *parent, struct gui_box_cut *cut,
-             struct str txt, int *chkd) {
-
-  assert(ctx);
-  assert(pan);
-  assert(parent);
-
-  enum gui_chk_state state = gui_chk_box_state(*chkd);
-  int ret = gui_chk_box(ctx, pan, parent, cut, txt, &state);
-  *chkd = gui_chk_box_bool(state);
-  return ret;
-}
-/* ---------------------------------------------------------------------------
- *                                  Toggle
- * ---------------------------------------------------------------------------
- */
 static void
 gui__tog_drw(struct gui_ctx *ctx, struct gui_panel *pan, int act) {
   assert(ctx);
@@ -2080,7 +1957,6 @@ gui_tog_box(struct gui_ctx *ctx, struct gui_panel *pan,
   int txtw = gui_txt_width(ctx, txt);
   int ext = txtw + ctx->cfg.gap[0] + (ctx->cfg.item << 1);
   pan->box = gui_cut_box(cut, ext);
-
   gui_panel_begin(ctx, pan, parent);
   {
     int active = *is_act;
@@ -3540,7 +3416,7 @@ gui_edit_field(struct gui_ctx *ctx, struct gui_edit_box *box,
   if (gui_dnd_dst_begin(ctx, pan)) {
     struct gui_dnd_paq *paq = gui_dnd_dst_get(ctx, GUI_DND_SYS_STRING);
     if (paq) { /* string drag & drop */
-      const struct str *str = paq->data;
+      const struct str *str = cast(const struct str*, paq->data);
       switch (paq->state) {
       case GUI_DND_LEFT:
       case GUI_DND_ENTER:
@@ -4052,7 +3928,7 @@ gui_spin_int(struct gui_ctx *ctx, struct gui_spin *ctl,
   assert(ctx);
   assert(parent);
 
-  struct gui_spin_val val = {0};
+  struct gui_spin_val val;
   val.typ = GUI_SPIN_INT;
   val.inc.i = inc == 0 ? 1 : inc;
   val.num.i = *num;
@@ -4090,7 +3966,7 @@ gui_spin_uint(struct gui_ctx *ctx, struct gui_spin *ctl,
   assert(ctx);
   assert(parent);
 
-  struct gui_spin_val val = {0};
+  struct gui_spin_val val;
   val.typ = GUI_SPIN_INT;
   val.inc.u = inc == 0 ? 1 : inc;
   val.num.u = *num;
@@ -5393,7 +5269,8 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
     if (cfg->fltr && bit_tst(cfg->fltr, idx) == 0) {
       continue;
     }
-    const struct gui_split_lay_slot *slt = cast(const void*, ptr + (stride * idx));
+    const void *pslt = cast(const void*, ptr + (stride * idx));
+    const struct gui_split_lay_slot *slt = cast(const struct gui_split_lay_slot*, pslt);
     gui_split_lay_add(&bld, slt->type, slt->size, slt->con);
   }
   gui_split_lay_end(&bld);
@@ -5628,10 +5505,16 @@ gui_tbl_hdr_slot_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
   if (slot->clk) {
     tbl->resort = 1;
     if (tbl->sort.col == tbl->idx) {
-      tbl->sort.order = !tbl->sort.order;
+      switch(tbl->sort.order) {
+      case GUI_SORT_ASC: {
+        tbl->sort.order = GUI_SORT_DESC;
+      } break;
+      case GUI_SORT_DESC: {
+        tbl->sort.order = GUI_SORT_ASC;
+      } break;}
     } else {
       tbl->sort.col = tbl->idx;
-      tbl->sort.order = 0;
+      tbl->sort.order = GUI_SORT_ASC;
     }
   }
   tbl->idx++;
@@ -6557,11 +6440,6 @@ static const struct gui_api gui__api = {
     .ico = gui_btn_ico,
     .ico_txt = gui_btn_ico_txt
   },
-  .chk = {
-    .ico = gui_chk,
-    .box = gui_chk_box,
-    .boxi = gui_chk_boxi,
-  },
   .tog = {
     .ico = gui_tog,
     .box = gui_tog_box,
@@ -6739,9 +6617,9 @@ static const struct gui_api gui__api = {
   },
 };
 static void
-gui_api(void *export, void *import) {
-  unused(import);
-  struct gui_api *_api = (struct gui_api*)export;
+gui_api(void *exp, void *imp) {
+  unused(imp);
+  struct gui_api *_api = (struct gui_api*)exp;
   *_api = gui__api;
 }
 

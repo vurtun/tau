@@ -243,12 +243,6 @@ struct gui_icon {
   struct gui_input in;
 };
 
-enum gui_chk_state {
-  GUI_CHK_UNSELECTED,
-  GUI_CHK_PARTIAL,
-  GUI_CHK_SELECTED
-};
-
 /* Utility: Layout */
 enum gui_orient {
   GUI_HORIZONTAL,
@@ -1206,11 +1200,6 @@ struct gui_btn_api {
   int (*ico)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, enum res_ico_id icon);
   int (*ico_txt)(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent, struct str txt, enum res_ico_id icon, int uline);
 };
-struct gui_chk_api {
-  enum gui_chk_state (*ico)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, enum gui_chk_state chkd);
-  int (*box)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct gui_box_cut *cut, struct str txt, enum gui_chk_state *chkd);
-  int (*boxi)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct gui_box_cut *cut, struct str txt, int *chkd);
-};
 struct gui_tog_api {
   int (*ico)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, int *act);
   int (*box)(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent, struct gui_box_cut *cut, struct str txt, int *is_act);
@@ -1427,7 +1416,6 @@ struct gui_api {
   struct gui_lbl_api lbl;
   struct gui_ico_api ico;
   struct gui_btn_api btn;
-  struct gui_chk_api chk;
   struct gui_tog_api tog;
   struct gui_scrl_api scrl;
   struct gui_edt_api edt;
@@ -1442,5 +1430,5 @@ struct gui_api {
   struct gui_grid_api grid;
   struct gui_graph_node_api graph_node;
 };
-static void gui_api(void *export, void *import);
+static void gui_api(void *exp, void *imp);
 

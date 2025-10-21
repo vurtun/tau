@@ -1424,7 +1424,7 @@ db_tbl_qry_str(struct db_state *not_null sdb,
   int off = 0;
   int row_idx = 0;
   for (int i = 0; i < cnt &&
-      i < INT_MAX / DB_SQL_IO_BUF_SIZ &&
+      i < (INT_MAX / DB_SQL_IO_BUF_SIZ) &&
       vdb->str.len < DB_SQL_STR_BUF_SIZ &&
       stbl->str.rng.cnt < space &&
       row_idx < high; ++i) {
@@ -1613,15 +1613,13 @@ db_tbl_setup(struct db_state *not_null sdb,
              struct str name, long long rowid, enum db_tbl_type kind) {
 
   requires(db__state_is_val(sdb));
+  requires(str_is_val(name));
   requires(vdb);
   requires(ctx);
-  requires(str_is_val(name));
 
   requires(idx >= 0);
   requires(idx < DB_TBL_CNT);
   requires(idx < cntof(sdb->tbls));
-
-  /* setup table view */
   sdb->tbl_act |= (1u << idx);
 
   struct db_tbl_state *tbl = &sdb->tbls[idx];
@@ -1719,6 +1717,8 @@ db_tbl_close(struct db_state *not_null sdb, int tbl) {
 
   sdb->tbl_act &= ~(1u << tbl);
   sdb->tbls[tbl].state = TBL_VIEW_SELECT;
+  sdb->tbls[tbl].title = str_nil;
+
   ensures(db__state_is_val(sdb));
 }
 /* ---------------------------------------------------------------------------
@@ -1824,7 +1824,7 @@ db__info_qry_elm_fltr_stmt(sqlite3_stmt **not_null stmt,
   requires(stmt);
   requires(sinfo);
 
-  struct str sql = strv("SELECT rowid, name, sql FROM sqlite_master WHERE type = ? AND name LIKE '%'||?||'%' LIMIT ?,?;");
+  struct str sql = strv("SELECT rowid, SUBSTR(CAST(name AS BLOB), 1, 1024), sql FROM sqlite_master WHERE type = ? AND name LIKE '%'||?||'%' LIMIT ?,?;");
   int err = sqlite3_prepare_v2(sdb->con, db_str(sql), stmt, 0);
   if (err != SQLITE_OK) {
     return err;
@@ -1861,7 +1861,7 @@ db__info_qry_elm_no_fltr_stmt(sqlite3_stmt **not_null stmt,
   requires(stmt);
   requires(sinfo);
 
-  struct str sql = strv("SELECT rowid, name, sql FROM sqlite_master WHERE type = ? LIMIT ?,?;");
+  struct str sql = strv("SELECT rowid, SUBSTR(CAST(name AS BLOB), 1, 1024), sql FROM sqlite_master WHERE type = ? LIMIT ?,?;");
   int err = sqlite3_prepare_v2(sdb->con, db_str(sql), stmt, 0);
   if (err != SQLITE_OK) {
     return err;
@@ -2095,8 +2095,8 @@ db_tab_open_tbl_id(struct db_state *not_null sdb,
   if (err != SQLITE_ROW) {
     return;
   }
-  const char *tbl_name = (const char*)sqlite3_column_text(stmt, 0);
   int tbl_name_len = sqlite3_column_bytes(stmt, 0);
+  const char *tbl_name = (const char*)sqlite3_column_text(stmt, 0);
   struct str tbl_name_str = strn(tbl_name, tbl_name_len);
   db_tbl_setup(sdb, vdb, view, ctx, tbl_name_str, tbl_id, sdb->info.sel_tab);
 
@@ -2113,7 +2113,7 @@ db_tab_open(struct db_state *not_null sdb, int tbl_idx) {
   requires(!(sdb->tbl_act & (1u << tbl_idx)));
 
   int tab_idx = sdb->tab_cnt;
-  sdb->tabs[tab_idx] = castc(tbl_idx);
+  sdb->tabs[tab_idx] = castb(tbl_idx);
   sdb->sel_tab = tbl_idx;
   sdb->tab_cnt++;
 
@@ -2145,9 +2145,9 @@ db_tab_close(struct db_state *not_null sdb, int tab_idx) {
   requires(tab_idx < sdb->tab_cnt);
 
   db_tbl_close(sdb, sdb->tabs[tab_idx]);
-  sdb->sel_tab = min(sdb->sel_tab, max(0, sdb->tab_cnt-1));
   arr_rm(sdb->tabs, tab_idx, cntof(sdb->tabs));
   sdb->tab_cnt--;
+  sdb->sel_tab = min(sdb->sel_tab, max(0, sdb->tab_cnt-1));
 
   ensures(sdb->tab_cnt >= 0);
   ensures(db__state_is_val(sdb));
@@ -2233,7 +2233,7 @@ ui_tab(struct gui_ctx *not_null ctx,
     gui.txt.lbl(ctx, &lbl, &btn->pan, txt, &align);
   }
   gui.btn.end(ctx, btn, parent);
-  return btn->clk;
+  return btn->pressed;
 }
 priv struct str
 ui_edit_fnd(struct gui_ctx *not_null ctx,
@@ -3198,7 +3198,7 @@ ui_db_tbl_view_dsp_lay(struct db_state *not_null sdb,
               }
             }
           }
-          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, col_name, col->ico);
+          gui.tbl.lst.elm.col.txt_ico(ctx, &tbl, tbl_cols, &item, col_name, cast(enum res_ico_id, col->ico));
           gui.tbl.lst.elm.col.txt(ctx, &tbl, tbl_cols, &item, col_type, 0);
           if (col->pk) {
             struct gui_icon icon;
@@ -3337,8 +3337,8 @@ ui_db_tbl_view_dsp(struct db_state *not_null sdb,
         if (stbl->col.state == DB_TBL_COL_STATE_UNLOCKED) {
           stbl->col.rng.total = stbl->col.total;
           stbl->col.rng.cnt = min(stbl->col.rng.total, DB_MAX_TBL_COLS);
-          stbl->col.rng.lo = 0;
           stbl->col.rng.hi = stbl->col.rng.cnt;
+          stbl->col.rng.lo = 0;
 
           stbl->row.cols.lo = 0;
           stbl->row.cols.cnt = min(stbl->col.total, DB_MAX_TBL_ROW_COLS);
@@ -3534,7 +3534,7 @@ ui_db_view_info(struct db_state *not_null sdb,
         assert(sinfo->sel_tab < cntof(sinfo->tab_cnt));
         sinfo->tab_cnt[sinfo->sel_tab] = db_info_qry_cnt(sdb, sinfo->sel_tab, str_nil);
       }
-      sinfo->sel_tab = castb(tab.sel.idx);
+      sinfo->sel_tab = cast(enum db_tbl_type, tab.sel.idx);
       tbl_clr(&vinfo->sel);
     }
   }
@@ -3588,7 +3588,7 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
           struct db_tbl_state *stbl = &sdb->tbls[tbl_idx];
           if (!(sdb->tbl_act & (1u << tbl_idx)) ||
               !str_has(stbl->title, sdb->fnd_str)) {
-            fltr |= 1UL << tab_idx;
+            fltr |= (1UL << tab_idx);
           }
         }
       }
@@ -3605,8 +3605,8 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
       for gui_tbl_lst_loopn(idx, _, gui, &tbl, DB_TBL_CNT) {
         int tbl_idx = sdb->tabs[idx];
-        assert(tbl_idx >= 0);
         assert(tbl_idx < DB_TBL_CNT);
+        assert(tbl_idx >= 0);
 
         struct db_tbl_state *stbl = &sdb->tbls[idx];
         unsigned tbl_is_act = !!(sdb->tbl_act & (1u << idx));
@@ -3718,9 +3718,9 @@ ui_db_explr(struct db_state *not_null sdb,
   }
   gui.pan.begin(ctx, pan, parent);
   {
-    int swap = 0;
-    int swap_src = 0;
-    int swap_dst = 0;
+    int swp = 0;
+    int swp_src = 0;
+    int swp_dst = 0;
 
     int gapy = ctx->cfg.gap[1];
     struct gui_box lay = pan->box;
@@ -3763,6 +3763,7 @@ ui_db_explr(struct db_state *not_null sdb,
         {
           int ret = 0;
           struct gui_btn btn = {.box = elm.box, .unfocusable = 1};
+          struct str title = str_len(tbl->title) ? tbl->title : strv("Select...");
           if (sdb->sel_tab == i) {
             static const struct gui_align align = {GUI_HALIGN_LEFT, GUI_VALIGN_MID};
             gui.btn.begin(ctx, &btn, parent);
@@ -3778,7 +3779,7 @@ ui_db_explr(struct db_state *not_null sdb,
                 db_tab_close(sdb, i);
               }
               struct gui_panel lbl = {.box = hlay};
-              gui.txt.lbl(ctx, &lbl, &btn.pan, tbl->title, &align);
+              gui.txt.lbl(ctx, &lbl, &btn.pan, title, &align);
             }
             gui.btn.end(ctx, &btn, &elm);
             if (btn.in.mouse.btn.left.dragged) {
@@ -3786,14 +3787,14 @@ ui_db_explr(struct db_state *not_null sdb,
               int min_x = elm.box.x.min - (elm.box.x.ext >> 1);
               int max_x = elm.box.x.max + (elm.box.x.ext >> 1);
               if (i > 0 && btn.in.mouse.pos[0] < min_x) {
-                swap = 1; swap_src = i; swap_dst = i - 1;
+                swp = 1; swp_src = i; swp_dst = i - 1;
               } else if (i + 1 < sdb->tab_cnt && btn.in.mouse.pos[0] > max_x) {
-                swap = 1; swap_src = i; swap_dst = i + 1;
+                swp = 1; swp_src = i; swp_dst = i + 1;
               }
             }
-            ret = btn.clk;
+            ret = btn.pressed;
           } else {
-            ret = ui_tab(ctx, &btn, &elm, tbl->title);
+            ret = ui_tab(ctx, &btn, &elm, title);
           }
           if (ret) {
             sdb->sel_tab = i;
@@ -3833,9 +3834,9 @@ ui_db_explr(struct db_state *not_null sdb,
         gui.tooltip(ctx, &tab.pan, strv("Open a new Tab"));
       }
     }
-    if (swap) {
-      iswap(sdb->tabs[swap_src], sdb->tabs[swap_dst]);
-      sdb->sel_tab = swap_dst;
+    if (swp) {
+      iswap(sdb->tabs[swp_src], sdb->tabs[swp_dst]);
+      sdb->sel_tab = swp_dst;
     }
     struct gui_panel bdy = {.box = lay};
     switch (sdb->frame) {
@@ -3866,9 +3867,9 @@ static const struct db_api db__api = {
   .ui = ui_db_explr,
 };
 static void
-db_api(void *export, void *import) {
-  unused(import);
-  struct db_api *exp = cast(struct db_api*, export);
+db_api(void *ex, void *imp) {
+  unused(imp);
+  struct db_api *exp = cast(struct db_api*, ex);
   *exp = db__api;
 }
 

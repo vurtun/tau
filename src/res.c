@@ -497,9 +497,9 @@ res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *
   {
     fnt_pack_context pc;
     fnt_PackBegin(&pc, img, RES_BAKE_IMG_WIDTH, RES_BAKE_IMG_HEIGHT, 0, 1, 0);
-    int ok0 = fnt_PackFontRange(&pc, cfg->txt_ttf_fnt, 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
-    int ok1 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
-    int ok2 = fnt_PackFontRange(&pc, cfg->ico_ttf_fnt, 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
+    int ok0 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->txt_ttf_fnt), 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
+    int ok1 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
+    int ok2 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
     fnt_PackEnd(&pc);
     if (!ok0 || !ok1 || !ok2) {
       return 0;
@@ -1013,9 +1013,9 @@ static const struct res_api res__api = {
   }
 };
 static void
-res_api(void *export, void *import) {
-  unused(import);
-  struct res_api *r = (struct res_api*)export;
+res_api(void *exp, void *imp) {
+  unused(imp);
+  struct res_api *r = (struct res_api*)exp;
   *r = res__api;
 }
 

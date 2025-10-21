@@ -421,7 +421,7 @@ file_view_lst_qry(struct file_list_view *not_null lst,
   /* sort current page */
   void *ptr = lst->page.elms + lst->page.cur * FILE_LIST_ELM_CNT;
   if (lst->page.cnt >= FILE_LIST_ELM_BUF_CNT) {
-    file_view_lst_partition(ptr, qry->cmp);
+    file_view_lst_partition(cast(struct file_elm*, ptr), qry->cmp);
   }
   qsort(ptr, castsz(lst->page.cnt), szof(lst->page.elms[0]), qry->cmp);
   lst->page_cnt = div_ceil(lst->page.total, FILE_LIST_ELM_CNT);
@@ -955,9 +955,9 @@ static const struct pck_api pck__api = {
   .ui = ui_file_sel,
 };
 static void
-pck_api(void *export, void *import) {
-  unused(import);
-  struct pck_api *exp = cast(struct pck_api*, export);
+pck_api(void *ex, void *imp) {
+  unused(imp);
+  struct pck_api *exp = cast(struct pck_api*, ex);
   *exp = pck__api;
 }
 
