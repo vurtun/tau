@@ -945,13 +945,14 @@ db_tbl_qry_cols(struct db_state *not_null sdb,
     if (err == SQLITE_OK) {
       for db_loopn(_, err, stmt, SQLITE_MAX_COLUMN) {
         long long col_rowid = sqlite3_column_int64(stmt, 0);
+        if (sel && !tbl_has(&stbl->col.sel, hash_lld(col_rowid))) {
+          continue;
+        }
         const char *col_name = (const char*)sqlite3_column_text(stmt, 1);
         const char *col_type = (const char*)sqlite3_column_text(stmt, 2);
         const char *col_nn = (const char*)sqlite3_column_text(stmt, 3);
         const char *col_key = (const char*)sqlite3_column_text(stmt, 4);
-        if (sel && !tbl_has(&stbl->col.sel, hash_lld(col_rowid))) {
-          continue;
-        }
+
         int nam_len = sqlite3_column_bytes(stmt, 1);
         int typ_len = sqlite3_column_bytes(stmt, 2);
 
@@ -1199,7 +1200,8 @@ db_tbl_qry_rows(struct db_state *not_null sdb,
       struct db_tbl_col *col = &vtbl->col.lst[idx];
       db_tbl_col_name_acq(&clck, sdb, vtbl, col, tlck.name, col->rowid);
       if (col->txt) {
-        sql = str_add_fmt_or_inv(arrv(vdb->sql_qry_buf), sql, "SUBSTR(CAST(\"%.*s\" AS BLOB), 1, 1024), ", strf(clck.name));
+        sql = str_add_fmt_or_inv(arrv(vdb->sql_qry_buf), sql,
+          "SUBSTR(CAST(\"%.*s\" AS BLOB), 1, 1024), ", strf(clck.name));
       } else {
         sql = str_add_fmt_or_inv(arrv(vdb->sql_qry_buf), sql, "%.*s, ", strf(clck.name));
       }
@@ -1684,7 +1686,8 @@ db_tbl_setup(struct db_state *not_null sdb,
 
   /* retrieve total table row count */
   sqlite3_stmt *stmt = 0;
-  struct str sql = str_set_fmtsn(arrv(vdb->sql_qry_buf), "SELECT COUNT(*) FROM \"%.*s\";", strf(name));
+  struct str sql = str_set_fmtsn(arrv(vdb->sql_qry_buf),
+    "SELECT COUNT(*) FROM \"%.*s\";", strf(name));
   tbl->row.rng.total = 0;
   if (str_is_val(sql)) {
     int err = sqlite3_prepare_v2(sdb->con, db_str(sql), &stmt, 0);
@@ -3582,9 +3585,11 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
       if (str_len(sdb->fnd_str)) {
         for arr_loopn(tab_idx, sdb->tabs, sdb->tab_cnt) {
           int tbl_idx = sdb->tabs[tab_idx];
+
           assert(tbl_idx < cntof(sdb->tabs));
           assert(tbl_idx < DB_TBL_CNT);
           assert(tbl_idx >= 0);
+
           struct db_tbl_state *stbl = &sdb->tbls[tbl_idx];
           if (!(sdb->tbl_act & (1u << tbl_idx)) ||
               !str_has(stbl->title, sdb->fnd_str)) {
@@ -3610,7 +3615,6 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
 
         struct db_tbl_state *stbl = &sdb->tbls[idx];
         unsigned tbl_is_act = !!(sdb->tbl_act & (1u << idx));
-
         enum res_ico_id ico;
         struct str title = strv("New Tab");
         if (tbl_is_act) {
@@ -3629,7 +3633,6 @@ ui_db_tab_view_lst(struct db_state *not_null sdb,
             gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->row.rng.total);
             gui.tbl.lst.elm.col.txtf(ctx, &tbl, tbl_lay, pan, 0, "%d", stbl->fltr.cnt);
             gui.tbl.lst.elm.col.slot(&del.box, ctx, &tbl, tbl_lay);
-
             gui.ico.clk(ctx, &del, &elm, RES_ICO_TRASH);
             if (del.clk){
               del_idx = idx;

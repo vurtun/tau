@@ -1026,18 +1026,6 @@ struct gui_ctx {
 /* API */
 #define gui_box_cut(b, s, g) (struct gui_box_cut){b, s, g}
 #define gui_unbox(b) (b)->x.min, (b)->y.min, (b)->x.max, (b)->y.max
-#define gui_row(gui, lay, row, def, gap, con, sol) \
-  for (int lay[cntof((int[])def)],            \
-    uniqid(_i_) = ((gui)->lay.solve(lay, (row).x.ext, (int[])def, cntof((int[])def), gap, (int[])con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_hlay(gui, ctx, items, lay, def, row_h, row_gap, col_gap, con, sol)\
-  for (int items[cntof(def)],            \
-    uniqid(_i_) = ((gui)->lay.hlay(ctx, lay, items, def, cntof(def), row_h, row_gap, col_gap, con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
-#define gui_vlay(gui, ctx, items, lay, def, col_w, row_gap, col_gap, con, sol)\
-  for (int items[cntof(def)],            \
-    uniqid(_i_) = ((gui)->lay.vlay(ctx, lay, items, def, cntof(def), col_w, row_gap, col_gap, con, sol), 0); \
-    uniqid(_i_) < 1; ++uniqid(_i_))
 
 #define gui_loop(i,gui,ctx)\
   (int i = 0; (gui)->begin(ctx) && i < GUI_FINISHED; i = (gui)->end(ctx), i + 1)
@@ -1105,7 +1093,6 @@ struct gui_cut_api {
   struct gui_box (*box)(struct gui_box_cut *cut, int a);
 };
 struct gui_lay_api {
-  void (*solve)(int *res, int ext, const int *slots, int cnt, int gap, const int *con, struct gui_lay_sol *sol);
   struct gui_box (*hcut)(struct gui_lay *lay, int row_h);
   struct gui_box (*vcut)(struct gui_lay *lay, int col_w);
   struct gui_box (*hitem)(struct gui_lay *lay, const int *items);

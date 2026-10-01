@@ -3,172 +3,101 @@
 
 using namespace metal;
 
+// Output struct for the Vertex Shader (includes hardware clip distance)
 struct vtx_out {
   float4 pos [[position]];
   float4 col;
-  float4 crl;
-  float4 clp;
-  unsigned short tex;
   float2 tex_coord;
+  float2 local_pos;
+  ushort tex;
+  ushort is_mask;
+  ushort is_tex;
+  float clip_dist [[clip_distance]] [4]; // Attribute placed before array size
 };
+// Input struct for the Fragment Shader (omits vertex-only clip distance)
+struct frag_in {
+  float4 pos [[position]];
+  float4 col;
+  float2 tex_coord;
+  float2 local_pos;
+  ushort tex;
+  ushort is_mask;
+  ushort is_tex;
+};
+
+// ============================================================================
+// VERTEX SHADER
+// ============================================================================
 vertex vtx_out
 ren_vtx(uint vid [[vertex_id]],
-        const device uint *idxs [[buffer(0)]],
-        const device char *prims [[buffer(1)]],
-        constant gfx_uniform *uni [[buffer(2)]]) {
+        const device uint *idxs      [[buffer(0)]],
+        const device char *prims     [[buffer(1)]],
+        constant gfx_uniform *uni    [[buffer(2)]]) {
 
-  const uint idx = idxs[vid];
-  const uint off = idx & 0x00ffffff;
+  const uint idx    = idxs[vid];
+  const uint off    = idx & 0x00ffffff;
   const uint corner = (idx >> 24) & 0x03;
-  const uint prim = (idx >> 26);
 
+  const device gfx_prim &p = *(const device gfx_prim*)(prims + off);
+  const float2 corner_uv = float2(float(corner & 1), float(corner >> 1));
+
+  // 1. Geometry evaluation
+  float2 pos_quad = mix(p.p0, p.p1, corner_uv);
+
+  float2 d = p.p1 - p.p0;
+  float2 n = float2(-d.y, d.x) / max(length(d), 0.0001f);
+  float2 pos_ln = mix(p.p0, p.p1, corner_uv.x) + n * (p.thickness * (corner_uv.y - 0.5f));
+
+  float2 pts[3] = { p.p0, p.p1, p.p2 };
+  float2 pos_tri = pts[min(corner, 2u)];
+
+  // Branchless selection
+  float2 pos_px = select(pos_quad, pos_ln,  (p.flags & GFX_FLAG_LN) != 0);
+  pos_px        = select(pos_px,   pos_tri, (p.flags & GFX_FLAG_TRI) != 0);
+
+  // 2. Vertex outputs
   vtx_out vo;
-  if (prim == GFX_PRIM_BOX) {
-    device const gfx_box *r = (device const gfx_box*)(prims + off);
-    device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
+  vo.col       = unpack_unorm4x8_to_float(p.col);
+  vo.tex_coord = mix(p.uv0, p.uv1, corner_uv);
+  vo.local_pos = mix(float2(-1.0f), float2(1.0f), corner_uv) * p.circle_mask;
+  vo.tex       = p.tex;
+  vo.is_mask   = (p.flags & GFX_FLAG_MASK) ? 1 : 0;
+  vo.is_tex    = (p.flags & GFX_FLAG_TEX)  ? 1 : 0;
 
-    const float2 ba = float2(float(r->l), float(r->t));
-    const float2 bb = float2(float(r->r), float(r->b));
-    const float2 ca = float2(float(c->l), float(c->t));
-    const float2 cb = float2(float(c->r), float(c->b));
-    const float2 a = max(ba, ca);
-    const float2 b = min(bb, cb);
+  // 3. Hardware clipping (4 planes)
+  const device gfx_clip &c = *(const device gfx_clip*)(prims + p.clip);
+  vo.clip_dist[0] = pos_px.x - float(c.l);
+  vo.clip_dist[1] = float(c.r) - pos_px.x;
+  vo.clip_dist[2] = pos_px.y - float(c.t);
+  vo.clip_dist[3] = float(c.b) - pos_px.y;
 
-    vo.col = unpack_unorm4x8_to_float(r->col);
-    vo.pos.x = mix(a.x, b.x, float(corner & 0x01));
-    vo.pos.y = mix(a.y, b.y, float(corner >> 1));
-
-  } else if (prim == GFX_PRIM_LN) {
-    device const gfx_ln *ln = (device const gfx_ln*)(prims + off);
-    device const gfx_clip *c = (device const gfx_clip*)(prims + ln->clip);
-
-    const float2 la = float2(float(ln->x0), float(ln->y0));
-    const float2 lb = float2(float(ln->x1), float(ln->y1));
-    const float2 ca = float2(float(c->l), float(c->t));
-    const float2 cb = float2(float(c->r), float(c->b));
-
-    const float2 a = min(cb, max(la, ca));
-    const float2 b = min(cb, max(lb, ca));
-    const float2 d = normalize(b - a);
-    const float2 n = float2(-d.y, d.x);
-
-    vo.col = unpack_unorm4x8_to_float(ln->col);
-    vo.pos.xy = mix(a, b, float(corner & 0x01));
-    vo.pos.xy += n * (0.5f * float(ln->thickness * (1 - 2 * int(((3-corner) >> 1)))));
-
-  } else if (prim == GFX_PRIM_CIR) {
-    device const gfx_cir *r = (device const gfx_cir*)(prims + off);
-    device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
-
-    const float2 a = float2(float(r->x0), float(r->y0));
-    const float2 b = float2(float(r->x1), float(r->y1));
-
-    vo.col = unpack_unorm4x8_to_float(r->col);
-    vo.pos.x = mix(a.x, b.x, float(corner & 0x01));
-    vo.pos.y = mix(a.y, b.y, float(corner >> 1));
-
-    const float2 d = (b - a) * 0.5f;
-    vo.crl.xy = a + d;
-    vo.crl.z = (b.x - a.x) * 0.5f;
-    vo.clp.xy = float2(float(c->l), float(c->t));
-    vo.clp.zw = float2(float(c->r), float(c->b));
-
-  } else if (prim == GFX_PRIM_TRI) {
-    device const gfx_tri *t = (device const gfx_tri*)(prims + off);
-    device const gfx_clip *p = (device const gfx_clip*)(prims + t->clip);
-
-    const float2 a = float2(float(t->x0), float(t->y0));
-    const float2 b = float2(float(t->x1), float(t->y1));
-    const float2 c = float2(float(t->x2), float(t->y2));
-
-    vo.col = unpack_unorm4x8_to_float(t->col);
-    vo.pos.xy = corner == 1 ? a : corner == 2 ? b : c;
-    vo.clp.xy = float2(float(p->l), float(p->t));
-    vo.clp.zw = float2(float(p->r), float(p->b));
-
-  } else if (prim == GFX_PRIM_ICO) {
-    device const gfx_ico *r = (device const gfx_ico*)(prims + off);
-    device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
-
-    const float2 a = float2(float(r->l), float(r->t));
-    const float2 b = float2(float(r->r), float(r->b));
-
-    vo.col = unpack_unorm4x8_to_float(r->col);
-    vo.pos.x = mix(a.x, b.x, float(corner & 0x01));
-    vo.pos.y = mix(a.y, b.y, float(corner >> 1));
-
-    const float2 uva = float2(float(r->u), float(r->v));
-    const float2 uvb = float2(float(r->u + r->r - r->l), float(r->v + r->b - r->t));
-
-    const float u = mix(uva.x, uvb.x, float(corner & 0x01));
-    const float v = mix(uva.y, uvb.y, float(corner >> 1));
-
-    float2 tex_siz = vector_float2(uni->tex_siz);
-    vo.tex_coord = float2(u/tex_siz.x, v/tex_siz.y);
-
-    vo.clp.xy = float2(float(c->l), float(c->t));
-    vo.clp.zw = float2(float(c->r), float(c->b));
-
-  } else if (prim == GFX_PRIM_IMG) {
-    device const gfx_img *r = (device const gfx_img*)(prims + off);
-    device const gfx_clip *c = (device const gfx_clip*)(prims + r->clip);
-
-    const float2 a = float2(float(r->l), float(r->t));
-    const float2 b = float2(float(r->r), float(r->b));
-
-    vo.pos.x = mix(a.x, b.x, float(corner & 0x01));
-    vo.pos.y = mix(a.y, b.y, float(corner >> 1));
-
-    vo.tex_coord.x = mix(r->texcoord[0], r->texcoord[2], float(corner & 0x01));
-    vo.tex_coord.y = mix(r->texcoord[1], r->texcoord[3], float(corner >> 1));
-    vo.tex = r->tex;
-
-    vo.clp.xy = float2(float(c->l), float(c->t));
-    vo.clp.zw = float2(float(c->r), float(c->b));
-  }
-  vector_float2 view = vector_float2(uni->viewport);
-  vo.pos.x = vo.pos.x / view.x * 2.0f - 1.0f;
-  vo.pos.y = -1.0f * (vo.pos.y / view.y * 2.0f - 1.0f);
-  vo.pos.zw = float2(0.0, 1.0);
-  vo.crl.w = float(prim);
+  // 4. Viewport NDC transform
+  float2 view = float2(uni->viewport);
+  vo.pos.x = (pos_px.x / view.x) * 2.0f - 1.0f;
+  vo.pos.y = -1.0f * ((pos_px.y / view.y) * 2.0f - 1.0f);
+  vo.pos.zw = float2(0.0f, 1.0f);
   return vo;
 }
+
+// ============================================================================
+// FRAGMENT SHADER
+// ============================================================================
 struct frag_arg {
   array<texture2d<float>, GFX_MAX_TEX_CNT> tex;
 };
 fragment float4
-ren_frag(vtx_out vi [[stage_in]], device frag_arg &in [[buffer(0)]]) {
+ren_frag(frag_in vi [[stage_in]], device frag_arg &in [[buffer(0)]]) {
   constexpr sampler smp(coord::normalized, min_filter::linear, mag_filter::linear, mip_filter::linear);
-  const uint prim = uint(vi.crl.w);
-  if (prim == GFX_PRIM_CIR) {
-    if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
-      discard_fragment();
-    if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
-      discard_fragment();
-    if (distance(vi.pos.xy, vi.crl.xy) > vi.crl.z)
-      discard_fragment();
 
-  } else if (prim == GFX_PRIM_TRI) {
-    if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
-      discard_fragment();
-    if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
-      discard_fragment();
+  float4 tex_sample = in.tex[vi.tex].sample(smp, vi.tex_coord);
+  float4 mask_col   = float4(1.0f, 1.0f, 1.0f, tex_sample.r);
+  float4 tex_col    = select(tex_sample, mask_col, vi.is_mask != 0);
+  tex_col           = select(float4(1.0f), tex_col, vi.is_tex != 0);
 
-  } else if (prim ==  GFX_PRIM_ICO) {
-    if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
-      discard_fragment();
-    if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
-      discard_fragment();
-    float r = in.tex[0].sample(smp, vi.tex_coord).r;
-    vi.col.a = r;
+  float dist = length(vi.local_pos);
+  float circle_mask = saturate((1.0f - dist) / max(fwidth(dist), 0.0001f));
 
-  } else if (prim ==  GFX_PRIM_IMG) {
-    if (vi.pos.x < vi.clp.x || vi.pos.y < vi.clp.y)
-      discard_fragment();
-    if (vi.pos.x > vi.clp.z || vi.pos.y > vi.clp.w)
-      discard_fragment();
-    vi.col = in.tex[vi.tex].sample(smp, vi.tex_coord);
-  }
-  return vi.col;
+  float4 out_col = vi.col * tex_col;
+  out_col.a *= circle_mask;
+  return out_col;
 }
-

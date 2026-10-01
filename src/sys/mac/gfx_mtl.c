@@ -34,12 +34,12 @@ struct gfx_mtl {
  *                              Buffer2D
  * ---------------------------------------------------------------------------
  */
-static const int gfx_box_seq[] = {0,1,3,3,2,0};
+static const int gfx_box_seq[] = {0, 1, 3, 3, 2, 0};
 #define gfx__mtl_resv(b,v,i) ((b)->vbytes += szof(v), (b)->icnt += (i))
-#define gfx__mtl_idx(o,p,c) ((castu(o)&0x0fffffff)|(castu(c) << 24u)|(castu(p) << 26u))
-#define gfx__mtl_elms(b,o,p)\
+#define gfx__mtl_idx(o,c) ((castu(o) & 0x00ffffff) | (castu(c) << 24u))
+#define gfx__mtl_elms(b,o)\
   for arr_loopv(i, gfx_box_seq)\
-    (buf)->idx[buf->icnt+i] = gfx__mtl_idx(o, p, gfx_box_seq[i])
+    (b)->idx[(b)->icnt + i] = gfx__mtl_idx(o, gfx_box_seq[i])
 
 static unsigned
 gfx_mtl_d2d_clip(struct gfx_buf2d *buf, int lhs, int top, int rhs, int bot) {
@@ -52,19 +52,41 @@ gfx_mtl_d2d_clip(struct gfx_buf2d *buf, int lhs, int top, int rhs, int bot) {
 static void
 gfx_mtl_d2d_box(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                  unsigned col, unsigned clp) {
-  struct gfx_box *cmd = recast(struct gfx_box*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_box){.l = casts(px0), .t = casts(py0), .r = casts(px1),
-    .b = casts(py1), .clip = clp, .col = col};
-  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_BOX);
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(px0), castf(py0)},
+    .p1 = {castf(px1), castf(py1)},
+    .p2 = {0.0f, 0.0f},
+    .uv0 = {0.0f, 0.0f},
+    .uv1 = {0.0f, 0.0f},
+    .thickness = 0.0f,
+    .circle_mask = 0.0f,
+    .col = col,
+    .clip = clp,
+    .tex = 0,
+    .flags = GFX_FLAG_NONE,
+  };
+  gfx__mtl_elms(buf, buf->vbytes);
   gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
 gfx_mtl_d2d_ln(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                int thickness, unsigned col, unsigned clp) {
-  struct gfx_ln *cmd = recast(struct gfx_ln*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_ln){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
-    .y1 = casts(py1), .clip = clp, .col = col, .thickness = castf(thickness)};
-  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_LN);
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(px0), castf(py0)},
+    .p1 = {castf(px1), castf(py1)},
+    .p2 = {0.0f, 0.0f},
+    .uv0 = {0.0f, 0.0f},
+    .uv1 = {0.0f, 0.0f},
+    .thickness = castf(thickness),
+    .circle_mask = 0.0f,
+    .col = col,
+    .clip = clp,
+    .tex = 0,
+    .flags = GFX_FLAG_LN,
+  };
+  gfx__mtl_elms(buf, buf->vbytes);
   gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
@@ -75,30 +97,68 @@ gfx_mtl_d2d_circle(struct gfx_buf2d *buf, int ctrx, int ctry, int rad,
   int px1 = ctrx + rad;
   int py1 = ctry + rad;
 
-  struct gfx_cir *cmd = recast(struct gfx_cir*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_cir){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
-    .y1 = casts(py1), .clip = clp, .col = col};
-  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_CIR);
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(px0), castf(py0)},
+    .p1 = {castf(px1), castf(py1)},
+    .p2 = {0.0f, 0.0f},
+    .uv0 = {0.0f, 0.0f},
+    .uv1 = {0.0f, 0.0f},
+    .thickness = 0.0f,
+    .circle_mask = 1.0f,
+    .col = col,
+    .clip = clp,
+    .tex = 0,
+    .flags = GFX_FLAG_CIR,
+  };
+  gfx__mtl_elms(buf, buf->vbytes);
   gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
 gfx_mtl_d2d_tri(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                 int px2, int py2, unsigned col, unsigned clp) {
-  struct gfx_tri *cmd = recast(struct gfx_tri*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_tri){.x0 = casts(px0), .y0 = casts(py0), .x1 = casts(px1),
-    .y1 = casts(py1), .x2 = casts(px2), .y2 = casts(py2), .clip = clp, .col = col};
-  buf->idx[buf->icnt+0] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 0);
-  buf->idx[buf->icnt+1] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 1);
-  buf->idx[buf->icnt+2] = gfx__mtl_idx(buf->vbytes, GFX_PRIM_TRI, 2);
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(px0), castf(py0)},
+    .p1 = {castf(px1), castf(py1)},
+    .p2 = {castf(px2), castf(py2)},
+    .uv0 = {0.0f, 0.0f},
+    .uv1 = {0.0f, 0.0f},
+    .thickness = 0.0f,
+    .circle_mask = 0.0f,
+    .col = col,
+    .clip = clp,
+    .tex = 0,
+    .flags = GFX_FLAG_TRI,
+  };
+  buf->idx[buf->icnt + 0] = gfx__mtl_idx(buf->vbytes, 0);
+  buf->idx[buf->icnt + 1] = gfx__mtl_idx(buf->vbytes, 1);
+  buf->idx[buf->icnt + 2] = gfx__mtl_idx(buf->vbytes, 2);
   gfx__mtl_resv(buf, *cmd, 3);
 }
 static void
 gfx_mtl_d2d_ico(struct gfx_buf2d *buf, int px0, int py0, int px1, int py1,
                 int img_u, int img_v, unsigned col, unsigned clp) {
-  struct gfx_ico *cmd = recast(struct gfx_ico*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_ico){.l = casts(px0), .t = casts(py0), .r = casts(px1),
-    .b = casts(py1), .u = castus(img_u), .v = castus(img_v), .clip = clp, .col = col};
-  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_ICO);
+  struct gfx_mtl *mtl = cast(struct gfx_mtl*, buf->intern);
+  int font_tex = mtl->sys->gfx.d2d.tex;
+  float inv_w = 1.0f / castf(mtl->tex[font_tex].w);
+  float inv_h = 1.0f / castf(mtl->tex[font_tex].h);
+
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(px0), castf(py0)},
+    .p1 = {castf(px1), castf(py1)},
+    .p2 = {0.0f, 0.0f},
+    .uv0 = {castf(img_u) * inv_w, castf(img_v) * inv_h},
+    .uv1 = {castf(img_u + (px1 - px0)) * inv_w, castf(img_v + (py1 - py0)) * inv_h},
+    .thickness = 0.0f,
+    .circle_mask = 0.0f,
+    .col = col,
+    .clip = clp,
+    .tex = 0,
+    .flags = GFX_FLAG_TEX | GFX_FLAG_MASK,
+  };
+  gfx__mtl_elms(buf, buf->vbytes);
   gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 static void
@@ -113,27 +173,36 @@ gfx_mtl_d2d_img(struct gfx_buf2d *buf, int tex, int dstx, int dsty, int dstw,
   assert(srcx + srcw <= mtl->tex[tex].w);
   assert(srcy + srch <= mtl->tex[tex].h);
 
-  struct gfx_img *cmd = recast(struct gfx_img*, buf->vtx + buf->vbytes);
-  *cmd = (struct gfx_img){.l = casts(dstx), .t = casts(dsty), .r = casts(dstx + dstw),
-    .b = casts(dsty + dsth), .clip = clp, .texcoord = {
-      castf(srcx)/castf(mtl->tex[tex].w),
-      castf(srcy)/castf(mtl->tex[tex].h),
-      castf(srcx + srcw)/castf(mtl->tex[tex].w),
-      castf(srcy + srch)/castf(mtl->tex[tex].h),
-    }
-  };
+  float inv_w = 1.0f / castf(mtl->tex[tex].w);
+  float inv_h = 1.0f / castf(mtl->tex[tex].h);
+
   unsigned long long tex_id = castull(tex);
   unsigned long long hash = fnv1au64(tex_id, FNV1A64_HASH_INITIAL);
   int tok = tbl_fnd(&mtl->tex_cache, hash);
+  unsigned tex_slot = 0;
   if (tbl_inval(&mtl->tex_cache, tok)) {
     int tex_idx = mtl->tex_cnt++;
     mtl->tex_buf[tex_idx] = mtl->tex[tex].hdl;
     tbl_put(&mtl->tex_cache, hash, tex_idx);
-    cmd->tex = castu(tex_idx);
+    tex_slot = castu(tex_idx);
   } else {
-    cmd->tex = castu(tbl_unref(&mtl->tex_cache,tok,0));
+    tex_slot = castu(tbl_unref(&mtl->tex_cache, tok, 0));
   }
-  gfx__mtl_elms(buf->idx, buf->vbytes, GFX_PRIM_IMG);
+  struct gfx_prim *cmd = recast(struct gfx_prim*, buf->vtx + buf->vbytes);
+  *cmd = (struct gfx_prim){
+    .p0 = {castf(dstx), castf(dsty)},
+    .p1 = {castf(dstx + dstw), castf(dsty + dsth)},
+    .p2 = {0.0f, 0.0f},
+    .uv0 = {castf(srcx) * inv_w, castf(srcy) * inv_h},
+    .uv1 = {castf(srcx + srcw) * inv_w, castf(srcy + srch) * inv_h},
+    .thickness = 0.0f,
+    .circle_mask = 0.0f,
+    .col = 0xffffffffu,
+    .clip = clp,
+    .tex = castus(tex_slot),
+    .flags = GFX_FLAG_TEX,
+  };
+  gfx__mtl_elms(buf, buf->vbytes);
   gfx__mtl_resv(buf, *cmd, cntof(gfx_box_seq));
 }
 /* ---------------------------------------------------------------------------
@@ -176,7 +245,7 @@ gfx_mtl_tex_load(struct sys *sys, enum gfx_pix_fmt_type type, void *data,
 
   id<MTLTexture> tex = [mtl->dev newTextureWithDescriptor:tex_desc];
   MTLRegion region = MTLRegionMake2D(0, 0, (NSUInteger)img_w, (NSUInteger)img_h);
-  [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:(NSUInteger)(bpr*img_w)];
+  [tex replaceRegion:region mipmapLevel:0 withBytes:data bytesPerRow:(NSUInteger)(bpr * img_w)];
 
   struct gfx_tex *img = mtl->tex + i;
   img->w = img_w;
@@ -223,7 +292,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   mtl->sys = sys;
 
 #ifndef NDEBUG
-  /* enable metal validaton layer */
+  /* enable metal validation layer */
   setenv("MTL_SHADER_VALIDATION", "1", 1);
   setenv("MTL_SHADER_VALIDATION_GLOBAL_MEMORY", "1", 1);
   setenv("MTL_SHADER_VALIDATION_THREADGROUP_MEMORY", "1", 1);
@@ -247,7 +316,6 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   NSString *exe_path = [[NSBundle mainBundle] executablePath];
   NSString *dir_path = [exe_path stringByDeletingLastPathComponent];
 
-  /* construct the full path to gfx.metallib */
   NSString *lib_path = [dir_path stringByAppendingPathComponent:@"gfx.metallib"];
   NSURL *lib_url = [NSURL fileURLWithPath:lib_path];
 #if 1
@@ -256,7 +324,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   mtl->lib = [mtl->dev newDefaultLibrary];
 #endif
   if (!mtl->lib) {
-    NSLog(@"Failed to load library");
+    NSLog(@"Failed to load library, error: %@", err);
     exit(0);
   }
   id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"ren_vtx"];
@@ -266,7 +334,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   }
   mtl->fshdr_f = [mtl->lib newFunctionWithName:@"ren_frag"];
   if (!mtl->fshdr_f) {
-    NSLog(@"Unable to get ren_frag metal framgent shader function!\n");
+    NSLog(@"Unable to get ren_frag metal fragment shader function!\n");
     return -1;
   }
   MTLRenderPipelineDescriptor *pld = [[MTLRenderPipelineDescriptor alloc] init];
@@ -285,7 +353,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
 
   mtl->pipe_state = [mtl->dev newRenderPipelineStateWithDescriptor:pld error:&err];
   if (!mtl->pipe_state) {
-    NSLog(@"Failed to created pipeline state, error %@", err);
+    NSLog(@"Failed to create pipeline state, error %@", err);
     return -1;
   }
   for arr_loopv(i, mtl->buf) {
@@ -370,11 +438,11 @@ gfx_mtl_end(struct sys *sys, void *view_ptr) {
     [enc setArgumentBuffer:mtl->arg_buf[mtl->cur_buf] offset:0];
     [enc setTextures:mtl->tex_buf withRange:NSMakeRange(0, (NSUInteger)mtl->tex_cnt)];
   }
-  MTLRenderPassDescriptor* rpd = view.currentRenderPassDescriptor;
+  MTLRenderPassDescriptor *rpd = view.currentRenderPassDescriptor;
   if (rpd != nil) {
     id<MTLRenderCommandEncoder> enc = [cmd_buf renderCommandEncoderWithDescriptor:rpd];
     enc.label = @"tau_command_encoder";
-    [enc setViewport:(MTLViewport){0.0, 0.0, mtl->viewportSize.x, mtl->viewportSize.y, 0.0, 1.0}];
+    [enc setViewport:(MTLViewport){0.0, 0.0, (double)mtl->viewportSize.x, (double)mtl->viewportSize.y, 0.0, 1.0}];
     [enc setRenderPipelineState:mtl->pipe_state];
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:0 atIndex:0];
     [enc setVertexBuffer:mtl->buf[mtl->cur_buf] offset:vtx_off atIndex:1];
@@ -411,12 +479,12 @@ static const struct gfx_api gfx_mtl_api = {
   .d2d = {
     .cost = {
       .clip   = {.vbytes  = szof(struct gfx_clip),  .icnt = 0},
-      .box    = {.vbytes  = szof(struct gfx_box),   .icnt = 6},
-      .line   = {.vbytes  = szof(struct gfx_ln),    .icnt = 6},
-      .tri    = {.vbytes  = szof(struct gfx_tri),   .icnt = 3},
-      .circle = {.vbytes  = szof(struct gfx_cir),   .icnt = 6},
-      .ico    = {.vbytes  = szof(struct gfx_ico),   .icnt = 6},
-      .img    = {.vbytes  = szof(struct gfx_img),   .icnt = 6},
+      .box    = {.vbytes  = szof(struct gfx_prim),  .icnt = 6},
+      .line   = {.vbytes  = szof(struct gfx_prim),  .icnt = 6},
+      .tri    = {.vbytes  = szof(struct gfx_prim),  .icnt = 3},
+      .circle = {.vbytes  = szof(struct gfx_prim),  .icnt = 6},
+      .ico    = {.vbytes  = szof(struct gfx_prim),  .icnt = 6},
+      .img    = {.vbytes  = szof(struct gfx_prim),  .icnt = 6},
     },
     .clip = gfx_mtl_d2d_clip,
     .box = gfx_mtl_d2d_box,
@@ -438,4 +506,3 @@ gfx_api(void *export, void *import) {
   struct gfx_api *api = (struct gfx_api*)export;
   *api = gfx_mtl_api;
 }
-

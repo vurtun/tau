@@ -302,91 +302,6 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
     }
   }
 }
-/* ---------------------------------------------------------------------------
- *                                  Layout
- * ---------------------------------------------------------------------------
- */
-static void
-gui__lay_init(struct gui_ctx *ctx, struct gui_lay *lay,
-              enum gui_lay_type type, int cnt, int item,
-              int row_gap, int col_gap) {
-  assert(ctx);
-  assert(lay);
-  lay->gap[0] = (col_gap < 0) ? ctx->cfg.gap[0] : col_gap;
-  lay->gap[1] = (row_gap < 0) ? ctx->cfg.gap[1] : row_gap;
-  lay->item = item < 0 ? ctx->cfg.item : item;
-  lay->idx = lay->cnt = cnt;
-  lay->type = type;
-}
-static void
-gui__hlay(struct gui_ctx *ctx, struct gui_lay *lay, int *items,
-          const int *def, int cnt, int row_h, int row_gap, int col_gap,
-          const int *con, struct gui_lay_sol *sol) {
-
-  assert(ctx);
-  assert(lay);
-  assert(def);
-  assert(items);
-
-  gui__lay_init(ctx, lay, GUI_LAY_ROW, cnt, row_h, row_gap, col_gap);
-  gui_solve(items, lay->box.x.ext, def, cnt, col_gap, con, sol);
-}
-static void
-gui__vlay(struct gui_ctx *ctx, struct gui_lay *lay, int *items,
-          const int *def, int cnt, int col_w, int row_gap, int col_gap,
-          const int *con, struct gui_lay_sol *sol) {
-
-  assert(ctx);
-  assert(lay);
-  assert(items);
-  assert(def);
-
-  gui__lay_init(ctx, lay, GUI_LAY_COL, cnt, col_w, row_gap, col_gap);
-  gui_solve(items, lay->box.y.ext, def, cnt, col_gap, con, sol);
-}
-static struct gui_box
-gui_hlay_cut(struct gui_lay *lay, int row_h) {
-  assert(lay);
-  lay->idx = lay->cnt;
-  return gui_cut_top(&lay->box, row_h, lay->gap[1]);
-}
-static struct gui_box
-gui_vlay_cut(struct gui_lay *lay, int col_w) {
-  assert(lay);
-  lay->idx = lay->cnt;
-  return gui_cut_lhs(&lay->box, col_w, lay->gap[0]);
-}
-static struct gui_box
-gui_hlay_item(struct gui_lay *lay, const int *items) {
-  assert(lay);
-  assert(items);
-  if (lay->idx >= lay->cnt) {
-    lay->sub = gui_cut_top(&lay->box, lay->item, lay->gap[1]);
-    lay->idx = 0;
-  }
-  return gui_cut_lhs(&lay->sub, items[lay->idx++], lay->gap[0]);
-}
-static struct gui_box
-gui_vlay_item(struct gui_lay *lay, const int *items) {
-  assert(lay);
-  assert(items);
-  if (lay->idx >= lay->cnt) {
-    lay->sub = gui_cut_lhs(&lay->box, lay->item, lay->gap[0]);
-    lay->idx = 0;
-  }
-  return gui_cut_top(&lay->sub, items[lay->idx++], lay->gap[1]);
-}
-static struct gui_box
-gui_lay_item(struct gui_lay *lay, const int *items) {
-  assert(lay);
-  assert(items);
-  switch (lay->type) {
-  case GUI_LAY_ROW:
-    return gui_hlay_item(lay, items);
-  case GUI_LAY_COL:
-    return gui_vlay_item(lay, items);
-  }
-}
 
 /* ---------------------------------------------------------------------------
  *                                  Draw
@@ -1716,8 +1631,8 @@ static void
 gui_btn_drw(struct gui_ctx *ctx, const struct gui_panel *btn) {
   assert(ctx);
   assert(btn);
-  const struct gui_box *box = &btn->box;
 
+  const struct gui_box *box = &btn->box;
   int clk = (ctx->sys->mouse.btn.left.down || ctx->sys->mouse.btn.right.down);
   if (btn->is_hot && clk) {
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_BG]);
@@ -1856,8 +1771,6 @@ gui__chk_drw(struct gui_ctx *ctx, const struct gui_panel *pan) {
 
   /* background */
   const struct gui_box *box = &pan->box;
-  gui_drw_line_style(ctx, 1);
-
   int bgc = (pan->state == GUI_DISABLED) ? GUI_COL_BG : GUI_COL_CONTENT;
   gui_drw_col(ctx, ctx->cfg.col[bgc]);
   gui_drw_box(ctx, gui_unbox(box));
@@ -5078,15 +4991,15 @@ gui_lst_reg_end(struct gui_ctx *ctx, struct gui_lst_reg *lag,
   gui_lst_end(ctx, &lag->lst);
   if (lag->lst.ctl.was_scrolled) {
     switch (lag->lst.ctl.scrl) {
-      case GUI_LST_FIT_ITEM_START:
-        gui_lst_reg_fit_start(lag, lag->lst.ctl.item_idx);
-        break;
-      case GUI_LST_FIT_ITEM_END:
-        gui_lst_reg_fit_end(lag, lag->lst.ctl.item_idx);
-        break;
-      case GUI_LST_CLAMP_ITEM:
-        gui_lst_reg_clamp(lag, lag->lst.ctl.item_idx);
-        break;
+    case GUI_LST_FIT_ITEM_START:
+      gui_lst_reg_fit_start(lag, lag->lst.ctl.item_idx);
+      break;
+    case GUI_LST_FIT_ITEM_END:
+      gui_lst_reg_fit_end(lag, lag->lst.ctl.item_idx);
+      break;
+    case GUI_LST_CLAMP_ITEM:
+      gui_lst_reg_clamp(lag, lag->lst.ctl.item_idx);
+      break;
     }
   }
   gui_reg_end(ctx, &lag->reg, parent, off);
@@ -5147,14 +5060,14 @@ gui_tree_node_begin(struct gui_ctx *ctx, struct gui_tree_node *node,
   ico.box.y = gui_mid_ext(ico.box.y.mid, ext[1]);
 
   switch (node->type) {
-    case GUI_TREE_LEAF:
-      break;
-    case GUI_TREE_NODE: {
-      if (gui_tree_node_icon(ctx, &ico, parent, node->open)) {
-        node->open = !node->open;
-        node->changed = 1;
-      }
-    } break;
+  case GUI_TREE_LEAF:
+    break;
+  case GUI_TREE_NODE: {
+    if (gui_tree_node_icon(ctx, &ico, parent, node->open)) {
+      node->open = !node->open;
+      node->changed = 1;
+    }
+  } break;
   }
   node->box.x = gui_min_max(ico.box.x.max + ctx->cfg.gap[0], pan->box.x.max);
   node->box.y = ico.box.y;
@@ -5265,14 +5178,14 @@ gui_split_lay(int *state, const struct gui_ctx *ctx,
 static void
 gui__split_gen(struct gui_box *item, struct gui_split *spt, const int *siz) {
   switch (spt->orient) {
-    case GUI_VERTICAL:
-      assert(spt->idx < spt->cnt);
-      *item = gui_cut_top(&spt->lay, siz[spt->idx], 0);
-      break;
-    case GUI_HORIZONTAL:
-      assert(spt->idx < spt->cnt);
-      *item = gui_cut_lhs(&spt->lay, siz[spt->idx], 0);
-      break;
+  case GUI_VERTICAL:
+    assert(spt->idx < spt->cnt);
+    *item = gui_cut_top(&spt->lay, siz[spt->idx], 0);
+    break;
+  case GUI_HORIZONTAL:
+    assert(spt->idx < spt->cnt);
+    *item = gui_cut_lhs(&spt->lay, siz[spt->idx], 0);
+    break;
   }
   spt->idx++;
 }
@@ -5306,18 +5219,18 @@ gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
   spt->lay = spt->box;
 
   switch (orient) {
-    case GUI_VERTICAL: {
-      siz = spt->box.y.ext;
-      if (spt->typ == GUI_SPLIT_FIT) {
-        spt->lay.y = gui_min_max(spt->lay.y.min, INT_MAX);
-      }
-    } break;
-    case GUI_HORIZONTAL: {
-      siz = spt->box.x.ext;
-      if (spt->typ == GUI_SPLIT_FIT) {
-        spt->lay.x = gui_min_max(spt->lay.x.min, INT_MAX);
-      }
-    } break;
+  case GUI_VERTICAL: {
+    siz = spt->box.y.ext;
+    if (spt->typ == GUI_SPLIT_FIT) {
+      spt->lay.y = gui_min_max(spt->lay.y.min, INT_MAX);
+    }
+  } break;
+  case GUI_HORIZONTAL: {
+    siz = spt->box.x.ext;
+    if (spt->typ == GUI_SPLIT_FIT) {
+      spt->lay.x = gui_min_max(spt->lay.x.min, INT_MAX);
+    }
+  } break;
   }
   spt->cnt = toc.lay_cnt;
   const int cnt_half = toc.col_cnt;
@@ -5345,12 +5258,12 @@ gui_split_begin(struct gui_ctx *ctx, struct gui_split *spt,
   const int lay_siz = toc.seps[cnt_half + 1];
   if (parent) {
     switch (orient) {
-      case GUI_VERTICAL:
-        parent->max[1] = max(parent->max[1], parent->box.y.min + lay_siz);
-        break;
-      case GUI_HORIZONTAL:
-        parent->max[0] = max(parent->max[0], parent->box.x.min + lay_siz);
-        break;
+    case GUI_VERTICAL:
+      parent->max[1] = max(parent->max[1], parent->box.y.min + lay_siz);
+      break;
+    case GUI_HORIZONTAL:
+      parent->max[0] = max(parent->max[0], parent->box.x.min + lay_siz);
+      break;
     }
   }
   gui__split_gen(&spt->item, spt, items);
@@ -6089,8 +6002,10 @@ gui__tab_ctl_drw(struct gui_ctx *ctx, const struct gui_tab_ctl *tab,
     gui_drw_box(ctx, box->x.min, tab->at, box->x.min + ctx->cfg.line, box->y.max - ctx->cfg.line);
 
     gui_drw_col(ctx, ctx->cfg.col[GUI_COL_SHADOW]);
-    gui_drw_box(ctx, box->x.min + ctx->cfg.line, box->y.max - ctx->cfg.line, box->x.max - 2*ctx->cfg.line, box->y.max);
-    gui_drw_box(ctx, box->x.max - 2*ctx->cfg.line, tab->at, box->x.max - ctx->cfg.line, box->y.max - ctx->cfg.line);
+    gui_drw_box(ctx, box->x.min + ctx->cfg.line, box->y.max - ctx->cfg.line,
+      box->x.max - 2*ctx->cfg.line, box->y.max);
+    gui_drw_box(ctx, box->x.max - 2*ctx->cfg.line, tab->at,
+      box->x.max - ctx->cfg.line, box->y.max - ctx->cfg.line);
   } break;
 
   case GUI_TAB_HDR_BOT: {
@@ -6169,7 +6084,7 @@ gui_grid_begin(struct gui_ctx *ctx, struct gui_grid *grid,
     gui_reg_drw(ctx, &grid->box);
     gui__grid_drw(ctx, &grid->space, grid->flags, off_x, off_y);
     gui_clip_begin(&grid->clip, ctx, grid->space.x.min, grid->space.y.min,
-                   grid->space.x.max, grid->space.y.max);
+      grid->space.x.max, grid->space.y.max);
   }
   /* apply scroll offset to area body */
   box->x = gui_min_max(grid->space.x.min - off_x, INT_MAX);
@@ -6326,16 +6241,6 @@ static const struct gui_api gui__api = {
     .rhs = gui_cut_rhs,
     .bot = gui_cut_bot,
     .box = gui_cut_box,
-  },
-  .lay = {
-    .solve = gui_solve,
-    .hcut = gui_hlay_cut,
-    .vcut = gui_vlay_cut,
-    .hitem = gui_hlay_item,
-    .vitem = gui_vlay_item,
-    .item = gui_lay_item,
-    .vlay = gui__vlay,
-    .hlay = gui__hlay,
   },
   .drw = {
     .col = gui_drw_col,

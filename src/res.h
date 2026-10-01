@@ -3,8 +3,10 @@
 enum {
   RES_GLYPH_SLOTS     = 256,
   RES_IMG_SLOT_CNT    = 64,
-  RES_CACHE_RUN_CNT   = 512,
-  RES_CACHE_HASH_CNT  = (RES_CACHE_RUN_CNT*2),
+};
+enum res_fnt_mode {
+  RES_FNT_RUN_FULL,
+  RES_FNT_RUN_WORDS,
 };
 enum res_ico_id {
   RES_ICO_FOLDER,
@@ -93,58 +95,33 @@ struct res_txt_bnd {
   const char *end;
 };
 #define RES_FNT_MAX_RUN 16
+
+/* Single batch of glyphs for layout/rendering */
 struct res_fnt_run {
-  unsigned long long hash;
-  int nxt, len;
-  int lru_nxt, lru_prv;
-#ifdef DEBUG_MODE
-  int ordering;
-#endif
+  int len;
   unsigned short adv[RES_FNT_MAX_RUN];
   unsigned char off[RES_FNT_MAX_RUN];
-  unsigned char ext[RES_FNT_MAX_RUN*2];
-  signed char pad[RES_FNT_MAX_RUN*2];
-  unsigned short coord[RES_FNT_MAX_RUN*2];
+  unsigned char ext[RES_FNT_MAX_RUN * 2];
+  signed char pad[RES_FNT_MAX_RUN * 2];
+  unsigned short coord[RES_FNT_MAX_RUN * 2];
 };
+/* Self-contained iterator holding the current batch */
 struct res_fnt_run_it {
   struct str at;
   struct str rest;
-  struct str blk;
-  struct str seg;
-  unsigned long long h;
-  int i, n;
-};
-struct res_fnt_tbl_stats {
-  unsigned hit_cnt;
-  unsigned miss_cnt;
-  unsigned recycle_cnt;
-};
-struct res_run_cache {
-  struct res_fnt_tbl_stats stats;
-  int run_cnt;
-  struct res_fnt_run runs[RES_CACHE_RUN_CNT];
-  int hcnt, hmsk;
-  int htbl[RES_CACHE_HASH_CNT];
-#ifdef DEBUG_MODE
-  int last_lru_cnt;
-#endif
-};
-enum res_fnt_run_mode {
-  RES_FNT_RUN_WORDS,
-  RES_FNT_RUN_FULL,
+  struct res_fnt_run run;
 };
 struct res {
+  enum res_fnt_mode mod;
   float fnt_pnt_size;
   struct sys *sys;
   struct res_fnt fnt;
-  struct res_run_cache run_cache;
-  enum res_fnt_run_mode mod;
 };
 
-/* api */
-#define res_run_loop(run, it, api, res, txt)                      \
-  (const struct res_fnt_run *run = (api)->run.begin(it,res,txt);  \
-   run != 0; run = (api)->run.nxt(it, res))
+/* API */
+#define res_run_loop(run, it, api, rss, txt) \
+  (const struct res_fnt_run *(run) = (api)->run.begin((it), (rss), (txt)); \
+   (run); (run) = (api)->run.nxt((it), (rss)))
 struct res_fnt_api {
   void (*ext)(int *ext, struct res *res, struct str txt);
   void (*fit)(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt);
@@ -163,10 +140,10 @@ struct res_api {
   struct res_fnt_api fnt;
   struct res_run_api run;
   struct res_ico_api ico;
-  int (*init)(struct res *res, struct sys *sys);
-  void (*shutdown)(struct res *r);
   void (*full_text_mode)(struct res *rss);
   void (*word_mode)(struct res *rss);
+  int (*init)(struct res *res, struct sys *sys);
+  void (*shutdown)(struct res *r);
 };
-static void res_api(void *exp, void *imp);
 
+static void res_api(void *exp, void *imp);
