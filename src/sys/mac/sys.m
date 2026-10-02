@@ -157,32 +157,21 @@ sys__rnd_gen128(uintptr_t hdl, void *dst) {
  * ---------------------------------------------------------------------------
  */
 struct sys_file_path {
-  char *ospath;
-  char buf[MAX_FILE_PATH];
+  char ospath[MAX_FILE_PATH];
 };
 static int
 sys__file_path_push(struct sys_file_path *sfp, struct str path) {
   assert(sfp);
-  if (str_len(path) + 1 < MAX_FILE_PATH) {
-    mcpy(sfp->buf, str_beg(path), str_len(path));
-    sfp->buf[str_len(path)] = 0;
-    sfp->ospath = sfp->buf;
-  } else {
-    sfp->ospath = cast(char*, calloc(1, castsz(str_len(path) + 1)));
-    if (!sfp->ospath) {
-      return 0;
-    }
-    mcpy(sfp->ospath, str_beg(path), str_len(path));
-    sfp->ospath[str_len(path)] = 0;
+  if (str_len(path) + 1 > MAX_FILE_PATH) {
+    return 0;
   }
+  mcpy(sfp->ospath, str_beg(path), str_len(path));
+  sfp->ospath[str_len(path)] = 0;
   return 1;
 }
 static void
 sys__file_path_pop(struct sys_file_path *sfp) {
   assert(sfp);
-  if (sfp->ospath != sfp->buf) {
-    free(sfp->ospath);
-  }
   mset(sfp, 0, szof(*sfp));
 }
 static unsigned

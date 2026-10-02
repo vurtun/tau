@@ -4,6 +4,10 @@
 
 #include "gfx_shdr.h"
 
+enum {
+  GFX_MTL_BUF_SIZE       = KB(512), /* Strictly larger than CFG_GUI_MAX_MEMORY */
+  GFX_MTL_GPU_TIMEOUT_MS = 33,      /* Deadline limit for GPU frame retirement */
+};
 struct gfx_tex {
   int act;
   int w, h;
@@ -357,7 +361,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
     return -1;
   }
   for arr_loopv(i, mtl->buf) {
-    mtl->buf[i] = [mtl->dev newBufferWithLength:KB(256) options:MTLResourceStorageModeShared];
+    mtl->buf[i] = [mtl->dev newBufferWithLength:GFX_MTL_BUF_SIZE options:MTLResourceStorageModeShared];
   }
   {
     /* allocate fragment argument buffers */
@@ -399,19 +403,25 @@ gfx_mtl_end(struct sys *sys, void *view_ptr) {
   if (!sys->gfx.buf2d.icnt || !sys->gfx.buf2d.vbytes) {
     return;
   }
-  dispatch_semaphore_wait(mtl->sem, DISPATCH_TIME_FOREVER);
+  /* Bounded GPU synchronization: never wait forever */
+  dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(GFX_MTL_GPU_TIMEOUT_MS * NSEC_PER_MSEC));
+  if (dispatch_semaphore_wait(mtl->sem, timeout) != 0) {
+    return; /* GPU deadline missed: drop frame gracefully to preserve CPU real-time schedule */
+  }
   mtl->cur_buf = (mtl->cur_buf + 1) % GFX_MTL_BUF_DEPTH;
 
   float col[4]; col_flt_paq(col, sys->gfx.clear_color);
   view.clearColor = MTLClearColorMake(col[0], col[1], col[2], 1.0);
 
-  int siz = sys->gfx.buf2d.vbytes + sys->gfx.buf2d.icnt * szof(int);
-  if (mtl->buf[mtl->cur_buf].length + 16 < (NSUInteger)siz) {
-    mtl->buf[mtl->cur_buf] = [mtl->dev newBufferWithLength:(NSUInteger)npow2(siz)
-      options:MTLResourceStorageModeShared];
-  }
   int ibytes = sys->gfx.buf2d.icnt * szof(unsigned);
   NSUInteger vtx_off = cast(NSUInteger, align_up(ibytes, 16));
+  NSUInteger total_req = vtx_off + (NSUInteger)sys->gfx.buf2d.vbytes;
+
+  /* Hard static buffer bound: discard frame if memory exceeded; NEVER allocate at runtime */
+  if (total_req > mtl->buf[mtl->cur_buf].length) {
+    dispatch_semaphore_signal(mtl->sem);
+    return;
+  }
   void *idx_buf = mtl->buf[mtl->cur_buf].contents;
   void *vtx_buf = cast(char*, mtl->buf[mtl->cur_buf].contents) + vtx_off;
 

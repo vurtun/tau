@@ -199,21 +199,6 @@ gui_cut_bot(struct gui_box *box, int cut, int gap) {
   box->y = gui_min_max(box->y.min, valy);
   return gui_box(box->x.min, maxy, box->x.ext, cut);
 }
-static struct gui_box
-gui_cut_box(struct gui_box_cut *cut, int val) {
-  switch(cut->side) {
-  default: assert(0); break;
-  case GUI_BOX_CUT_LHS:
-    return gui_cut_lhs(cut->box, val, cut->gap);
-  case GUI_BOX_CUT_RHS:
-    return gui_cut_rhs(cut->box, val, cut->gap);
-  case GUI_BOX_CUT_TOP:
-    return gui_cut_top(cut->box, val, cut->gap);
-  case GUI_BOX_CUT_BOT:
-    return gui_cut_bot(cut->box, val, cut->gap);
-  }
-  return *cut->box;
-}
 static void
 gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
           const int *con, struct gui_lay_sol *sol) {
@@ -225,81 +210,55 @@ gui_solve(int *ret, int ext, const int *slots, int cnt, int gap,
 
   struct gui_lay_sol dummy;
   sol = !sol ? &dummy : sol;
-  mset(sol,0,szof(*sol));
+  mset(sol, 0, szof(*sol));
 
-  for loop(i,cnt) {
-    if (slots[i] < 0) {
-      sol->dyn_cnt++;
-      continue;
-    }
-    int siz = slots[i];
-    ret[i] = con ? clamp(con[i*2+0], siz, con[i*2+1]) : siz;
-    sol->fix_siz += ret[i];
-    sol->fix_cnt++;
-  }
+  /* -------------------------------------------------------------
+   * Pass 1: Accumulate fixed sizes and dynamic weights
+   * ------------------------------------------------------------- */
   int total = max(0, ext - (gap * cnt));
-  if (sol->fix_siz >= total || !sol->dyn_cnt) {
-    for loop(i,cnt) {
-      if (slots[i] < 0) {
-        ret[i] = con ? con[i*2+0] : 0;
-      }
-    }
-  }
-  sol->weight = 0;
-  sol->dyn_siz = max(0, total - sol->fix_siz);
   for loop(i, cnt) {
-    if (slots[i] >= 0) {
-      continue;
-    }
-    sol->weight += castu(-slots[i]);
-  }
-  int def_dyn_siz = 0;
-  for loop(i,cnt) {
-    if (slots[i] < 0) {
-      unsigned slot = castu(-slots[i]);
-      unsigned ratio16_16 = (slot << 16u) / sol->weight;
+    int s = slots[i];
+    int is_dyn = (s < 0);
+    int is_fix = 1 - is_dyn;
 
-      ret[i] = casti((ratio16_16 * castu(sol->dyn_siz)) >> 16u);
-      ret[i] = con ? clamp(con[i*2+0], ret[i], con[i*2+1]) : ret[i];
-      def_dyn_siz += ret[i];
-    }
+    /* Clamp fixed sizes (or zero if dynamic) */
+    int c_min = con ? con[i * 2 + 0] : 0;
+    int c_max = con ? con[i * 2 + 1] : INT_MAX;
+    int clamped_fix = clamp(c_min, s, c_max);
+
+    int fix_val = clamped_fix * is_fix;
+    ret[i] = fix_val;
+
+    sol->fix_siz += fix_val;
+    sol->fix_cnt += is_fix;
+    sol->dyn_cnt += is_dyn;
+    sol->weight  += castu((-s) * is_dyn);
   }
-  if (def_dyn_siz < sol->dyn_siz) {
-    int grow_cnt = 0;
-    unsigned weight = 0u;
-    int grow_siz = def_dyn_siz - sol->dyn_siz;
-    for loop(i,cnt) {
-      if (slots[i] < 0 && (!con || ret[i] < con[i*2+1])) {
-        weight += castu(-slots[i]);
-        grow_cnt++;
-      }
-    }
-    while (grow_cnt > 0 && grow_siz > 0) {
-      int nxt_siz = 0;
-      int nxt_cnt = 0;
-      unsigned nxt_weight = 0u;
-      for loop(i, cnt) {
-        if (slots[i] >= 0) {
-          continue;
-        }
-        if (!con || ret[i] < con[i*2+1]) {
-          unsigned slot = castu(-slots[i]);
-          unsigned ratio16_16 = (slot << 16u) / weight;
-          int siz = casti((ratio16_16 * castu(grow_siz)) >> 16u);
-          if (con && ret[i] + siz > con[i*2+1]) {
-            nxt_siz += ret[i] + siz - con[i*2+1];
-            ret[i] = con[i*2+1];
-          } else {
-            nxt_weight += slot;
-            ret[i] += siz;
-            nxt_cnt++;
-          }
-        }
-      }
-      grow_siz = nxt_siz;
-      grow_cnt = nxt_cnt;
-      weight = nxt_weight;
-    }
+  sol->dyn_siz = max(0, total - sol->fix_siz);
+
+  /* -------------------------------------------------------------
+   * Pass 2: Proportional dynamic space distribution
+   * ------------------------------------------------------------- */
+  /* Prevent division by zero branchlessly: safe_weight is at least 1 */
+  unsigned safe_weight = sol->weight | (sol->weight == 0);
+  int has_dyn_space = (sol->dyn_siz > 0) & (sol->weight > 0);
+  for loop(i, cnt) {
+    int s = slots[i];
+    int is_dyn = (s < 0);
+    unsigned weight = castu((-s) * is_dyn);
+
+    /* Unconditional fixed-point proportion calculation */
+    unsigned ratio16 = (weight << 16u) / safe_weight;
+    int raw_dyn = casti((ratio16 * castu(sol->dyn_siz)) >> 16u);
+
+    int c_min = con ? con[i * 2 + 0] : 0;
+    int c_max = con ? con[i * 2 + 1] : INT_MAX;
+    int clamped_dyn = clamp(c_min, raw_dyn, c_max);
+
+    /* Select dynamic result if dynamic space exists, else fallback to min constraint */
+    int final_dyn = has_dyn_space ? clamped_dyn : c_min;
+    /* preserve fixed size or update dynamic */
+    ret[i] = is_dyn ? final_dyn : ret[i];
   }
 }
 
@@ -480,20 +439,30 @@ gui_drw_txt(struct gui_ctx *ctx, int dstx, int dsty, struct str txt) {
   assert(ctx);
   assert(ctx->vtx_buf);
   assert(ctx->idx_buf);
-  if (ctx->pass != GUI_RENDER) {
+  if (ctx->pass != GUI_RENDER || !str_len(txt)) {
     return;
   }
+  const struct res_fnt *fnt = &ctx->res->fnt;
   int posx = dstx;
-  struct res_fnt_run_it itr;
-  for res_run_loop(run, &itr, &res, ctx->res, txt) {
-    int run_x = posx;
-    for loopn(i, run->len, RES_FNT_MAX_RUN) {
-      struct res_glyph gly = {0};
-      res.run.glyph(&gly, run, i, run_x, dsty);
-      gui_drw_glyph(ctx, &gly);
-      run_x = posx + run->adv[i];
+  int len = min(str_len(txt), 128); /* WCET bound */
+  const char *ptr = str_beg(txt);
+  for (int i = 0; i < len; ++i) {
+    unsigned char c = (unsigned char)ptr[i];
+    const struct res_glyph_quad *g = &fnt->quads[c];
+    if (g->w != 0) {
+      int gx0 = posx + g->xoff;
+      int gy0 = dsty + g->yoff;
+      int gx1 = gx0 + g->w;
+      int gy1 = gy0 + g->h;
+      if (gui_intersect(&ctx->clip.box, gx0, gy0, gx1, gy1)) {
+        struct sys *sys = ctx->sys;
+        if (gui__drw_resv(ctx, &sys->gfx.d2d.cost.ico)) {
+          sys->gfx.d2d.ico(&sys->gfx.buf2d, gx0, gy0, gx1, gy1,
+            g->u, g->v, ctx->drw_col, ctx->clip.hdl);
+        }
+      }
     }
-    posx += run->adv[run->len-1] + ctx->res->fnt.space_adv * (!!str_len(itr.rest));
+    posx += fnt->adv[c];
   }
 }
 static void
@@ -585,7 +554,9 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
 
   struct sys *sys = ctx->sys;
   mset(pin, 0, sizeof(*pin));
-
+  if (pan->state == GUI_HIDDEN) {
+    return;
+  }
   /* enter and left */
   pin->is_hot = pan->is_hot;
   pin->entered = gui_id_eq(pan->id, ctx->hot) && gui_id_neq(pan->id, ctx->prev_hot);
@@ -668,21 +639,23 @@ gui_input(struct gui_input *pin, struct gui_ctx *ctx,
   }
 }
 static enum gui_state
-gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *pan) {
+gui_panel_state(const struct gui_ctx *ctx, const struct gui_panel *pan,
+                const struct gui_panel *parent) {
   assert(pan);
   assert(ctx);
-  enum gui_state ret;
+  if (parent && parent->state == GUI_HIDDEN) {
+    return GUI_HIDDEN;
+  }
   const struct gui_box *box = &pan->box;
   if (!gui_intersect(&ctx->clip.box, box->x.min, box->y.min, box->x.max, box->y.max)) {
-    ret = GUI_HIDDEN;
-  } else if (ctx->disabled) {
-    ret = GUI_DISABLED;
-  } else if ((gui_id_eq(pan->id, ctx->focused)) && !ctx->focus_next) {
-    ret = GUI_FOCUSED;
+    return GUI_HIDDEN;
+  } else if (ctx->disabled || (parent && parent->state == GUI_DISABLED)) {
+    return GUI_DISABLED;
+  } else if (gui_id_eq(pan->id, ctx->focused) && !ctx->focus_next) {
+    return GUI_FOCUSED;
   } else {
-    ret = GUI_NORMAL;
+    return GUI_NORMAL;
   }
-  return ret;
 }
 static void
 gui_panel_drw(struct gui_ctx *ctx, const struct gui_box *box) {
@@ -728,14 +701,20 @@ gui_panel_open(struct gui_ctx *ctx, struct gui_panel *pan,
   mcpy(pan->mouse_pos, ctx->sys->mouse.pos, sizeof(pan->mouse_pos));
   pan->rel_mouse_pos[0] = pan->mouse_pos[0] - pan->box.x.min;
   pan->rel_mouse_pos[1] = pan->mouse_pos[1] - pan->box.y.min;
-
+  /* If parent is hidden, immediately neutralize child without registering focus/hot */
+  if (parent && parent->state == GUI_HIDDEN) {
+    pan->state = GUI_HIDDEN;
+    pan->focusable = 0;
+    pan->has_focus = 0;
+    return;
+  }
   ctx->cur_id = pan->id;
   if (ctx->focus_next && pan->focusable && !ctx->disabled) {
     ctx->focused = pan->id;
     ctx->focus_next = 0;
   }
   gui_panel_hot(ctx, pan, parent);
-  pan->state = gui_panel_state(ctx, pan);
+  pan->state = gui_panel_state(ctx, pan, parent);
   pan->has_focus = !!gui_id_eq(pan->id, ctx->focused);
   pan->is_focused = pan->has_focus;
 }
@@ -745,7 +724,7 @@ gui_panel_close(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   unused(ctx);
-
+  /* Hidden panels must not expand the scrollable space of their parent */
   if (parent) {
     parent->max[0] = max(parent->max[0], pan->box.x.max);
     parent->max[1] = max(parent->max[1], pan->box.y.max);
@@ -1431,7 +1410,11 @@ gui_txt_uln(struct gui_ctx *ctx, struct gui_panel *pan,
   assert(ctx);
   assert(pan);
   assert(parent);
-
+  /* If parent is hidden, bypass all text measuring, fitting, and drawing */
+  if (parent && parent->state == GUI_HIDDEN) {
+    pan->state = GUI_HIDDEN;
+    return;
+  }
   /* calculate text extend */
   int ext[2] = {0};
   gui_txt_ext(ext, ctx, txt);
@@ -1491,48 +1474,6 @@ gui_txtf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   va_list args;
   va_start(args, fmt);
   gui_txtvf(ctx, pan, parent, align, fmt, args);
-  va_end(args);
-}
-static void
-gui_lbl(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
-        struct gui_box_cut *cut, struct str txt) {
-
-  assert(ctx);
-  assert(cut);
-  assert(pan);
-  assert(parent);
-
-  int txtw = gui_txt_width(ctx, txt);
-  pan->box = gui_cut_box(cut, txtw);
-  gui_txt(ctx, pan, parent, txt, 0);
-}
-static void
-gui_lblvf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
-          struct gui_box_cut *cut, const char *fmt, va_list args) {
-
-  assert(ctx);
-  assert(fmt);
-  assert(pan);
-  assert(parent);
-
-  char buf[GUI_MAX_FMT_BUF];
-  int cnt = fmtvsn(buf, cntof(buf), fmt, args);
-  if (cnt < cntof(buf)) {
-    gui_lbl(ctx, pan, parent, cut, str0(buf));
-  }
-}
-static void
-gui_lblf(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
-         struct gui_box_cut *cut, const char *fmt, ...) {
-
-  assert(ctx);
-  assert(fmt);
-  assert(pan);
-  assert(parent);
-
-  va_list args;
-  va_start(args, fmt);
-  gui_lblvf(ctx, pan, parent, cut, fmt, args);
   va_end(args);
 }
 static void
@@ -1704,21 +1645,6 @@ gui_btn_txt(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
   return btn->clk;
 }
 static int
-gui_btn_lbl(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
-            struct gui_box_cut *cut, struct str txt,
-            const struct gui_align *align) {
-
-  assert(btn);
-  assert(ctx);
-  assert(parent);
-
-  /* calculate desired space */
-  int txtw = gui_txt_width(ctx, txt);
-  int ext = txtw + (ctx->cfg.btn_pad * 2);
-  btn->box = gui_cut_box(cut, ext);
-  return gui_btn_txt(ctx, btn, parent, txt, align);
-}
-static int
 gui_btn_ico(struct gui_ctx *ctx, struct gui_btn *btn, struct gui_panel *parent,
             enum res_ico_id icon) {
 
@@ -1844,44 +1770,6 @@ gui_tog(struct gui_ctx *ctx, struct gui_panel *pan, struct gui_panel *parent,
   }
   return 0;
 }
-static int
-gui_tog_box(struct gui_ctx *ctx, struct gui_panel *pan,
-            struct gui_panel *parent, struct gui_box_cut *cut,
-            struct str txt, int *is_act) {
-
-  assert(ctx);
-  assert(pan);
-  assert(is_act);
-  assert(parent);
-
-  int txtw = gui_txt_width(ctx, txt);
-  int ext = txtw + ctx->cfg.gap[0] + (ctx->cfg.item << 1);
-  pan->box = gui_cut_box(cut, ext);
-  gui_panel_begin(ctx, pan, parent);
-  {
-    int active = *is_act;
-    struct gui_panel tog = {.box = pan->box};
-    gui_tog(ctx, &tog, pan, &active);
-
-    struct gui_panel lbl = {.box = pan->box};
-    lbl.box.x = gui_min_max(tog.box.x.max + ctx->cfg.gap[0], pan->box.x.max);
-    gui_txt(ctx, &lbl, pan, txt, 0);
-    if (ctx->pass == GUI_RENDER && pan->state == GUI_FOCUSED) {
-      gui_focus_drw(ctx, &pan->box, 0);
-    }
-  }
-  gui_panel_hot(ctx, pan, parent);
-  gui_panel_end(ctx, pan, parent);
-
-  struct gui_input pin = {0};
-  gui_input(&pin, ctx, pan, GUI_BTN_LEFT);
-  int act = pan->state == GUI_FOCUSED && bit_tst_clr(ctx->keys, GUI_KEY_ACT);
-  if (act || pin.mouse.btn.left.clk) {
-    *is_act = !*is_act;
-  }
-  return 0;
-}
-
 /* ---------------------------------------------------------------------------
  *                                  Scroll
  * ---------------------------------------------------------------------------
@@ -2389,13 +2277,11 @@ gui_txt_ed_undo_discard(struct gui_txt_ed_undo *undo) {
   if (undo->undo_pnt <= 0) {
     return;
   }
-  /* discard oldest entry in undo list */
   if (undo->stk[0].char_at >= 0) {
-    /* if the 0th undo state has characters, clean them up  */
     int cnt = undo->stk[0].in_len;
     undo->undo_char_pnt = casts(undo->undo_char_pnt - cnt);
-    mcpy(undo->buf, undo->buf + cnt, undo->undo_char_pnt + szof(undo->buf[0]));
-    for loop(i, undo->undo_pnt) {
+    memcpy(undo->buf, undo->buf + cnt, (size_t)undo->undo_char_pnt + sizeof(undo->buf[0]));
+    for (int i = 0; i < undo->undo_pnt; ++i) {
       if (undo->stk[i].char_at < 0) {
         continue;
       }
@@ -2403,7 +2289,7 @@ gui_txt_ed_undo_discard(struct gui_txt_ed_undo *undo) {
     }
   }
   undo->undo_pnt--;
-  mcpy(undo->stk, undo->stk + 1, undo->undo_pnt * szof(undo->buf[0]));
+  memcpy(undo->stk, undo->stk + 1, (size_t)undo->undo_pnt * sizeof(undo->stk[0]));
 }
 static void
 gui_txt_ed_redo_discard(struct gui_txt_ed_undo *undo) {
@@ -2438,17 +2324,16 @@ gui_txt_ed_redo_discard(struct gui_txt_ed_undo *undo) {
 static struct gui_txt_ed_undo_entry*
 gui_txt_ed_undo_entry(struct gui_txt_ed_undo *undo, int char_cnt) {
   assert(undo);
-  gui_txt_ed_redo_flush(undo); /* discard redo on new undo record */
+  gui_txt_ed_redo_flush(undo);
   if (undo->undo_pnt >= GUI_EDT_UNDO_CNT) {
-    gui_txt_ed_undo_discard(undo); /* freeup record if needed */
+    gui_txt_ed_undo_discard(undo);
   }
-  /* no undo if does not fit into buffer */
   if (char_cnt > GUI_EDT_UNDO_CHAR_CNT) {
     undo->undo_char_pnt = 0;
     undo->undo_pnt = 0;
     return 0;
   }
-  while (undo->undo_char_pnt + char_cnt > GUI_EDT_UNDO_CHAR_CNT) {
+  for (int i = 0; i < GUI_EDT_UNDO_CNT && (undo->undo_char_pnt + char_cnt > GUI_EDT_UNDO_CHAR_CNT); ++i) {
     gui_txt_ed_undo_discard(undo);
   }
   return undo->stk + undo->undo_pnt++;
@@ -2485,16 +2370,11 @@ gui_txt_ed_undo(struct gui_txt_ed *edt) {
   rde->del_len = ude.in_len;
   rde->where = ude.where;
   rde->char_at = -1;
-  /* if the undo record says to delete characters, then the redo record will
-     need to re-insert the characters that get deleted, so we need to store
-     them. There are three cases:
-         - there's enough room to store the characters
-         - characters stored for *redoing* don't leave room for redo
-         - characters stored for *undoing* don't leave room for redo
-     if the last is true, we have to bail */
+
   if (ude.del_len) {
     if (undo->undo_char_pnt + ude.del_len < GUI_EDT_UNDO_CHAR_CNT) {
-      while (undo->undo_char_pnt + ude.del_len > undo->redo_char_pnt) {
+      /* Bounded redo discard loop */
+      for (int k = 0; k < GUI_EDT_UNDO_CNT && (undo->undo_char_pnt + ude.del_len > undo->redo_char_pnt); ++k) {
         gui_txt_ed_redo_discard(undo);
         if (undo->redo_pnt == GUI_EDT_UNDO_CHAR_CNT) {
           return;
@@ -2503,7 +2383,7 @@ gui_txt_ed_undo(struct gui_txt_ed *edt) {
       rde = undo->stk + undo->redo_pnt - 1;
       rde->char_at = casts(undo->redo_char_pnt - ude.del_len);
       undo->redo_char_pnt = casts(undo->redo_char_pnt - ude.del_len);
-      for loop(i, ude.del_len) {
+      for (int i = 0; i < ude.del_len && i < GUI_EDT_UNDO_CHAR_CNT; ++i) {
         undo->buf[rde->char_at + i] = edt->buf[ude.where + i];
       }
     } else {
@@ -2517,7 +2397,6 @@ gui_txt_ed_undo(struct gui_txt_ed *edt) {
     undo->undo_char_pnt = cast(short, undo->undo_char_pnt - ude.in_len);
   }
   edt->cur = utf_len(strn(edt->buf, ude.where + ude.in_len));
-
   undo->undo_pnt--;
   undo->redo_pnt--;
 }
@@ -4805,20 +4684,38 @@ gui_lst_nxt(const struct gui_lst *lst, int idx) {
   }
   return idx;
 }
+static int
+gui_lst_elm_is_act(const struct gui_lst *lst, int idx){
+  return lst->begin <= idx && idx < lst->end;
+}
+static int
+gui_lst_elm_is_act_bnd(const struct gui_lst *lst, int idx){
+  return gui_lst_elm_is_act(lst, idx + lst->begin);
+}
 static void
 gui_lst_elm_begin(struct gui_ctx *ctx, struct gui_lst *lst,
                   struct gui_panel *pan, struct gui_panel *parent,
-                  struct gui_id uid, int sel) {
+                  struct gui_id uid, int sel, int is_active) {
   assert(ctx);
   assert(pan);
   assert(lst);
   assert(parent);
 
   ctx->id = uid;
-  gui_lst_lay_gen(&pan->box, &lst->lay);
-  gui_lst_ctl_elm(ctx, &lst->ctl, &lst->lay, &pan->box, parent, uid);
-  gui_lst_sel_elm(ctx, &lst->sel, &lst->lay, &lst->ctl, &pan->box, parent, sel, uid);
-  gui_panel_begin(ctx, pan, parent);
+  lst->item_hidden = !is_active;
+  if (is_active) {
+    gui_lst_lay_gen(&pan->box, &lst->lay);
+    gui_lst_ctl_elm(ctx, &lst->ctl, &lst->lay, &pan->box, parent, uid);
+    gui_lst_sel_elm(ctx, &lst->sel, &lst->lay, &lst->ctl, &pan->box, parent, sel, uid);
+    gui_panel_begin(ctx, pan, parent);
+  } else {
+    pan->state = GUI_HIDDEN;
+    pan->focusable = 0;
+    pan->is_hot = 0;
+    pan->is_hov = 0;
+    pan->id = gui_id64(0xdeadbeef);
+    gui_panel_begin(ctx, pan, parent);
+  }
 }
 static void
 gui_lst_elm_end(struct gui_ctx *ctx, struct gui_lst *lst,
@@ -4828,6 +4725,7 @@ gui_lst_elm_end(struct gui_ctx *ctx, struct gui_lst *lst,
   assert(lst);
 
   unused(lst);
+  lst->item_hidden = 0;
   gui_panel_end(ctx, pan, parent);
 }
 static void
@@ -4842,7 +4740,7 @@ gui_lst_end(struct gui_ctx *ctx, struct gui_lst *lst) {
     struct gui_panel elm = {0};
     lst->lay.idx = gbl->cur_idx;
 
-    gui_lst_elm_begin(ctx, lst, &elm, &elm, GUI_LST_ELM_TRAIL_ID, 0);
+    gui_lst_elm_begin(ctx, lst, &elm, &elm, GUI_LST_ELM_TRAIL_ID, 0, 0);
     gui_lst_elm_end(ctx, lst, &elm, &elm);
   }
   gui_lst_ctl_proc(ctx, &lst->ctl, &lst->lay, lst->view.total_cnt);
@@ -4897,13 +4795,21 @@ static int
 gui_lst_reg_nxt(const struct gui_lst_reg *lag, int idx) {
   return gui_lst_nxt(&lag->lst, idx);
 }
+static int
+gui_lst_reg_elm_is_act(const struct gui_lst_reg *reg, int idx){
+  return gui_lst_elm_is_act(&reg->lst, idx);
+}
+static int
+gui_lst_reg_elm_is_act_bnd(const struct gui_lst_reg *reg, int idx){
+  return gui_lst_elm_is_act_bnd(&reg->lst, idx);
+}
 static void
 gui_lst_reg_elm_begin(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                      struct gui_panel *pan, struct gui_id uid, int sel) {
+                      struct gui_panel *pan, struct gui_id uid, int sel, int is_act) {
   assert(lag);
   assert(ctx);
   assert(pan);
-  gui_lst_elm_begin(ctx, &lag->lst, pan, &lag->reg.pan, uid, sel);
+  gui_lst_elm_begin(ctx, &lag->lst, pan, &lag->reg.pan, uid, sel, is_act);
 }
 static void
 gui_lst_reg_elm_end(struct gui_ctx *ctx, struct gui_lst_reg *lag,
@@ -4915,12 +4821,12 @@ gui_lst_reg_elm_end(struct gui_ctx *ctx, struct gui_lst_reg *lag,
 }
 static void
 gui_lst_reg_elm_txt(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                     struct gui_panel *elm, struct gui_id uid, int is_sel,
+                     struct gui_panel *elm, struct gui_id uid, int is_sel, int is_act,
                      struct str txt, const struct gui_align *align) {
   assert(ctx);
   assert(lag);
   assert(elm);
-  gui_lst_reg_elm_begin(ctx, lag, elm, uid, is_sel);
+  gui_lst_reg_elm_begin(ctx, lag, elm, uid, is_sel, is_act);
   {
     struct gui_panel item = {.box = elm->box};
     gui_txt(ctx, &item, elm, txt, align);
@@ -4929,12 +4835,12 @@ gui_lst_reg_elm_txt(struct gui_ctx *ctx, struct gui_lst_reg *lag,
 }
 static void
 gui_lst_reg_elm_txt_ico(struct gui_ctx *ctx, struct gui_lst_reg *lag,
-                     struct gui_panel *elm, struct gui_id uid, int is_sel,
+                     struct gui_panel *elm, struct gui_id uid, int is_sel, int is_act,
                      struct str txt, enum res_ico_id ico_id) {
   assert(ctx);
   assert(lag);
   assert(elm);
-  gui_lst_reg_elm_begin(ctx, lag, elm, uid, is_sel);
+  gui_lst_reg_elm_begin(ctx, lag, elm, uid, is_sel, is_act);
   {
     struct gui_panel item = {.box = elm->box};
     gui_icon_box(ctx, &item, elm, ico_id, txt);
@@ -5526,16 +5432,25 @@ gui_tbl_lst_begin_def(struct gui_ctx *ctx, struct gui_tbl *tbl, int total_cnt) {
   gui_tbl_lst_cfg_init(ctx, &cfg, total_cnt);
   gui_tbl_lst_begin(ctx, tbl, &cfg);
 }
+static int
+gui_tbl_lst_elm_is_act(const struct gui_tbl *tbl, int idx){
+  return gui_lst_elm_is_act(&tbl->lst, idx);
+}
+static int
+gui_tbl_lst_elm_is_act_bnd(const struct gui_tbl *tbl, int idx){
+  return gui_lst_elm_is_act_bnd(&tbl->lst, idx);
+}
 static void
 gui_tbl_lst_elm_begin(struct gui_ctx *ctx, struct gui_tbl *tbl,
-                      struct gui_panel *elm, struct gui_id uid, int sel) {
+                      struct gui_panel *elm, struct gui_id uid,
+                      int sel, int is_act) {
   assert(ctx);
   assert(tbl);
   assert(elm);
 
   tbl->idx = 0;
   struct gui_panel *pan = tbl->pan;
-  gui_lst_elm_begin(ctx, &tbl->lst, elm, pan, uid, sel);
+  gui_lst_elm_begin(ctx, &tbl->lst, elm, pan, uid, sel, is_act);
   tbl->col_lay = elm->box;
 }
 static void
@@ -5546,11 +5461,15 @@ gui_tbl_lst_elm_col(struct gui_box *box, struct gui_ctx *ctx,
   assert(tbl);
 
   if (tbl->idx) {
-    gui_clip_end(ctx, &tbl->col_clip);
+    if (!tbl->lst.item_hidden) {
+      gui_clip_end(ctx, &tbl->col_clip);
+    }
     gui_cut_lhs(&tbl->col_lay, lay[((tbl->idx - 1) << 1) + 1], 0);
   }
   *box = gui_cut_lhs(&tbl->col_lay, lay[(tbl->idx << 1)], 0);
-  gui_clip_begin(&tbl->col_clip, ctx, gui_unbox(box));
+  if (!tbl->lst.item_hidden) {
+    gui_clip_begin(&tbl->col_clip, ctx, gui_unbox(box));
+  }
   tbl->idx++;
 }
 static void
@@ -5559,7 +5478,7 @@ gui_tbl_lst_elm_end(struct gui_ctx *ctx, struct gui_tbl *tbl,
   assert(ctx);
   assert(tbl);
   assert(elm);
-  if (tbl->idx) {
+  if (tbl->idx && !tbl->lst.item_hidden) {
     gui_clip_end(ctx, &tbl->col_clip);
   }
   gui_lst_elm_end(ctx, &tbl->lst, elm, tbl->pan);
@@ -6042,19 +5961,20 @@ gui__grid_drw(struct gui_ctx *ctx, struct gui_box *box, unsigned flags,
   assert(ctx);
 
   int size = ctx->cfg.grid;
+  if (size <= 0) {
+    return;
+  }
   gui_drw_line_style(ctx, 1);
   gui_drw_col(ctx, ctx->cfg.col[GUI_COL_TXT_DISABLED]);
   if (flags & GUI_GRID_X) {
-    assert(size > 0);
     int posx = (off_x < 0) ? (abs(off_x) % size) : (size - (off_x % size));
-    for (; posx < box->x.ext; posx += size) {
+    for (int k = 0; k < GUI_MAX_GRID_LINES && posx < box->x.ext; ++k, posx += size) {
       gui_drw_box(ctx, box->x.min + posx, box->y.min, box->x.min + posx + ctx->cfg.line, box->y.max);
     }
   }
   if (flags & GUI_GRID_Y) {
-    assert(size > 0);
     int posy = (off_y < 0) ? (abs(off_y) % size) : (size - (off_y % size));
-    for (; posy < box->y.ext; posy += size) {
+    for (int k = 0; k < GUI_MAX_GRID_LINES && posy < box->y.ext; ++k, posy += size) {
       gui_drw_box(ctx, box->x.min, box->y.min + posy, box->x.max, box->y.min + posy + ctx->cfg.line);
     }
   }
@@ -6240,7 +6160,6 @@ static const struct gui_api gui__api = {
     .top = gui_cut_top,
     .rhs = gui_cut_rhs,
     .bot = gui_cut_bot,
-    .box = gui_cut_box,
   },
   .drw = {
     .col = gui_drw_col,
@@ -6309,11 +6228,6 @@ static const struct gui_api gui__api = {
     .txtf = gui_txtf,
     .tm = gui_tm,
   },
-  .lbl = {
-    .txt = gui_lbl,
-    .fmtv = gui_lblvf,
-    .fmt = gui_lblf,
-  },
   .ico = {
     .img = gui_ico,
     .clk = gui_icon,
@@ -6323,13 +6237,11 @@ static const struct gui_api gui__api = {
     .begin = gui_btn_begin,
     .end = gui_btn_end,
     .txt = gui_btn_txt,
-    .lbl = gui_btn_lbl,
     .ico = gui_btn_ico,
     .ico_txt = gui_btn_ico_txt
   },
   .tog = {
     .ico = gui_tog,
-    .box = gui_tog_box,
   },
   .scrl = {
     .map = gui_scrl,
@@ -6399,6 +6311,8 @@ static const struct gui_api gui__api = {
       .proc = gui_lst_sel_proc,
     },
     .elm = {
+      .is_act = gui_lst_elm_is_act,
+      .is_act_bnd = gui_lst_elm_is_act_bnd,
       .begin = gui_lst_elm_begin,
       .end = gui_lst_elm_end,
     },
@@ -6411,6 +6325,8 @@ static const struct gui_api gui__api = {
       .clamp = gui_lst_reg_clamp,
       .end = gui_lst_reg_end,
       .elm = {
+        .is_act = gui_lst_reg_elm_is_act,
+        .is_act_bnd = gui_lst_reg_elm_is_act_bnd,
         .begin = gui_lst_reg_elm_begin,
         .end = gui_lst_reg_elm_end,
         .txt = gui_lst_reg_elm_txt,
@@ -6454,6 +6370,8 @@ static const struct gui_api gui__api = {
       .end = gui_tbl_lst_end,
       .nxt = gui_lst_nxt,
       .elm = {
+        .is_act = gui_tbl_lst_elm_is_act,
+        .is_act_bnd = gui_tbl_lst_elm_is_act_bnd,
         .begin = gui_tbl_lst_elm_begin,
         .end = gui_tbl_lst_elm_end,
         .col = {

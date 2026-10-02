@@ -4,10 +4,12 @@ enum {
   RES_GLYPH_SLOTS     = 256,
   RES_IMG_SLOT_CNT    = 64,
 };
+
 enum res_fnt_mode {
   RES_FNT_RUN_FULL,
   RES_FNT_RUN_WORDS,
 };
+
 enum res_ico_id {
   RES_ICO_FOLDER,
   RES_ICO_FOLDER_OPEN,
@@ -74,12 +76,22 @@ enum res_ico_id {
   RES_ICO_CALCULATOR,
   RES_ICO_MAX
 };
+
+/* Compatibility glyph struct used by single-glyph draw calls */
 struct res_glyph {
   int sx, sy;
   int x0, y0;
   int x1, y1;
   int adv;
 };
+
+/* Compact 8-byte pre-baked render quad (Zero padding, zero floats) */
+struct res_glyph_quad {
+  uint16_t u, v;       /* 4 bytes: Atlas top-left texture coordinates */
+  int8_t   xoff, yoff; /* 2 bytes: Integer screen bearing offsets */
+  uint8_t  w, h;       /* 2 bytes: Quad pixel dimensions */
+};                     /* Total: EXACTLY 8 BYTES */
+
 struct res_fnt {
   float size;
   int space_adv;
@@ -88,12 +100,17 @@ struct res_fnt {
   int ico_height;
 
   int texid;
-  fnt_packedchar glyphs[RES_GLYPH_SLOTS];
+
+  /* Data-Oriented Font Storage (Total footprint: 2304 bytes = 2.3 KB) */
+  uint8_t adv[RES_GLYPH_SLOTS];                 /* 256 bytes: L1 hot measuring line */
+  struct res_glyph_quad quads[RES_GLYPH_SLOTS]; /* 2048 bytes: Direct render quads */
 };
+
 struct res_txt_bnd {
   int len, width;
   const char *end;
 };
+
 #define RES_FNT_MAX_RUN 16
 
 /* Single batch of glyphs for layout/rendering */
@@ -105,12 +122,14 @@ struct res_fnt_run {
   signed char pad[RES_FNT_MAX_RUN * 2];
   unsigned short coord[RES_FNT_MAX_RUN * 2];
 };
+
 /* Self-contained iterator holding the current batch */
 struct res_fnt_run_it {
   struct str at;
   struct str rest;
   struct res_fnt_run run;
 };
+
 struct res {
   enum res_fnt_mode mod;
   float fnt_pnt_size;
@@ -122,19 +141,23 @@ struct res {
 #define res_run_loop(run, it, api, rss, txt) \
   (const struct res_fnt_run *(run) = (api)->run.begin((it), (rss), (txt)); \
    (run); (run) = (api)->run.nxt((it), (rss)))
+
 struct res_fnt_api {
   void (*ext)(int *ext, struct res *res, struct str txt);
   void (*fit)(struct res_txt_bnd *bnd, struct res *r, int space, struct str txt);
   void (*glyph)(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y, int in_rune);
 };
+
 struct res_run_api {
   const struct res_fnt_run* (*begin)(struct res_fnt_run_it *it, struct res *r, struct str txt);
   const struct res_fnt_run* (*nxt)(struct res_fnt_run_it *it, struct res *r);
   void (*glyph)(struct res_glyph *ret, const struct res_fnt_run *run, int i, int x, int y);
 };
+
 struct res_ico_api {
   void (*ext)(int *ret, const struct res *res, enum res_ico_id ico);
 };
+
 struct res_api {
   int version;
   struct res_fnt_api fnt;

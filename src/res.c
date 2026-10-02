@@ -481,6 +481,9 @@ res_ico_fnt(int *data_siz) {
 #pragma GCC diagnostic pop
 #endif
 
+/* ---------------------------------------------------------------------------
+ *                            Pre-Bake Integer Pipeline
+ * --------------------------------------------------------------------------- */
 struct res__bake_cfg {
   const void *txt_ttf_fnt;
   float txt_ttf_pnt_siz;
@@ -494,46 +497,58 @@ res__bake_fnt(struct res_fnt *fnt, const struct res__bake_cfg *cfg, struct sys *
   requires(sys);
 
   unsigned char *img = res__bake_img;
+  fnt_packedchar raw_glyphs[RES_GLYPH_SLOTS];
   {
     fnt_pack_context pc;
     fnt_PackBegin(&pc, img, RES_BAKE_IMG_WIDTH, RES_BAKE_IMG_HEIGHT, 0, 1, 0);
-    int ok0 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->txt_ttf_fnt), 0, cfg->txt_ttf_pnt_siz, 0, 0xff, fnt->glyphs);
-    int ok1 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 256, 32, fnt->glyphs);
-    int ok2 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 288, 31, fnt->glyphs + 128);
+    int ok0 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->txt_ttf_fnt), 0, cfg->txt_ttf_pnt_siz, 0, 0xff, raw_glyphs);
+    int ok1 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 256, 32, raw_glyphs);
+    int ok2 = fnt_PackFontRange(&pc, cast(const unsigned char*, cfg->ico_ttf_fnt), 0, cfg->ico_ttf_pnt_siz, 288, 31, raw_glyphs + 128);
     fnt_PackEnd(&pc);
     if (!ok0 || !ok1 || !ok2) {
       return 0;
     }
   }
   fnt->texid = sys->gfx.tex.load(sys, GFX_PIX_FMT_R8, img, RES_BAKE_IMG_WIDTH, RES_BAKE_IMG_HEIGHT);
+
+  /* Pre-bake integer advance table (256 bytes) and 8-byte render quads */
+  for (int i = 0; i < RES_GLYPH_SLOTS; ++i) {
+    const fnt_packedchar *g = &raw_glyphs[i];
+
+    /* 1. L1 hot advance line (pure integer pixels) */
+    fnt->adv[i] = (uint8_t)max(0, math_ceili(g->xadvance));
+
+    /* 2. Compact 8-byte render quad (zero floating-point math during runtime) */
+    fnt->quads[i].u = (uint16_t)g->x0;
+    fnt->quads[i].v = (uint16_t)g->y0;
+    fnt->quads[i].w = (uint8_t)max(0, g->x1 - g->x0);
+    fnt->quads[i].h = (uint8_t)max(0, g->y1 - g->y0);
+    fnt->quads[i].xoff = (int8_t)clamp(-128, math_roundi(g->xoff), 127);
+    fnt->quads[i].yoff = (int8_t)clamp(-128, math_roundi(g->yoff), 127);
+  }
   return 1;
 }
-
 /* ---------------------------------------------------------------------------
- *                                  Glyph
+ *                                  Glyph API
  * --------------------------------------------------------------------------- */
 static void
 res_glyph(struct res_glyph *ret, const struct res_fnt *fnt, int x, int y, int in_rune) {
   requires(ret);
   requires(fnt);
 
-  int rune = in_rune >= RES_GLYPH_SLOTS ? '?' : in_rune;
-  const fnt_packedchar *g = &fnt->glyphs[rune & 0xFF];
+  int rune = (in_rune < 0 || in_rune >= RES_GLYPH_SLOTS) ? '?' : in_rune;
+  const struct res_glyph_quad *g = &fnt->quads[rune & 0xFF];
 
-  int w = g->x1 - g->x0;
-  int h = g->y1 - g->y0;
-
-  ret->sx = g->x0;
-  ret->sy = g->y0;
-  ret->x0 = x + math_roundi(g->xoff);
-  ret->y0 = y + math_roundi(g->yoff);
-  ret->x1 = ret->x0 + w;
-  ret->y1 = ret->y0 + h;
-  ret->adv = math_roundi(g->xadvance);
+  ret->sx = g->u;
+  ret->sy = g->v;
+  ret->x0 = x + g->xoff;
+  ret->y0 = y + g->yoff;
+  ret->x1 = ret->x0 + g->w;
+  ret->y1 = ret->y0 + g->h;
+  ret->adv = fnt->adv[rune & 0xFF];
 }
-
 /* ---------------------------------------------------------------------------
- *                                Text Metrics
+ *                       Text Metrics (L1 Hot Line)
  * --------------------------------------------------------------------------- */
 static void
 res_fnt_ext(int *ext, struct res *rss, struct str txt) {
@@ -545,13 +560,15 @@ res_fnt_ext(int *ext, struct res *rss, struct str txt) {
   if (!str_len(txt)) {
     return;
   }
-  const struct res_fnt *fnt = &rss->fnt;
-  unsigned rune = 0;
-  for utf_loop(&rune, itr, rest, txt) {
-    rune = (rune >= RES_GLYPH_SLOTS) ? '?' : rune;
-    const fnt_packedchar *gly = &fnt->glyphs[rune & 0xFF];
-    ext[0] += math_ceili(gly->xadvance);
+  const uint8_t *adv = rss->fnt.adv;
+  int len = min(str_len(txt), 128); /* Statically bounded */
+  const char *ptr = str_beg(txt);
+
+  int width = 0;
+  for (int i = 0; i < len; ++i) {
+    width += adv[(unsigned char)ptr[i]];
   }
+  ext[0] = width;
 }
 static void
 res_fnt_fit(struct res_txt_bnd *bnd, struct res *rss, int space, struct str txt) {
@@ -560,77 +577,36 @@ res_fnt_fit(struct res_txt_bnd *bnd, struct res *rss, int space, struct str txt)
 
   mset(bnd, 0, szof(*bnd));
   bnd->end = str_end(txt);
-  if (!space || !str_len(txt)) {
+  if (space <= 0 || !str_len(txt)) {
     bnd->end = str_beg(txt);
     return;
   }
-  const struct res_fnt *fnt = &rss->fnt;
+
+  int len = min(str_len(txt), 128); /* Statically bounded */
+  const uint8_t *adv = rss->fnt.adv;
+  const char *ptr = str_beg(txt);
+
   int width = 0;
-  int len = 0;
+  int fit_len = 0;
+  int fit_width = 0;
 
-  switch (rss->mod) {
-  case RES_FNT_RUN_FULL: {
-    unsigned rune = 0;
-    for utf_loop(&rune, itr, rest, txt) {
-      rune = (rune >= RES_GLYPH_SLOTS) ? '?' : rune;
-      const fnt_packedchar *gly = &fnt->glyphs[rune & 0xFF];
-      int adv = math_ceili(gly->xadvance);
-      if (width + adv > space) {
-        break;
-      }
-      width += adv;
-      len += str_len(itr);
+  for (int i = 0; i < len; ++i) {
+    int a = adv[(unsigned char)ptr[i]];
+    if (width + a > space) {
+      break;
     }
-  } break;
-
-  case RES_FNT_RUN_WORDS: {
-    int last_word_len = 0;
-    int last_word_width = 0;
-    int cur_word_len = 0;
-    int cur_word_width = 0;
-
-    unsigned rune = 0;
-    for utf_loop(&rune, itr, rest, txt) {
-      rune = (rune >= RES_GLYPH_SLOTS) ? '?' : rune;
-      const fnt_packedchar *gly = &fnt->glyphs[rune & 0xFF];
-      int adv = math_ceili(gly->xadvance);
-
-      if (width + cur_word_width + adv > space) {
-        /* If even the first word does not fit, break at character level */
-        if (last_word_len == 0 && cur_word_len > 0) {
-          len = cur_word_len;
-          width = cur_word_width;
-        } else {
-          len = last_word_len;
-          width = last_word_width;
-        }
-        goto done;
-      }
-
-      cur_word_len += str_len(itr);
-      cur_word_width += adv;
-
-      if (rune == ' ') {
-        width += cur_word_width;
-        len += cur_word_len;
-        last_word_len = len;
-        last_word_width = width;
-        cur_word_len = 0;
-        cur_word_width = 0;
-      }
-    }
-    len += cur_word_len;
-    width += cur_word_width;
-  } break;
+    width += a;
+    fit_len = i + 1;
+    fit_width = width;
   }
-done:
-  bnd->len = len;
-  bnd->width = width;
-  bnd->end = str_beg(txt) + len;
+
+  bnd->len = fit_len;
+  bnd->width = fit_width;
+  bnd->end = str_beg(txt) + fit_len;
 }
 
 /* ---------------------------------------------------------------------------
- *                            Text Run Iterator
+ *                            Text Run Iterator (Zero-Float)
  * --------------------------------------------------------------------------- */
 static void
 res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
@@ -642,34 +618,26 @@ res_fnt_fill_run(struct res *rss, struct res_fnt_run *run, struct str txt) {
   int ext = 0;
 
   run->len = 0;
-  unsigned rune = 0;
-  for utf_loop(&rune, itr, rest, txt) {
-    assert(run->len < RES_FNT_MAX_RUN);
-    rune = (rune >= RES_GLYPH_SLOTS) ? '?' : rune;
-    const fnt_packedchar *gly = &fnt->glyphs[rune & 0xFF];
-    cnt += str_len(itr);
+  int len = min(str_len(txt), RES_FNT_MAX_RUN);
+  const char *ptr = str_beg(txt);
 
-    assert(gly->x1 >= gly->x0 && gly->x1 - gly->x0 < UCHAR_MAX);
-    assert(gly->y1 >= gly->y0 && gly->y1 - gly->y0 < UCHAR_MAX);
-    assert(gly->xoff >= SCHAR_MIN && gly->xoff <= SCHAR_MAX);
-    assert(gly->yoff >= SCHAR_MIN && gly->yoff <= SCHAR_MAX);
+  for (int i = 0; i < len; ++i) {
+    unsigned char c = (unsigned char)ptr[i];
+    const struct res_glyph_quad *g = &fnt->quads[c];
 
-    run->off[run->len] = cast(unsigned char, cnt);
-    ext += math_ceili(gly->xadvance);
-    run->ext[run->len * 2 + 0] = cast(unsigned char, gly->x1 - gly->x0);
-    run->ext[run->len * 2 + 1] = cast(unsigned char, gly->y1 - gly->y0);
-    run->coord[run->len * 2 + 0] = gly->x0;
-    run->coord[run->len * 2 + 1] = gly->y0;
-    run->pad[run->len * 2 + 0] = cast(signed char, math_roundi(gly->xoff));
-    run->pad[run->len * 2 + 1] = cast(signed char, math_roundi(gly->yoff));
+    cnt++;
+    ext += fnt->adv[c];
 
-    run->adv[run->len++] = cast(unsigned short, ext);
-    if (run->len >= RES_FNT_MAX_RUN) {
-      break;
-    }
-    if (rss->mod == RES_FNT_RUN_WORDS && rune == ' ') {
-      break;
-    }
+    run->off[run->len] = (unsigned char)cnt;
+    run->ext[run->len * 2 + 0] = g->w;
+    run->ext[run->len * 2 + 1] = g->h;
+    run->coord[run->len * 2 + 0] = g->u;
+    run->coord[run->len * 2 + 1] = g->v;
+    run->pad[run->len * 2 + 0] = g->xoff;
+    run->pad[run->len * 2 + 1] = g->yoff;
+    run->adv[run->len] = (unsigned short)ext;
+
+    run->len++;
   }
 }
 static const struct res_fnt_run*
@@ -677,20 +645,12 @@ res_lay_nxt(struct res_fnt_run_it *itr, struct res *rss) {
   requires(rss);
   requires(itr);
 
-  /* If the current word/slice is exhausted, fetch the next one from rest */
   if (!str_len(itr->at)) {
     if (!str_len(itr->rest)) {
       return 0;
     }
-    switch (rss->mod) {
-    case RES_FNT_RUN_FULL: {
-      itr->at = itr->rest;
-      itr->rest = str_nil;
-    } break;
-    case RES_FNT_RUN_WORDS: {
-      itr->at = str_split_cut(&itr->rest, strv(" "));
-    } break;
-    }
+    itr->at = itr->rest;
+    itr->rest = str_nil;
   }
   if (!str_len(itr->at)) {
     return 0;
@@ -728,6 +688,7 @@ res_run_glyph(struct res_glyph *ret, const struct res_fnt_run *run, int i, int x
   ret->y1 = ret->y0 + h;
   ret->adv = run->adv[i];
 }
+
 /* ---------------------------------------------------------------------------
  *                                System / API
  * --------------------------------------------------------------------------- */
@@ -745,7 +706,8 @@ res_init(struct res *rss, struct sys *sys) {
   int ret = 0;
   double best_diff = 10000.0;
   rss->fnt_pnt_size = 16.0f;
-  for arr_loopv(i, fnt_pnt_siz) {
+
+  for (int i = 0; i < (int)cntof(fnt_pnt_siz); ++i) {
     float delta = pnt_siz - fnt_pnt_siz[i];
     double diff = math_abs(delta);
     if (diff < best_diff) {
@@ -767,7 +729,7 @@ res_init(struct res *rss, struct sys *sys) {
       cfg.ico_ttf_pnt_siz = rss->fnt_pnt_size;
       ret = res__bake_fnt(&rss->fnt, &cfg, sys);
     }
-    rss->fnt.space_adv = math_roundi(rss->fnt.glyphs[' '].xadvance);
+    rss->fnt.space_adv = (int)rss->fnt.adv[' '];
     rss->fnt.txt_height = math_ceili(rss->fnt_pnt_size);
     rss->fnt.ico_height = math_ceili(rss->fnt_pnt_size);
   }
@@ -787,19 +749,21 @@ res_full_text_mode(struct res *rss) {
 static void
 res_word_mode(struct res *rss) {
   requires(rss);
-  rss->mod = RES_FNT_RUN_WORDS;
+  rss->mod = RES_FNT_RUN_FULL;
 }
 static void
 res_ico_ext(int *ret, const struct res *rss, enum res_ico_id ico) {
   requires(ret);
   requires(rss);
-  const fnt_packedchar *g = &rss->fnt.glyphs[ico];
-  ret[0] = math_roundi(g->xadvance);
+
+  /* Single unsigned comparison: eliminates tautological check and enum mismatch warning */
+  unsigned id = ((unsigned)ico < (unsigned)RES_GLYPH_SLOTS) ? (unsigned)ico : 0u;
+  ret[0] = (int)rss->fnt.adv[id];
   ret[1] = rss->fnt.ico_height;
 }
 
 /* ---------------------------------------------------------------------------
- *                                  API
+ *                                  API Table
  * --------------------------------------------------------------------------- */
 static const struct res_api res__api = {
   .version = RES_VERSION,

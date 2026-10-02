@@ -427,6 +427,11 @@ file_view_lst_qry(struct file_list_view *not_null lst,
   lst->page_cnt = div_ceil(lst->page.total, FILE_LIST_ELM_CNT);
   lst->page.idx = qry->page;
 
+  int base = lst->page.cur * FILE_LIST_ELM_CNT;
+  int remaining = FILE_LIST_ELM_CNT - lst->page.cnt;
+  if (remaining > 0) {
+    memset(&lst->page.elms[base + lst->page.cnt], 0, sizeof(lst->page.elms[0]) * (size_t)remaining);
+  }
   ensures(lst->page_cnt >= 0);
   ensures(lst->page.idx == qry->page);
   ensures(lst->page.total >= 0);
@@ -672,7 +677,7 @@ ui_file_view_tbl_elm(struct gui_ctx *not_null ctx,
                      const int *not_null lay,
                      struct gui_panel *not_null pan,
                      const struct file_elm *not_null elm,
-                     int is_sel) {
+                     int is_sel, int is_act) {
   requires(elm);
   requires(tbl);
   requires(lay);
@@ -681,10 +686,11 @@ ui_file_view_tbl_elm(struct gui_ctx *not_null ctx,
   static const struct gui_align algn = {GUI_HALIGN_RIGHT, GUI_VALIGN_MID};
   static const unsigned dir_col = col_rgb_hex(0xeecd4a);
   unsigned long long elm_id = str_hash(elm->name);
-  gui.tbl.lst.elm.begin(ctx, tbl, pan, gui_id64(elm_id), is_sel);
+  gui.tbl.lst.elm.begin(ctx, tbl, pan, gui_id64(elm_id), is_sel, is_act);
   {
     struct gui_cfg_stk stk[1] = {0};
-    confine gui_cfg_pushu_on_scope(&gui,stk,&ctx->cfg.col[GUI_COL_ICO], dir_col, elm->isdir) {
+    gui.cfg.pushu_on(stk,&ctx->cfg.col[GUI_COL_ICO],dir_col,elm->isdir);
+    {
       char buf[9u];
       struct str perm = ui__file_view_tbl_elm_perm(buf, elm->perm, cntof(buf));
       struct tm *mod_time = localtime(&elm->mtime);
@@ -698,6 +704,7 @@ ui_file_view_tbl_elm(struct gui_ctx *not_null ctx,
       gui.tbl.lst.elm.col.txt(ctx, tbl, lay, pan, perm, 0);
       gui.tbl.lst.elm.col.tm(ctx, tbl, lay, pan, "%d/%m/%Y %H:%M:%S", mod_time);
     }
+    gui.cfg.pop_on(stk, elm->isdir);
   }
   gui.tbl.lst.elm.end(ctx, tbl, pan);
   gui.tooltip(ctx, pan, elm->name);
@@ -739,14 +746,15 @@ ui_file_view_tbl(char *not_null filepath, int cnt,
       cfg.sel.src = GUI_LST_SEL_SRC_EXT;
 
       gui.tbl.lst.begin(ctx, &tbl, &cfg);
-      for gui_tbl_lst_loopn(i,_,gui,&tbl,FILE_LIST_ELM_CNT) {
+      for (int i = 0; i < FILE_LIST_ELM_CNT; ++i) {
         int is_sel = (lst->sel_idx == i);
+        int is_act = gui.tbl.lst.elm.is_act(&tbl, i);
         int idx = lst->page.cur * FILE_LIST_ELM_CNT + i;
         assert(idx < cntof(lst->page.elms));
 
         struct gui_panel item = {0};
         struct file_elm *elm = &lst->page.elms[idx];
-        ui_file_view_tbl_elm(ctx, &tbl, tbl_lay, &item, elm, is_sel);
+        ui_file_view_tbl_elm(ctx, &tbl, tbl_lay, &item, elm, is_sel, is_act);
 
         /* input handling */
         struct gui_input pin = {0};
@@ -833,7 +841,7 @@ ui_file_view_page(struct file_list_view *not_null lst,
   requires(ctx);
   requires(tab);
 
-  confine gui_disable_on_scope(&gui, ctx, lst->page.idx <= 0) {
+  gui.disable(ctx, lst->page.idx <= 0); {
     struct gui_btn prv = {.box = tab->hdr};
     prv.box.x = gui.bnd.min_ext(tab->hdr.x.min, ctx->cfg.scrl);
     if (gui__scrl_btn(ctx, &prv, &tab->pan, GUI_WEST)) {
@@ -849,20 +857,23 @@ ui_file_view_page(struct file_list_view *not_null lst,
     }
     tab->hdr.x = gui_min_max(prv.box.x.max, tab->hdr.x.max);
   }
+  gui.enable(ctx, lst->page.idx <= 0);
+
   struct gui_tab_ctl_hdr hdr = {.box = tab->hdr};
   gui.tab.hdr.begin(ctx, tab, &hdr);
   {
     char buf[FILE_MAX_PAGE_BUF];
     struct str info = str_sqz_fmtsn(arrv(buf), "Page %d of %d", lst->page.idx + 1, lst->page_cnt);
-    confine gui_disable_on_scope(&gui, ctx, 1) {
+    gui.disable(ctx, 1); {
       struct gui_panel slot = {0};
       gui.tab.hdr.slot.txt(ctx, tab, &hdr, &slot, gui_id64(str_hash(info)), info);
       gui.tooltip(ctx, &slot, info);
     }
+    gui.enable(ctx, 1);
   }
   gui.tab.hdr.end(ctx, tab, &hdr);
 
-  confine gui_disable_on_scope(&gui, ctx, lst->page_cnt <= lst->page.idx+1) {
+  gui.disable(ctx, lst->page_cnt <= lst->page.idx+1); {
     struct gui_btn nxt = {.box = hdr.pan.box};
     nxt.box.x = gui.bnd.min_ext(tab->off, ctx->cfg.scrl);
     if (gui__scrl_btn(ctx, &nxt, &tab->pan, GUI_EAST)) {
@@ -879,6 +890,7 @@ ui_file_view_page(struct file_list_view *not_null lst,
     }
     tab->off = nxt.box.x.max;
   }
+  gui.enable(ctx, lst->page_cnt <= lst->page.idx+1);
 }
 pub struct str
 ui_file_sel(char *not_null filepath, int cnt,
@@ -919,10 +931,9 @@ ui_file_sel(char *not_null filepath, int cnt,
         int path_len = str_len(fpk->lst.nav_path) + str_len(elm->name) + 1;
         dis = path_len > MAX_FILE_PATH;
       }
-      confine gui_disable_on_scope(&gui, ctx, dis) {
+      gui.disable(ctx, dis); {
         struct gui_btn open = {.box = tab.hdr};
         open.box.x = gui.bnd.min_max(tab.off + ctx->cfg.gap[0], tab.hdr.x.max);
-
         if (gui.btn.ico_txt(ctx, &open, pan, strv("Open"), RES_ICO_IMPORT, -1)) {
           struct file_elm *elm = &fpk->lst.page.elms[fpk->lst.sel_idx];
           if (elm->isdir) {
@@ -939,6 +950,7 @@ ui_file_sel(char *not_null filepath, int cnt,
         }
         gui.tooltip(ctx, &open.pan, strv("Open SQLite Database"));
       }
+      gui.enable(ctx, dis);
     }
   }
   gui.pan.end(ctx, pan, parent);
