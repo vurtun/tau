@@ -2,6 +2,7 @@
 
 #define GFX_MTL_BUF_DEPTH 2
 
+#include "gfx_mtl.h"
 #include "gfx_shdr.h"
 
 enum {
@@ -20,6 +21,7 @@ struct gfx_mtl {
   id<MTLLibrary> lib;
   id<MTLCommandQueue> cmd_que;
   id<MTLRenderPipelineState> pipe_state;
+  id<MTLFunction> vshdr_f;
   id<MTLFunction> fshdr_f;
   vector_uint2 viewportSize;
 
@@ -317,22 +319,16 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   mtl->sem = dispatch_semaphore_create(GFX_MTL_BUF_DEPTH);
   mtl->cmd_que = [mtl->dev newCommandQueue];
 
-  NSString *exe_path = [[NSBundle mainBundle] executablePath];
-  NSString *dir_path = [exe_path stringByDeletingLastPathComponent];
-
-  NSString *lib_path = [dir_path stringByAppendingPathComponent:@"gfx.metallib"];
-  NSURL *lib_url = [NSURL fileURLWithPath:lib_path];
-#if 1
-  mtl->lib = [mtl->dev newLibraryWithURL:lib_url error:&err];
-#else
-  mtl->lib = [mtl->dev newDefaultLibrary];
-#endif
-  if (!mtl->lib) {
-    NSLog(@"Failed to load library, error: %@", err);
-    exit(0);
-  }
-  id<MTLFunction> vshdr_f = [mtl->lib newFunctionWithName:@"ren_vtx"];
-  if (!vshdr_f) {
+  dispatch_data_t lib_data = dispatch_data_create(
+    gfx_metallib,
+    sizeof(gfx_metallib),
+    dispatch_get_main_queue(),
+    DISPATCH_DATA_DESTRUCTOR_DEFAULT
+  );
+  mtl->lib = [mtl->dev newLibraryWithData:lib_data error:&err];
+  
+  mtl->vshdr_f = [mtl->lib newFunctionWithName:@"ren_vtx"];
+  if (!mtl->vshdr_f) {
     NSLog(@"Unable to get ren_vtx metal vertex shader function!\n");
     return -1;
   }
@@ -343,7 +339,7 @@ gfx_mtl_init(struct sys *sys, void *view_ptr) {
   }
   MTLRenderPipelineDescriptor *pld = [[MTLRenderPipelineDescriptor alloc] init];
   pld.label = @"tau_pipeline";
-  pld.vertexFunction = vshdr_f;
+  pld.vertexFunction = mtl->vshdr_f;
   pld.fragmentFunction = mtl->fshdr_f;
   pld.colorAttachments[0].pixelFormat = view.colorPixelFormat;
   pld.colorAttachments[0].blendingEnabled = YES;
